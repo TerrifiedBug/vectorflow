@@ -190,8 +190,15 @@ describe("settingsRouter", () => {
   // ─── updateOidc ───────────────────────────────────────────────────────────
 
   describe("updateOidc", () => {
-    it("updates OIDC settings and encrypts client secret", async () => {
+    function mockVerifiedClaim(domain = "example.com") {
+      prismaMock.organizationDomainClaim.findMany.mockResolvedValue([
+        { id: "claim_1", domain } as never,
+      ]);
+    }
+
+    it("updates OIDC settings and encrypts client secret when domain claim covers issuer", async () => {
       mockSettings();
+      mockVerifiedClaim();
       const updated = { id: "singleton" };
       prismaMock.systemSettings.update.mockResolvedValue(updated as never);
       prismaMock.organizationSettings.upsert.mockResolvedValue(updated as never);
@@ -220,6 +227,7 @@ describe("settingsRouter", () => {
 
     it("skips encrypting when clientSecret is 'unchanged'", async () => {
       mockSettings();
+      mockVerifiedClaim();
       prismaMock.systemSettings.update.mockResolvedValue({} as never);
       prismaMock.organizationSettings.upsert.mockResolvedValue({} as never);
 
@@ -231,6 +239,79 @@ describe("settingsRouter", () => {
       });
 
       expect(encrypt).not.toHaveBeenCalled();
+    });
+
+    it("refuses when the org has no verified domain claim", async () => {
+      mockSettings();
+      prismaMock.organizationDomainClaim.findMany.mockResolvedValue([]);
+
+      await expect(
+        caller.updateOidc({
+          issuer: "https://idp.example.com",
+          clientId: "client-123",
+          clientSecret: "super-secret",
+          displayName: "SSO",
+          tokenEndpointAuthMethod: "client_secret_post",
+        }),
+      ).rejects.toMatchObject({
+        code: "PRECONDITION_FAILED",
+        message: expect.stringMatching(/verified domain claim/i),
+      });
+
+      // Persistence path NEVER touched.
+      expect(prismaMock.organizationSettings.upsert).not.toHaveBeenCalled();
+      expect(invalidateAuthCache).not.toHaveBeenCalled();
+    });
+
+    it("accepts when issuer is on a subdomain of a verified claim", async () => {
+      mockSettings();
+      mockVerifiedClaim("acme.com");
+      prismaMock.organizationSettings.upsert.mockResolvedValue({} as never);
+
+      await caller.updateOidc({
+        issuer: "https://login.acme.com/oauth2",
+        clientId: "client-123",
+        clientSecret: "super-secret",
+        displayName: "Acme SSO",
+        tokenEndpointAuthMethod: "client_secret_post",
+      });
+
+      expect(prismaMock.organizationSettings.upsert).toHaveBeenCalled();
+    });
+
+    it("refuses when issuer hostname does not match any verified claim", async () => {
+      mockSettings();
+      mockVerifiedClaim("acme.com");
+
+      await expect(
+        caller.updateOidc({
+          issuer: "https://login.evilacme.com/oauth2",
+          clientId: "client-123",
+          clientSecret: "super-secret",
+          displayName: "SSO",
+          tokenEndpointAuthMethod: "client_secret_post",
+        }),
+      ).rejects.toMatchObject({
+        code: "PRECONDITION_FAILED",
+        message: expect.stringMatching(/not covered/i),
+      });
+    });
+
+    it("refuses when the only claim is unverified (filter excludes it)", async () => {
+      mockSettings();
+      // `findMany` with `verifiedAt: { not: null }` returns nothing
+      // when the only existing claim is unverified.
+      prismaMock.organizationDomainClaim.findMany.mockResolvedValue([]);
+
+      await expect(
+        caller.updateOidc({
+          issuer: "https://idp.example.com",
+          clientId: "client-123",
+          clientSecret: "super-secret",
+          displayName: "SSO",
+          tokenEndpointAuthMethod: "client_secret_post",
+        }),
+      ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
     });
   });
 
