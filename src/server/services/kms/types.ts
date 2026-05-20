@@ -13,8 +13,8 @@
  *   - `VaultTransitKmsProvider` — calls Vault Transit `encrypt`/`decrypt`
  *     for production self-hosted users.
  *
- * Closed providers (cloud/ workspace):
- *   - `AwsKmsProvider` — AWS KMS `GenerateDataKey` / `Decrypt`. Cloud only.
+ * Closed providers (not bundled in OSS):
+ *   - `AwsKmsProvider` — AWS KMS `GenerateDataKey` / `Decrypt`.
  */
 
 export type KmsProviderKind = "local-dev" | "vault-transit" | "aws-kms";
@@ -64,9 +64,9 @@ export interface KmsProvider {
   describeKey(): KmsKeyDescriptor;
 
   /**
-   * Perform a *real* round-trip to the wrapping-key provider. Used by the
-   * Cloud readiness probe to detect Vault/KMS outages before requests hit
-   * the cryptographic hot path. Implementations:
+   * Perform a *real* round-trip to the wrapping-key provider. Used by
+   * the deep readiness probe to detect Vault/KMS outages before
+   * requests hit the cryptographic hot path. Implementations:
    *   - local-dev:    in-process KEK fingerprint (no I/O).
    *   - vault-transit: GET on the transit key's metadata endpoint.
    *   - aws-kms:      KMS:DescribeKey on the org's CMK.

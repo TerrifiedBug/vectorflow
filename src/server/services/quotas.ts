@@ -40,8 +40,8 @@
  *
  * `PLAN_QUOTAS` is kept exported as a back-compat alias that reflects
  * whatever the active provider returns for the `DEFAULT` plan only.
- * Cloud-specific tiers (FREE/PRO/ENTERPRISE) are NOT enumerable from
- * OSS code.
+ * Commercial tiers (FREE/PRO/ENTERPRISE) are NOT enumerable from OSS
+ * code.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -67,8 +67,8 @@ export interface PlanQuotas {
 }
 
 /**
- * Provider interface — Cloud registers a commercial overlay; OSS uses
- * the default unbounded provider.
+ * Provider interface — a deployment may register a commercial overlay;
+ * OSS uses the default unbounded provider.
  *
  * Implementations MUST be pure (no I/O, no global state) so the quota
  * engine can call them from inside a held transaction without leaking

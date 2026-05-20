@@ -11,15 +11,14 @@
  *   - `cancelOrgDeletion(orgId)` — clears `deletedAt` during the grace
  *     window. Idempotent; called by the customer-admin "Undo" button.
  *   - `listOrgsPastGrace()` — returns orgs whose `deletedAt` is older
- *     than `GRACE_DAYS`. Cloud's tenant-lifecycle cron uses this to
- *     drive hard-delete + `kms:ScheduleKeyDeletion`.
+ *     than `GRACE_DAYS`. A tenant-lifecycle cron uses this to drive
+ *     hard-delete + `kms:ScheduleKeyDeletion`.
  *
  * (NOT in OSS):
  *
  *   - The hard-delete step itself (cascade `DELETE`, KMS key
- *     destruction). That logic lives in `cloud/src/services/tenant-
- *     lifecycle-hard-delete.ts` and ships with the cloud workspace
- *     scaffolding (configuration in the overlay).
+ *     destruction). That logic lives in a closed-source adapter and is
+ *     not bundled in OSS.
  *
  * Notes:
  *
@@ -183,9 +182,9 @@ export interface CancelOrgDeletionResult {
  * raising.
  *
  * Throws if the grace window has already elapsed (the row would
- * normally still exist until the Cloud cron hard-deletes it, but the
- * intent of an explicit Cancel is to keep the org alive — after the
- * grace window the customer must contact support).
+ * normally still exist until the hard-delete cron runs, but the intent
+ * of an explicit Cancel is to keep the org alive — after the grace
+ * window the customer must contact support).
  */
 export async function cancelOrgDeletion(
   organizationId: string,
@@ -267,7 +266,7 @@ export interface PendingHardDelete {
 
 /**
  * Enumerate orgs whose `deletedAt` is older than the grace window.
- * Cloud's hard-delete cron uses this to drive `kms:ScheduleKeyDeletion`
+ * The hard-delete cron uses this to drive `kms:ScheduleKeyDeletion`
  * + cascade SQL DELETE. OSS callers may use it too (e.g. self-hosted
  * compliance teams running a manual cleanup), but the actual destructive
  * step is intentionally NOT exposed in OSS.
@@ -296,7 +295,7 @@ export async function listOrgsPastGrace(
  * Banner spec for the customer-admin UI. The org's deletedAt + grace
  * window resolve into the message + days-remaining the dashboard
  * surfaces. Exposed as a pure function so the same shape can be unit-
- * tested and consumed by Cloud and OSS UIs alike.
+ * tested and consumed by every UI that renders the banner.
  */
 export interface DeletionBanner {
   shown: boolean;

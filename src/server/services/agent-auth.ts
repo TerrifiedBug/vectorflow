@@ -96,7 +96,7 @@ async function authenticateLegacyInOrg(
  *
  * Fleet-wide authentication with no org scope. Retained for backward
  * compatibility while agents are being migrated to slug-prefixed tokens.
- * This function is not used in Cloud deployments.
+ * Not called when X-VF-Org-Slug-based org resolution is active.
  */
 export async function authenticateAgent(
   request: Request,

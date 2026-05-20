@@ -184,9 +184,9 @@ async function vaultFetch(
 
   // SSRF guard. Vault address is operator-controlled; in OSS it usually
   // points at a private network so we use the gated `validateOutboundUrl`
-  // (no `force`). Cloud deployments that set `VF_STRICT_OUTBOUND=true`
-  // will reject a Vault URL accidentally pointing at a private IP / cloud
-  // metadata endpoint before any token is leaked.
+  // (no `force`). Deployments that set `VF_STRICT_OUTBOUND=true` will
+  // reject a Vault URL accidentally pointing at a private IP /
+  // cloud-metadata endpoint before any token is leaked.
   await validateOutboundUrl(url);
 
   return fetch(url, {

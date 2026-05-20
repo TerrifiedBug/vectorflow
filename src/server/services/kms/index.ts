@@ -17,8 +17,8 @@ let cachedDekCache: DekCache | null = null;
  * `VF_KMS_PROVIDER`:
  *   - `local-dev` (default) — `LocalDevKmsProvider`.
  *   - `vault-transit`       — `VaultTransitKmsProvider` (requires Vault env).
- *   - `aws-kms`             — only available when the `cloud/` workspace
- *                             provides an AWS adapter; otherwise throws.
+ *   - `aws-kms`             — only available when a closed-source adapter
+ *                             is registered; otherwise throws.
  *
  * Tests use `resetKmsForTests()` to clear the singleton.
  */
@@ -41,7 +41,7 @@ export function getKmsProvider(): KmsProvider {
       break;
     case "aws-kms":
       throw new Error(
-        "VF_KMS_PROVIDER=aws-kms requires the cloud/ workspace adapter; not bundled in OSS",
+        "VF_KMS_PROVIDER=aws-kms is provided by a closed-source adapter not bundled in OSS; set VF_KMS_PROVIDER=local-dev or vault-transit",
       );
     default:
       throw new Error(`Unknown VF_KMS_PROVIDER value: ${provider}`);

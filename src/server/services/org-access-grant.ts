@@ -104,7 +104,7 @@ export async function requestOrgAccessGrant(
       reason: input.reason.trim(),
       expiresAt,
       // approvedByCustomerAdminId left null — request is PENDING.
-      // externalGrantRef left null — only Cloud sets this on approval.
+      // externalGrantRef left null — only the operator-side approval flow sets this.
     },
   });
 }

@@ -1,7 +1,7 @@
 import type { NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { isDevAuthBypassRequestAllowed } from "@/lib/dev-auth-bypass";
-import { cloudCookieConfig } from "@/lib/cloud-cookies";
+import { strictCookieConfig } from "@/lib/strict-cookies";
 
 /**
  * Shared auth configuration used by both the full auth setup (auth.ts)
@@ -10,9 +10,9 @@ import { cloudCookieConfig } from "@/lib/cloud-cookies";
  */
 export const authConfig: NextAuthConfig = {
   session: { strategy: "jwt" },
-  // Use `cloudCookieConfig()` to enable per-subdomain cookie isolation
+  // Use `strictCookieConfig()` to enable per-subdomain cookie isolation
   // when configured; otherwise use NextAuth defaults for development.
-  ...(cloudCookieConfig() ? { cookies: cloudCookieConfig() } : {}),
+  ...(strictCookieConfig() ? { cookies: strictCookieConfig() } : {}),
   pages: {
     signIn: "/login",
   },

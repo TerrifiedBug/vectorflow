@@ -33,7 +33,7 @@ export function getAuditLogPath(): string {
 export interface WriteAuditLogParams {
   /**
    * Organization that owns this audit row. Defaults to `DEFAULT_ORG_ID` for
-   * OSS backward compatibility, but Cloud callers MUST pass the real org id
+   * OSS backward compatibility, but multi-tenant callers MUST pass the real org id
    * so the row is correctly chained and tenant-isolated. The orgProcedure
    * tRPC middleware threads `ctx.organizationId` through; pass that here.
    */
@@ -177,6 +177,6 @@ export async function writeAuditLog(params: WriteAuditLogParams) {
   return log;
 }
 
-// Re-export for callers that want to drive their own chain inserts (e.g.
-// the PlatformAuditLog writer that lives in cloud/).
+// Re-export for callers that drive their own chain inserts against a
+// separate audit table (e.g. the platform-operator audit log).
 export type { AuditChainTailLookup };

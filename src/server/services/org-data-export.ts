@@ -9,10 +9,10 @@
 // Deliberately excluded:
 //   - Encrypted secret payloads (Secret.encryptedValue, channel encrypted
 //     bodies, webhook encryptedSecret). The customer cannot decrypt these
-//     outside this Cloud instance because the DEK is wrapped by AWS KMS;
-//     exporting opaque ciphertext is theatre. Each excluded field is
-//     surfaced in the manifest with a presence flag so the customer knows
-//     a secret exists without seeing its bytes.
+//     outside this deployment because the DEK is wrapped by the
+//     configured KMS provider; exporting opaque ciphertext is theatre.
+//     Each excluded field is surfaced in the manifest with a presence
+//     flag so the customer knows a secret exists without seeing its bytes.
 //   - PII of operators (not the customer's data; out of scope).
 //   - externalGrantRef on OrgAccessGrant rows; surface presence only.
 //
@@ -22,7 +22,7 @@
 //
 // Library only; the org-scoped HTTP endpoint that exposes this needs an
 // org-admin auth surface (WebAuthn/passkey + OrgMember check) that lives
-// in the operator console in the closed-surface workspace.
+// alongside the operator console UI.
 
 import { createHash } from "node:crypto";
 import { ulid } from "ulid";
@@ -91,8 +91,9 @@ export interface OrgDataExportPayload {
  * means callers can pass either the global `prisma` client OR the
  * `tx` client handed by `withOrgTx(orgId, async (tx) => ...)`. The tx
  * variant carries the `SET LOCAL app.org_id` GUC so the underlying
- * reads are fenced by RLS \u2014 the global client is NOT fenced. Cloud
- * MUST pass the tx client; OSS can use the default.
+ * reads are fenced by RLS — the global client is NOT fenced. Callers
+ * running under strict multi-tenant MUST pass the tx client; single-org
+ * OSS callers can use the default.
  */
 export type OrgDataExportPrisma = Pick<
   PrismaClient,
@@ -115,13 +116,14 @@ export type OrgDataExportPrisma = Pick<
 
 export interface BuildOrgDataExportOpts {
   /**
-   * Optional Prisma client. Defaults to the global `prisma`. Cloud
-   * deployments MUST pass the `tx` client from `withOrgTx(orgId, ...)`
-   * so reads are fenced by RLS via `SET LOCAL app.org_id`. Without the
-   * tx client the global connection has no `app.org_id` set and RLS
-   * policies evaluate to "no rows" \u2014 the function would still work for
-   * the OSS table-owner role (which bypasses RLS by default) but would
-   * return an empty export in Cloud.
+   * Optional Prisma client. Defaults to the global `prisma`. Under
+   * strict multi-tenant the caller MUST pass the `tx` client from
+   * `withOrgTx(orgId, ...)` so reads are fenced by RLS via
+   * `SET LOCAL app.org_id`. Without the tx client the global
+   * connection has no `app.org_id` set and RLS policies evaluate to
+   * "no rows" — the function would still work for the OSS table-owner
+   * role (which bypasses RLS by default) but would return an empty
+   * export under the strict profile.
    */
   client?: OrgDataExportPrisma;
   /** Abort signal honoured between table reads. */
@@ -144,9 +146,9 @@ const DEFAULT_PER_TABLE_LIMIT = 100_000;
  * flags, computes a content checksum over a canonical JSON serialisation
  * of the data block, and returns the wrapped envelope.
  *
- * `opts.client` is required for Cloud deployments to fence reads behind
- * RLS: pass the `tx` client from `withOrgTx(orgId, async (tx) => buildOrgDataExport(orgId, { client: tx }))`.
- * If omitted, the global prisma client is used (OSS path \u2014 application-
+ * `opts.client` is required under strict multi-tenant to fence reads
+ * behind RLS: pass the `tx` client from `withOrgTx(orgId, async (tx) => buildOrgDataExport(orgId, { client: tx }))`.
+ * If omitted, the global prisma client is used (OSS path — application-
  * level org filtering via `where: { organizationId }` is the boundary;
  * the table-owner role bypasses RLS by default).
  */
@@ -410,7 +412,7 @@ export async function buildOrgDataExport(
     {
       scope: "NotificationChannel.config",
       reason:
-        "Channel destination credentials are AES-256-GCM encrypted with the per-org DEK and cannot be decrypted outside this Cloud instance. Recreate the channel against the destination directly.",
+        "Channel destination credentials are AES-256-GCM encrypted with the per-org DEK and cannot be decrypted outside this deployment. Recreate the channel against the destination directly.",
     },
     {
       scope: "WebhookEndpoint.encryptedSecret",

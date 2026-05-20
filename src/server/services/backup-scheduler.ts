@@ -17,8 +17,8 @@ import { fireEventAlert } from "./event-alerts";
  *
  * Each cron tick runs inside `withOrgTx(orgId, ...)` so any tenant-scoped
  * DB work performed during the backup workflow (writing BackupRecord
- * rows, firing event alerts) is RLS-scoped to that org under Cloud's
- * strict policies.
+ * rows, firing event alerts) is RLS-scoped to that org under the
+ * strict-multi-tenant profile.
  */
 
 // Map<organizationId, ScheduledTask>. Exposed via _scheduledTasksForTests
@@ -65,11 +65,10 @@ export function rescheduleBackupForOrg(
 
 /**
  * Tear down the org's task. Called on org suspend or delete from the
- * cloud/ workspace's org-lifecycle handler (suspension flow, hard-delete
- * job). OSS has no lifecycle wiring today — DEFAULT_ORG_ID is never
- * suspended or deleted — so this hook has no current OSS caller. It is
- * the documented integration point that the closed cloud lifecycle
- * routes import and invoke.
+ * org-lifecycle handler. OSS has no lifecycle wiring today —
+ * DEFAULT_ORG_ID is never suspended or deleted — so this hook has no
+ * current OSS caller. It is the documented integration point that
+ * tenant-lifecycle wiring invokes.
  */
 export function unscheduleBackupForOrg(organizationId: string): void {
   const existing = scheduledTasks.get(organizationId);
@@ -105,10 +104,10 @@ function scheduleJobForOrg(
     // read org settings via the global Prisma client, which still hard-codes
     // `DEFAULT_ORG_ID` for some lookups (see backup.ts:552, :903, :1084,
     // :1171). Under OSS the table-owner role bypasses RLS so this works
-    // identically to before. Under Cloud RLS-strict, threading the org
-    // context through each service function is a separate refactor (Phase
-    // 5b.2). This scheduler does the right thing it CAN do today: register
-    // one cron per org from each org's own settings, log per-org, and run
+    // identically to before. Under strict-multi-tenant RLS, threading the
+    // org context through each service function is a follow-up refactor.
+    // This scheduler does the right thing it CAN do today: register one
+    // cron per org from each org's own settings, log per-org, and run
     // env-alerts scoped to the org's environments.
     try {
       const metadata = await createBackup("scheduled");

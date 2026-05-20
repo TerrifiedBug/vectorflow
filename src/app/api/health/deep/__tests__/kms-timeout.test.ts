@@ -15,7 +15,7 @@ import { prisma } from "@/lib/prisma";
 import { getKmsProvider } from "@/server/services/kms";
 import { checkClockSkew } from "@/server/services/clock-skew";
 
-describe("/api/health/cloud — KMS probe bounded by timeout", () => {
+describe("/api/health/deep — KMS probe bounded by timeout", () => {
   beforeEach(() => {
     vi.mocked(prisma.$queryRaw).mockResolvedValue([{ "?column?": 1 }] as never);
     vi.mocked(checkClockSkew).mockResolvedValue({

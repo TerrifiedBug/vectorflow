@@ -3,7 +3,7 @@
  *
  * The v3 envelope-encryption API (`encryptForOrg`, `decryptForOrg` in
  * `crypto.ts`) requires the org's `dataKeyCiphertext` and a row
- * identity. For Cloud orgs every active org has both. For OSS / self-
+ * identity. Orgs that have a provisioned DEK carry both. For OSS / self-
  * hosted deployments, the org row's `dataKeyCiphertext` is NULL — no
  * KMS is configured, and there is no DEK to wrap. The legacy v2
  * (`encrypt`/`decrypt`) path stays live for those rows.
@@ -20,13 +20,13 @@
  *     * `v3:` → decryptForOrg (AAD-bound).
  *     * `v2:` or no prefix → decrypt (v2/v1 path).
  *
- * The wrapper preserves the existing OSS contract: a self-hosted
- * deployment that never sets `Organization.dataKeyCiphertext` continues
- * to write v2 ciphertexts and reads back exactly what it wrote. Cloud
- * deployments write v3 from the start. A self-hosted operator who
- * later opts into v3 runs `scripts/migrate-encryption-v3.ts` which
- * rewrites v2 rows to v3 once per org; the wrapper detects the new
- * prefix on the next read.
+ * The wrapper preserves the existing OSS contract: a deployment that
+ * never sets `Organization.dataKeyCiphertext` continues to write v2
+ * ciphertexts and reads back exactly what it wrote. Orgs provisioned
+ * with a DEK write v3 from the start. A self-hosted operator who later
+ * opts into v3 runs `scripts/migrate-encryption-v3.ts` which rewrites
+ * v2 rows to v3 once per org; the wrapper detects the new prefix on
+ * the next read.
  *
  * Per-callsite migration pattern (per §16 Phase 3 list):
  *
@@ -67,8 +67,7 @@ export interface CallsiteCryptoContext {
   orgId: string;
   /**
    * The org's `Organization.dataKeyCiphertext`. Null in OSS / self-
-   * hosted; non-null when Cloud (or self-hosted with v3 explicitly
-   * configured) has provisioned a DEK.
+   * hosted; non-null when an org has been provisioned with a DEK.
    */
   dataKeyCiphertext: string | null;
   /** HKDF domain so independent data types use independent keys. */

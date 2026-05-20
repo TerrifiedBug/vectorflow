@@ -173,7 +173,7 @@ describe("isCallerOrgSuspended (Phase 5t streaming-client path)", () => {
     });
   });
 
-  it("returns false for the OSS default org (suspension is Cloud-only)", async () => {
+  it("returns false for the OSS default org (suspension applies to non-default orgs only)", async () => {
     authMock.mockResolvedValue({ user: { id: USER_ID, email: "u@example.com" } });
     // Both findFirst calls return null → falls through to DEFAULT_ORG_ID.
     prismaMock.orgMember.findFirst.mockResolvedValue(null);
