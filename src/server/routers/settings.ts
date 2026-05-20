@@ -19,6 +19,7 @@ import {
 import { rescheduleBackupForOrg, isValidCron } from "@/server/services/backup-scheduler";
 import { validatePublicUrl } from "@/server/services/url-validation";
 import { getOrgSettings, updateOrgSettings, type OrgSettings } from "@/lib/org-settings";
+import { assertVerifiedDomainForIssuer } from "@/server/services/auth/oidc-domain-gate";
 
 const SETTINGS_ID = "singleton";
 
@@ -134,6 +135,22 @@ export const settingsRouter = router({
     )
     .use(withAudit("settings.oidc_updated", "SystemSettings"))
     .mutation(async ({ input, ctx }) => {
+      // Audit gap C.4 — refuse OIDC writes unless this org owns a
+      // verified `OrganizationDomainClaim` whose domain covers the
+      // issuer hostname. Prevents a customer admin from pointing
+      // their IdP at an attacker-controlled discovery endpoint.
+      const gate = await assertVerifiedDomainForIssuer({
+        prisma,
+        organizationId: ctx.organizationId,
+        issuerUrl: input.issuer,
+      });
+      if (!gate.ok) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: gate.reason,
+        });
+      }
+
       const data: Partial<Omit<OrgSettings, "id" | "organizationId" | "updatedAt">> = {
         oidcIssuer: input.issuer,
         oidcClientId: input.clientId,
