@@ -504,6 +504,16 @@ async function getAuthInstance() {
             if (account) {
               token.provider = account.provider;
             }
+            // Audit P2-13 — encode the organizationId on the JWT
+            // payload as `org_id`. Per-org signing keys (jwt-key.ts)
+            // already prevent cross-org token replay at the
+            // verify-signature layer, but downstream readers that
+            // decode the JWT body (e.g. log enrichers, OIDC RP
+            // callbacks, future audit consumers) can now self-describe
+            // which org the token belongs to. The `orgId` closure
+            // comes from `getAuthInstance` and is constant for the
+            // life of this NextAuth instance.
+            token.org_id = orgId;
             // Server-side session invalidation for permanently-locked
             // accounts. `user.eraseSelf` sets `User.lockedAt` with
             // `lockedBy === "erasure"` after pseudonymising the row.
