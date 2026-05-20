@@ -376,39 +376,39 @@ export const orgRouter = router({
     }),
 
   /**
-   * Peer-OWNER MFA recovery.
+   * Peer-OWNER authenticator reset (TOTP + passkeys).
    *
-   * If an OWNER of an organisation loses their authenticator device AND
-   * their backup codes, a peer OWNER on the same org can clear the
-   * locked-out OWNER's TOTP state. The recovered user will sign in
-   * without 2FA on the next attempt and SHOULD re-enable TOTP
-   * immediately afterwards.
+   * Audit gap C.5 / Lane 8a — `resetMemberMfa` originally cleared
+   * TOTP only. An OWNER who lost their passkey was still locked out
+   * because no peer-OWNER could drop the WebAuthn credentials. This
+   * procedure now blanks BOTH factors atomically:
    *
-   * Constraints:
+   *   - `User.totpEnabled / totpSecret / totpBackupCodes` cleared
+   *   - `WebAuthnCredential` rows for the target deleted
+   *   - `WebAuthnChallenge` rows for the target deleted
+   *
+   * The recovered user re-enrols TOTP and/or a passkey on next sign-in.
+   *
+   * Constraints (unchanged from the TOTP-only original):
    *   - Caller MUST be `OrgMember.role === "OWNER"`. Peer recovery
-   *     between two ADMINs is intentionally NOT allowed; the OWNER
-   *     role exists in part to gate exactly this break-glass.
+   *     between two ADMINs is intentionally NOT allowed.
    *   - Caller MUST NOT be the target (no self-rescue).
    *   - Target MUST be an OrgMember of the caller's organisation.
-   *   - The target's role does NOT matter — an OWNER can reset MFA
-   *     for any of their members.
    *
-   * Single-OWNER orgs have no peer to invoke this; they rely on
-   * backup codes generated at TOTP setup, or — for cloud installs —
-   * an operator break-glass approval. OSS-single-tenant deployments
-   * can additionally reset via a direct DB update because the operator
-   * IS the user.
+   * Single-OWNER orgs have no peer to invoke this; they rely on an
+   * operator break-glass approval via `operator-console.resetOrgOwnerAuth`
+   * (Cloud) or a direct DB update (OSS single-tenant).
    */
-  resetMemberMfa: protectedProcedure
+  resetMemberAuth: protectedProcedure
     .use(denyInDemo())
     .input(z.object({ targetUserId: userIdSchema }))
-    .use(withAudit("org.member_mfa_reset", "User"))
+    .use(withAudit("org.member_auth_reset", "User"))
     .mutation(async ({ input, ctx }) => {
       const orgMemberRole = (ctx as { orgMemberRole?: string }).orgMemberRole;
       if (orgMemberRole !== "OWNER") {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: "Resetting another member's MFA requires an org OWNER.",
+          message: "Resetting another member's authenticators requires an org OWNER.",
         });
       }
       const callerId = ctx.session?.user?.id;
@@ -419,7 +419,7 @@ export const orgRouter = router({
         throw new TRPCError({
           code: "BAD_REQUEST",
           message:
-            "You cannot reset your own MFA from this surface. Use a backup code at sign-in.",
+            "You cannot reset your own authenticators from this surface. Use a backup code at sign-in.",
         });
       }
 
@@ -451,6 +451,12 @@ export const orgRouter = router({
           throw new TRPCError({ code: "NOT_FOUND" });
         }
 
+        // Snapshot the WebAuthn credential count BEFORE deletion so
+        // the audit row carries it (factorsReset metadata).
+        const webAuthnBefore = await tx.webAuthnCredential.count({
+          where: { userId: target.id },
+        });
+
         await tx.user.update({
           where: { id: target.id },
           data: {
@@ -459,12 +465,111 @@ export const orgRouter = router({
             totpBackupCodes: null,
           },
         });
+        await tx.webAuthnCredential.deleteMany({
+          where: { userId: target.id },
+        });
+        await tx.webAuthnChallenge.deleteMany({
+          where: { userId: target.id },
+        });
 
         // Return the User entity-id so withAudit logs the correct row.
         return {
           id: target.id,
           targetUserId: target.id,
+          wasTotpEnabled: target.totpEnabled,
+          webAuthnCredentialsRemoved: webAuthnBefore,
+          factorsReset: ["totp", "webauthn"] as const,
+        };
+      });
+    }),
+
+  /**
+   * @deprecated Back-compat alias for {@link resetMemberAuth}. Existing
+   * UI buttons / callers may still target `resetMemberMfa`; new code
+   * SHOULD use `resetMemberAuth`. Remove after one release cycle.
+   *
+   * The implementation is intentionally a thin call-through so any
+   * audit-log consumer sees the new action name (`org.member_auth_reset`)
+   * regardless of which entry point fired.
+   */
+  resetMemberMfa: protectedProcedure
+    .use(denyInDemo())
+    .input(z.object({ targetUserId: userIdSchema }))
+    .use(withAudit("org.member_auth_reset", "User"))
+    .mutation(async ({ input, ctx }) => {
+      const orgMemberRole = (ctx as { orgMemberRole?: string }).orgMemberRole;
+      if (orgMemberRole !== "OWNER") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Resetting another member's authenticators requires an org OWNER.",
+        });
+      }
+      const callerId = ctx.session?.user?.id;
+      if (!callerId) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
+      if (callerId === input.targetUserId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "You cannot reset your own authenticators from this surface. Use a backup code at sign-in.",
+        });
+      }
+
+      const organizationId = ctx.organizationId;
+      return withOrgTx(organizationId, async (rawTx) => {
+        const tx = rawTx as unknown as PrismaClient;
+
+        const targetMembership = await tx.orgMember.findUnique({
+          where: {
+            userId_organizationId: {
+              userId: input.targetUserId,
+              organizationId,
+            },
+          },
+          select: { id: true },
+        });
+        if (!targetMembership) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Target user is not a member of this organisation.",
+          });
+        }
+
+        const target = await tx.user.findUnique({
+          where: { id: input.targetUserId },
+          select: { id: true, totpEnabled: true },
+        });
+        if (!target) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+
+        const webAuthnBefore = await tx.webAuthnCredential.count({
+          where: { userId: target.id },
+        });
+
+        await tx.user.update({
+          where: { id: target.id },
+          data: {
+            totpEnabled: false,
+            totpSecret: null,
+            totpBackupCodes: null,
+          },
+        });
+        await tx.webAuthnCredential.deleteMany({
+          where: { userId: target.id },
+        });
+        await tx.webAuthnChallenge.deleteMany({
+          where: { userId: target.id },
+        });
+
+        return {
+          id: target.id,
+          targetUserId: target.id,
           wasEnabled: target.totpEnabled,
+          wasTotpEnabled: target.totpEnabled,
+          webAuthnCredentialsRemoved: webAuthnBefore,
+          factorsReset: ["totp", "webauthn"] as const,
         };
       });
     }),

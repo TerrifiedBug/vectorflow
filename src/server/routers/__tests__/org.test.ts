@@ -403,8 +403,32 @@ describe("org.unclaimDomain", () => {
   });
 });
 
-describe("org.resetMemberMfa", () => {
-  it("rejects non-OWNER callers", async () => {
+describe("org.resetMemberAuth (and legacy resetMemberMfa alias)", () => {
+  function setupTarget(opts: { totpEnabled?: boolean; webAuthnCount?: number } = {}) {
+    prismaMock.orgMember.findUnique.mockResolvedValue({ id: "m-2" } as never);
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: "user-2",
+      totpEnabled: opts.totpEnabled ?? true,
+    } as never);
+    prismaMock.user.update.mockResolvedValue({} as never);
+    prismaMock.webAuthnCredential.count.mockResolvedValue(
+      (opts.webAuthnCount ?? 1) as never,
+    );
+    prismaMock.webAuthnCredential.deleteMany.mockResolvedValue({
+      count: opts.webAuthnCount ?? 1,
+    } as never);
+    prismaMock.webAuthnChallenge.deleteMany.mockResolvedValue({
+      count: 0,
+    } as never);
+  }
+
+  it("rejects non-OWNER callers (canonical)", async () => {
+    await expect(
+      adminCaller().resetMemberAuth({ targetUserId: "user-2" }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("rejects non-OWNER callers (alias)", async () => {
     await expect(
       adminCaller().resetMemberMfa({ targetUserId: "user-2" }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -412,34 +436,33 @@ describe("org.resetMemberMfa", () => {
 
   it("refuses self-reset", async () => {
     await expect(
-      ownerCaller().resetMemberMfa({ targetUserId: "owner-1" }),
+      ownerCaller().resetMemberAuth({ targetUserId: "owner-1" }),
     ).rejects.toMatchObject({
       code: "BAD_REQUEST",
-      message: expect.stringMatching(/cannot reset your own MFA/i),
+      message: expect.stringMatching(/cannot reset your own authenticators/i),
     });
   });
 
   it("404s when target is not a member of the caller's org", async () => {
     prismaMock.orgMember.findUnique.mockResolvedValue(null);
     await expect(
-      ownerCaller().resetMemberMfa({ targetUserId: "user-2" }),
+      ownerCaller().resetMemberAuth({ targetUserId: "user-2" }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("clears totp state on the target and returns audit-shaped output", async () => {
-    prismaMock.orgMember.findUnique.mockResolvedValue({ id: "m-2" } as never);
-    prismaMock.user.findUnique.mockResolvedValue({
-      id: "user-2",
-      totpEnabled: true,
-    } as never);
-    prismaMock.user.update.mockResolvedValue({} as never);
+  it("clears TOTP + WebAuthn credentials + WebAuthn challenges on the target", async () => {
+    setupTarget({ totpEnabled: true, webAuthnCount: 2 });
 
-    const result = await ownerCaller().resetMemberMfa({ targetUserId: "user-2" });
+    const result = await ownerCaller().resetMemberAuth({
+      targetUserId: "user-2",
+    });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       id: "user-2",
       targetUserId: "user-2",
-      wasEnabled: true,
+      wasTotpEnabled: true,
+      webAuthnCredentialsRemoved: 2,
+      factorsReset: ["totp", "webauthn"],
     });
     expect(prismaMock.user.update).toHaveBeenCalledWith({
       where: { id: "user-2" },
@@ -448,6 +471,44 @@ describe("org.resetMemberMfa", () => {
         totpSecret: null,
         totpBackupCodes: null,
       },
+    });
+    expect(prismaMock.webAuthnCredential.deleteMany).toHaveBeenCalledWith({
+      where: { userId: "user-2" },
+    });
+    expect(prismaMock.webAuthnChallenge.deleteMany).toHaveBeenCalledWith({
+      where: { userId: "user-2" },
+    });
+  });
+
+  it("alias resetMemberMfa clears both factors and exposes wasEnabled for back-compat", async () => {
+    setupTarget({ totpEnabled: true, webAuthnCount: 1 });
+
+    const result = await ownerCaller().resetMemberMfa({
+      targetUserId: "user-2",
+    });
+
+    expect(result).toMatchObject({
+      id: "user-2",
+      targetUserId: "user-2",
+      wasEnabled: true,
+      wasTotpEnabled: true,
+      webAuthnCredentialsRemoved: 1,
+      factorsReset: ["totp", "webauthn"],
+    });
+    expect(prismaMock.webAuthnCredential.deleteMany).toHaveBeenCalled();
+  });
+
+  it("succeeds even when target has zero WebAuthn credentials", async () => {
+    setupTarget({ totpEnabled: false, webAuthnCount: 0 });
+
+    const result = await ownerCaller().resetMemberAuth({
+      targetUserId: "user-2",
+    });
+
+    expect(result).toMatchObject({
+      wasTotpEnabled: false,
+      webAuthnCredentialsRemoved: 0,
+      factorsReset: ["totp", "webauthn"],
     });
   });
 });
