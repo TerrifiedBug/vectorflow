@@ -119,6 +119,7 @@ describe("userRouter", () => {
         mustChangePassword: false,
         totpEnabled: false,
         isOrgAdmin: false,
+        isPlatformOperator: false,
         twoFactorRequired: false,
       });
     });
