@@ -171,10 +171,19 @@ const roleLevel: Record<Role, number> = {
   ADMIN: 2,
 };
 
-async function resolvePipelineBatchTeamId(pipelineIds: string[]) {
+/**
+ * Resolve the team that owns `pipelineIds` and require the batch to be
+ * single-team. Audit P2-7 scopes the lookup by `organizationId` so a
+ * Prisma bug (or future refactor) cannot accidentally return a
+ * cross-org pipeline whose teamId the batch would then validate against.
+ */
+async function resolvePipelineBatchTeamId(
+  pipelineIds: string[],
+  organizationId: string,
+) {
   const uniquePipelineIds = [...new Set(pipelineIds)];
   const pipelines = await prisma.pipeline.findMany({
-    where: { id: { in: uniquePipelineIds } },
+    where: { id: { in: uniquePipelineIds }, organizationId },
     select: {
       id: true,
       environment: { select: { teamId: true } },
@@ -411,7 +420,7 @@ export const withTeamAccess = (minRole: Role) =>
     // Resolve teamId from pipelineIds array and reject mixed-team batches before handlers run.
     // hasPipelineIds is always true here when pipelineIds were present (teamId was left undefined above).
     if (hasPipelineIds && !teamId) {
-      teamId = await resolvePipelineBatchTeamId(rawInput!.pipelineIds as string[]);
+      teamId = await resolvePipelineBatchTeamId(rawInput!.pipelineIds as string[], ctx.organizationId);
     }
 
     // Resolve teamId from upstreamId (pipeline dependency endpoints)

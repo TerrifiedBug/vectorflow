@@ -2,6 +2,7 @@ import { writeAuditLog } from "@/server/services/audit";
 import { prisma } from "@/lib/prisma";
 import { middleware } from "@/trpc/init";
 import { SENSITIVE_KEYS, sanitizeInput, computeDiff } from "./audit-sanitize";
+import { warnLog } from "@/lib/logger";
 
 export { SENSITIVE_KEYS, sanitizeInput, computeDiff };
 
@@ -106,6 +107,57 @@ async function resolveTeamId(
   }
 
   return null;
+}
+
+/**
+ * Audit P2-6 — defense-in-depth assertion that the team/environment
+ * the audit middleware just resolved is actually owned by the caller's
+ * organisation. The procedure's own `withTeamAccess` gate already
+ * blocks cross-org IDs at request time; this check makes sure that if
+ * the gate ever has a bug (or someone introduces a new bypass), the
+ * audit row does NOT silently attribute the action to the wrong team.
+ *
+ * On mismatch: returns null and logs a warning. Caller falls through
+ * to writing the audit row with teamId=null + a metadata note.
+ */
+async function assertTeamBelongsToOrg(
+  teamId: string | null,
+  organizationId: string | null | undefined,
+): Promise<string | null> {
+  if (!teamId || !organizationId) return teamId ?? null;
+  const team = await prisma.team.findUnique({
+    where: { id: teamId },
+    select: { organizationId: true },
+  });
+  if (!team) return null;
+  if (team.organizationId !== organizationId) {
+    warnLog(
+      "audit-middleware",
+      `cross-org team resolved for audit (teamId=${teamId}, expectedOrg=${organizationId}, actualOrg=${team.organizationId}); dropping teamId from audit row`,
+    );
+    return null;
+  }
+  return teamId;
+}
+
+async function assertEnvironmentBelongsToOrg(
+  environmentId: string | null,
+  organizationId: string | null | undefined,
+): Promise<string | null> {
+  if (!environmentId || !organizationId) return environmentId ?? null;
+  const env = await prisma.environment.findUnique({
+    where: { id: environmentId },
+    select: { organizationId: true },
+  });
+  if (!env) return null;
+  if (env.organizationId !== organizationId) {
+    warnLog(
+      "audit-middleware",
+      `cross-org environment resolved for audit (envId=${environmentId}, expectedOrg=${organizationId}, actualOrg=${env.organizationId}); dropping environmentId from audit row`,
+    );
+    return null;
+  }
+  return environmentId;
 }
 
 /**
@@ -373,19 +425,38 @@ export function withAudit(action: string, entityType: string) {
           } catch { /* ignore */ }
         }
 
+        // Audit P2-6 — defense-in-depth org-belongs check on the
+        // resolved IDs before they hit the audit log.
+        const callerOrgId = (ctx as Record<string, unknown>).organizationId as
+          | string
+          | undefined;
+        const verifiedTeamId = await assertTeamBelongsToOrg(teamId, callerOrgId);
+        const verifiedEnvironmentId = await assertEnvironmentBelongsToOrg(
+          environmentId,
+          callerOrgId,
+        );
+        const auditMetadataExtra: Record<string, unknown> = {};
+        if (teamId && verifiedTeamId === null) {
+          auditMetadataExtra.crossOrgTeamResolved = teamId;
+        }
+        if (environmentId && verifiedEnvironmentId === null) {
+          auditMetadataExtra.crossOrgEnvironmentResolved = environmentId;
+        }
+
         writeAuditLog({
           userId,
           action,
           entityType,
           entityId,
           diff: diff ?? undefined,
-          teamId,
-          environmentId,
+          teamId: verifiedTeamId,
+          environmentId: verifiedEnvironmentId,
           metadata: {
             timestamp: new Date().toISOString(),
             ...((ctx as Record<string, unknown>).auditMetadata
               ? (ctx as Record<string, unknown>).auditMetadata as Record<string, unknown>
               : inputData ? { input: sanitizeInput(inputData) } : {}),
+            ...auditMetadataExtra,
           },
           ipAddress: (ctx as Record<string, unknown>).ipAddress as string | null ?? null,
           userEmail: ctx.session?.user?.email ?? null,
