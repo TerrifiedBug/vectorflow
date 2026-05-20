@@ -6,6 +6,7 @@ import {
   assertVerifiedDomainForIssuer,
   extractIssuerHostname,
   hostnameMatchesClaimDomain,
+  OPERATOR_BYPASS_CLAIM_ID,
 } from "../oidc-domain-gate";
 
 const prisma = mockDeep<PrismaClient>() as DeepMockProxy<PrismaClient>;
@@ -176,5 +177,77 @@ describe("assertVerifiedDomainForIssuer", () => {
     if (!result.ok) {
       expect(result.reason).toMatch(/normalisation|hostname/i);
     }
+  });
+
+  describe("allowSharedHostnames bypass (PR #377)", () => {
+    it("verified-claim match wins over the bypass (claim id surfaces, no bypass attribution)", async () => {
+      prisma.organizationDomainClaim.findMany.mockResolvedValue([
+        { id: "claim_apex", domain: "acme.com" } as never,
+      ]);
+      const result = await assertVerifiedDomainForIssuer({
+        prisma,
+        organizationId,
+        issuerUrl: "https://login.acme.com/oauth2",
+        allowSharedHostnames: true,
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.matchedClaimId).toBe("claim_apex");
+      }
+    });
+
+    it("accepts a shared-IdP hostname with no verified claim when the flag is on", async () => {
+      prisma.organizationDomainClaim.findMany.mockResolvedValue([]);
+      const result = await assertVerifiedDomainForIssuer({
+        prisma,
+        organizationId,
+        issuerUrl: "https://accounts.google.com/.well-known/openid-configuration",
+        allowSharedHostnames: true,
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.matchedClaimId).toBe(OPERATOR_BYPASS_CLAIM_ID);
+        expect(result.matchedDomain).toBe("accounts.google.com");
+      }
+    });
+
+    it("still rejects a malformed issuer URL even with the flag on", async () => {
+      const result = await assertVerifiedDomainForIssuer({
+        prisma,
+        organizationId,
+        issuerUrl: "not a url",
+        allowSharedHostnames: true,
+      });
+      expect(result.ok).toBe(false);
+      // Never reached the DB.
+      expect(prisma.organizationDomainClaim.findMany).not.toHaveBeenCalled();
+    });
+
+    it("still rejects a single-label issuer hostname even with the flag on", async () => {
+      const result = await assertVerifiedDomainForIssuer({
+        prisma,
+        organizationId,
+        issuerUrl: "https://nope/oauth2", // single-label fails normalisation
+        allowSharedHostnames: true,
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toMatch(/normalisation|hostname/i);
+      }
+    });
+
+    it("flag=false (default) behaves identically to omitting the flag — no claim, hard fail", async () => {
+      prisma.organizationDomainClaim.findMany.mockResolvedValue([]);
+      const result = await assertVerifiedDomainForIssuer({
+        prisma,
+        organizationId,
+        issuerUrl: "https://accounts.google.com/o/oauth2",
+        allowSharedHostnames: false,
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toMatch(/verified domain claim/i);
+      }
+    });
   });
 });

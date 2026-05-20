@@ -13,10 +13,9 @@
  * that id back to the caller's org and rejects cross-org access.
  *
  * Recognised gates (any one is sufficient):
- *   - `withTeamAccess` — the canonical tenant gate
- *   - `requireSuperAdmin` — platform-operator only (still tenant-safe
- *     because it implies caller is an operator, not a tenant user)
- *   - `requirePlatformOperator` — Phase 5ee tenant-aware operator gate
+ *   - `withTeamAccess` — the canonical tenant gate (uses `isOrgWideAdmin`
+ *     against `OrgMember` as the admin fast-path).
+ *   - `requirePlatformOperator` — Phase 5ee tenant-aware operator gate.
  *
  * Detection is via `mw.toString()` inspection. tRPC wraps middlewares
  * such that the factory body (and its identifiers) ARE preserved in the
@@ -25,8 +24,8 @@
  * into the chain.
  *
  * Adding a new procedure with a tenant-scoped input:
- *   - If you wrap it in `withTeamAccess` / `requireSuperAdmin` /
- *     `requirePlatformOperator`: test passes automatically.
+ *   - If you wrap it in `withTeamAccess` / `requirePlatformOperator`:
+ *     test passes automatically.
  *   - If you intentionally omit the gate (rare — usually a security bug):
  *     add the path to `INTENTIONALLY_UNGUARDED` below with a comment.
  *   - If you add a NEW tenant-scoping middleware: extend `GATE_PATTERNS`.
@@ -115,8 +114,9 @@ const TENANT_INPUT_KEYS = [
  *   - `userId_teamId` — the Prisma composite-key lookup used by
  *     `withTeamAccess` to verify membership. Other middlewares don't
  *     do this lookup.
- *   - `isSuperAdmin` — the legacy super-admin gate in `requireSuperAdmin`.
  *   - `platformOperator.findUnique` — Phase 5ee's `requirePlatformOperator`.
+ *   - `orgMember.findUnique` — `isOrgWideAdmin` lookup used by `withTeamAccess`
+ *     after slice 7c dropped the legacy `User.isSuperAdmin` reader.
  *
  * `requireRole` / `roleLevel[` is deliberately excluded: `requireRole`
  * authorises by the caller's HIGHEST role across any team and does NOT
@@ -131,7 +131,7 @@ const TENANT_INPUT_KEYS = [
  */
 const GATE_PATTERNS = [
   "userId_teamId",
-  "isSuperAdmin",
+  "orgMember.findUnique",
   "platformOperator.findUnique",
 ];
 
@@ -390,7 +390,7 @@ describe("Cross-org access audit (Phase 5bb)", () => {
         `${unguarded.length} procedure(s) accept a tenant-scoped id without an ` +
           `authorisation middleware:\n\n  - ${unguarded.join("\n  - ")}\n\n` +
           "Each procedure that takes teamId/environmentId/pipelineId MUST be " +
-          "wrapped in `withTeamAccess`, `requireSuperAdmin`, or `requirePlatformOperator`. " +
+          "wrapped in `withTeamAccess` or `requirePlatformOperator`. " +
           "If a procedure intentionally bypasses these (very rare), add its path " +
           "to `INTENTIONALLY_UNGUARDED` in `cross-org-access.test.ts` with a " +
           "comment explaining how cross-org access is otherwise prevented.",

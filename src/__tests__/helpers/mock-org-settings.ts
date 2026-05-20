@@ -61,6 +61,7 @@ export function mockOrgSettings(
     telemetryEnabledAt: Date | null;
     aiBaseUrlOptIn: boolean;
     subprocessorNoticeEmail: string | null;
+    allowSharedIdpHostnames: boolean;
     updatedAt: Date;
   }> = {},
 ) {
@@ -109,6 +110,7 @@ export function mockOrgSettings(
     telemetryEnabledAt: null,
     aiBaseUrlOptIn: false,
     subprocessorNoticeEmail: null,
+    allowSharedIdpHostnames: false,
     updatedAt: new Date("2026-01-01"),
     ...overrides,
   };

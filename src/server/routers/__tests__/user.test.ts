@@ -107,7 +107,6 @@ describe("userRouter", () => {
         authMethod: "LOCAL",
         mustChangePassword: false,
         totpEnabled: false,
-        isSuperAdmin: false,
         memberships: [{ team: { requireTwoFactor: false } }],
       } as never);
 
@@ -119,7 +118,6 @@ describe("userRouter", () => {
         authMethod: "LOCAL",
         mustChangePassword: false,
         totpEnabled: false,
-        isSuperAdmin: false,
         isOrgAdmin: false,
         twoFactorRequired: false,
       });
@@ -132,7 +130,6 @@ describe("userRouter", () => {
         authMethod: "LOCAL",
         mustChangePassword: false,
         totpEnabled: false,
-        isSuperAdmin: false,
         memberships: [{ team: { requireTwoFactor: true } }],
       } as never);
 
@@ -148,7 +145,6 @@ describe("userRouter", () => {
         authMethod: "LOCAL",
         mustChangePassword: false,
         totpEnabled: false,
-        isSuperAdmin: true,
         memberships: [],
       } as never);
 
@@ -164,7 +160,6 @@ describe("userRouter", () => {
         authMethod: "LOCAL",
         mustChangePassword: false,
         totpEnabled: false,
-        isSuperAdmin: true,
         memberships: [{ team: { requireTwoFactor: true } }],
       } as never);
 
@@ -180,7 +175,6 @@ describe("userRouter", () => {
         authMethod: "OIDC",
         mustChangePassword: false,
         totpEnabled: false,
-        isSuperAdmin: true,
         memberships: [{ team: { requireTwoFactor: true } }],
       } as never);
 
@@ -522,7 +516,6 @@ describe("userRouter", () => {
         totpSecret: null,
         totpBackupCodes: null,
         scimExternalId: null,
-        isSuperAdmin: false,
         lockedBy: "erasure",
       });
       expect(updateCall.data.lockedAt).toBeInstanceOf(Date);
@@ -710,7 +703,6 @@ describe("userRouter", () => {
         email: "erased+target-1@anon.invalid",
         name: null,
         passwordHash: null,
-        isSuperAdmin: false,
         lockedBy: "erasure",
       });
       expect(updateCall.data.lockedAt).toBeInstanceOf(Date);

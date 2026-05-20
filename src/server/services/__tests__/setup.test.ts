@@ -53,12 +53,11 @@ describe("setup service", () => {
   // ─── completeSetup ────────────────────────────────────────────────────────
 
   describe("completeSetup", () => {
-    it("creates a super admin user, team, membership, and system settings", async () => {
+    it("creates the initial OWNER user, org membership, team, and system settings", async () => {
       const mockUser = {
         id: "user-1",
         email: "admin@example.com",
         name: "Admin",
-        isSuperAdmin: true,
       };
       const mockTeam = { id: "team-1", name: "My Org" };
 
@@ -108,7 +107,6 @@ describe("setup service", () => {
       });
 
       expect(result.user.email).toBe("admin@example.com");
-      expect(result.user.isSuperAdmin).toBe(true);
       expect(result.team.name).toBe("My Org");
     });
 
@@ -127,7 +125,6 @@ describe("setup service", () => {
                 id: "user-1",
                 email: "admin@example.com",
                 name: "Admin",
-                isSuperAdmin: true,
               };
             }),
           },
@@ -169,7 +166,7 @@ describe("setup service", () => {
 
     function makeTx(upsertMock: ReturnType<typeof vi.fn>) {
       return {
-        user: { create: vi.fn().mockResolvedValue({ id: "u1", email: "admin@example.com", name: "Admin", isSuperAdmin: true }) },
+        user: { create: vi.fn().mockResolvedValue({ id: "u1", email: "admin@example.com", name: "Admin" }) },
         team: { create: vi.fn().mockResolvedValue({ id: "t1", name: "Default" }), update: vi.fn().mockResolvedValue({}) },
         teamMember: { create: vi.fn().mockResolvedValue({}) },
         environment: { create: vi.fn().mockResolvedValue({ id: "e1", name: "Production" }) },
@@ -221,7 +218,7 @@ describe("setup service", () => {
       prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
         if (typeof fn !== "function") return;
         const tx = {
-          user: { create: vi.fn().mockResolvedValue({ id: "u1", email: "a@b.c", name: "A", isSuperAdmin: true }) },
+          user: { create: vi.fn().mockResolvedValue({ id: "u1", email: "a@b.c", name: "A" }) },
           team: { create: vi.fn().mockResolvedValue({ id: "t1" }), update: vi.fn().mockResolvedValue({}) },
           teamMember: { create: vi.fn().mockResolvedValue({}) },
           environment: { create: vi.fn().mockResolvedValue({ id: "e1" }) },

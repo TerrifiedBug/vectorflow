@@ -9,11 +9,11 @@ import { isOrgWideAdmin } from "@/lib/org-admin";
  * resolved from the pipeline batch.
  *
  * Phase 7a (audit gap): the legacy `User.isSuperAdmin` global-admin
- * shortcut is gone — callers now elevate via `isOrgWideAdmin` against
- * the org. The optional `organizationId` argument is accepted for
- * future strict-multi-tenant callers (every protectedProcedure ctx
- * carries it). When omitted, `isOrgWideAdmin` falls back to the
- * single-tenant DEFAULT_ORG_ID, preserving OSS behaviour.
+ * shortcut is gone — callers elevate via `isOrgWideAdmin` against the
+ * org. The optional `organizationId` argument is accepted for future
+ * strict-multi-tenant callers (every protectedProcedure ctx carries
+ * it). When omitted, `isOrgWideAdmin` falls back to the single-tenant
+ * DEFAULT_ORG_ID, preserving OSS behaviour.
  */
 export async function assertPipelineBatchAccess(
   pipelineIds: string[],
@@ -44,21 +44,7 @@ export async function assertPipelineBatchAccess(
 
   const teamId = [...teamIds][0]!;
 
-  // Codex PR #380 round-2 P1 — `withTeamAccess` (src/trpc/init.ts)
-  // still honours `User.isSuperAdmin` as a back-compat hatch until
-  // slice 7c drops the column. If we elevate ONLY via
-  // `isOrgWideAdmin` here, a legacy super-admin without an OrgMember
-  // row passes the upstream middleware but gets rejected here as
-  // FORBIDDEN. Keep the legacy fallback in lockstep with init.ts so
-  // mixed-state callers behave consistently across this slice.
   if (await isOrgWideAdmin(userId, organizationId)) {
-    return { teamId, userRole: "ADMIN" as Role };
-  }
-  const legacy = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { isSuperAdmin: true },
-  });
-  if (legacy?.isSuperAdmin) {
     return { teamId, userRole: "ADMIN" as Role };
   }
 

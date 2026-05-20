@@ -167,6 +167,24 @@ model OrganizationSettings {
   /// Customers manage this through the settings router (`settings.update`).
   subprocessorNoticeEmail String?
 
+  /// Operator-only escape hatch for the C.4 OIDC issuer DNS gate.
+  ///
+  /// When FALSE (default) `settings.updateOidc` refuses any issuer
+  /// whose hostname is not covered by a verified
+  /// `OrganizationDomainClaim`. When TRUE the gate accepts any
+  /// parseable issuer URL — the organization can point its IdP at a
+  /// shared third-party host (e.g. `accounts.google.com`,
+  /// `login.microsoftonline.com/<tenant>/v2.0`, `<workspace>.okta.com`)
+  /// that no single tenant can claim under the DNS-TXT primitive.
+  ///
+  /// **Operator-controlled.** Customers cannot self-toggle this flag.
+  /// The platform flips it via an `OperatorApprovalRequest` two-person
+  /// rule after a support ticket; the customer-facing settings
+  /// surface exposes the value read-only. See PR #377 for the
+  /// rationale: a self-serve toggle would re-introduce the C.4 attack
+  /// the gate closed (admin pointing IdP at attacker-controlled host).
+  allowSharedIdpHostnames Boolean @default(false)
+
   updatedAt DateTime @updatedAt
 }
 
@@ -346,12 +364,6 @@ model User {
   accounts                 Account[]
   lockedAt                 DateTime?
   lockedBy                 String?
-  /// @deprecated Use `OrgMember.role` (OWNER/ADMIN) plus the
-  ///   `isOrgWideAdmin(userId, orgId)` helper instead. Operators
-  ///   live in `PlatformOperator`, not on `User`. This boolean is
-  ///   retained as a back-compat read alias until every router
-  ///   callsite has migrated; do not introduce new readers.
-  isSuperAdmin             Boolean              @default(false)
   mustChangePassword       Boolean              @default(false)
   totpSecret               String?
   totpEnabled              Boolean              @default(false)
