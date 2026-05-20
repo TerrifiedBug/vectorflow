@@ -48,10 +48,24 @@ export async function POST(request: Request) {
   }
 
   // Verify user is at least EDITOR on this team
-  const membership = await prisma.teamMember.findUnique({
-    where: { userId_teamId: { userId: session.user.id, teamId: body.teamId } },
-  });
-  const isOrgAdmin = await isOrgWideAdmin(session.user.id);
+  const [membership, team] = await Promise.all([
+    prisma.teamMember.findUnique({
+      where: { userId_teamId: { userId: session.user.id, teamId: body.teamId } },
+    }),
+    prisma.team.findUnique({
+      where: { id: body.teamId },
+      select: { organizationId: true },
+    }),
+  ]);
+
+  if (!team) {
+    return new Response(JSON.stringify({ error: "Team not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const isOrgAdmin = await isOrgWideAdmin(session.user.id, team.organizationId);
 
   if (!membership && !isOrgAdmin) {
     return new Response(JSON.stringify({ error: "Forbidden" }), {

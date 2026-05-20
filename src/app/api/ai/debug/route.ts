@@ -45,11 +45,23 @@ export async function POST(request: Request) {
     );
   }
 
+  // Resolve team and its org before any authz check
+  const team = await prisma.team.findUnique({
+    where: { id: body.teamId },
+    select: { id: true, organizationId: true },
+  });
+  if (!team) {
+    return new Response(JSON.stringify({ error: "Team not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   // Verify user is at least EDITOR on this team
   const membership = await prisma.teamMember.findUnique({
-    where: { userId_teamId: { userId: session.user.id, teamId: body.teamId } },
+    where: { userId_teamId: { userId: session.user.id, teamId: team.id } },
   });
-  const isOrgAdmin = await isOrgWideAdmin(session.user.id);
+  const isOrgAdmin = await isOrgWideAdmin(session.user.id, team.organizationId);
 
   if (!membership && !isOrgAdmin) {
     return new Response(JSON.stringify({ error: "Forbidden" }), {
@@ -64,12 +76,20 @@ export async function POST(request: Request) {
     });
   }
 
-  // Verify pipelineId belongs to the team
+  // Verify pipelineId belongs to the team and the same org
   const pipeline = await prisma.pipeline.findUnique({
     where: { id: body.pipelineId },
-    select: { environmentId: true, environment: { select: { teamId: true } } },
+    select: {
+      environmentId: true,
+      organizationId: true,
+      environment: { select: { teamId: true } },
+    },
   });
-  if (!pipeline || pipeline.environment.teamId !== body.teamId) {
+  if (
+    !pipeline ||
+    pipeline.environment.teamId !== body.teamId ||
+    pipeline.organizationId !== team.organizationId
+  ) {
     return new Response(JSON.stringify({ error: "Pipeline not found" }), {
       status: 404,
       headers: { "Content-Type": "application/json" },

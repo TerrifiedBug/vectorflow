@@ -21,12 +21,21 @@ export async function GET(request: Request): Promise<Response> {
 
   const userId = session.user.id;
 
-  // Resolve which environments this user can see
-  const isOrgAdmin = await isOrgWideAdmin(userId);
+  // Resolve user's primary org, then check admin status within that org
+  const primaryMembership = await prisma.orgMember.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "asc" },
+    select: { organizationId: true },
+  });
+  const userOrgId = primaryMembership?.organizationId ?? null;
+  const isOrgAdmin = userOrgId
+    ? await isOrgWideAdmin(userId, userOrgId)
+    : false;
 
   let environmentIds: string[];
   if (isOrgAdmin) {
     const environments = await prisma.environment.findMany({
+      where: { organizationId: userOrgId ?? undefined },
       select: { id: true },
     });
     environmentIds = environments.map((e) => e.id);

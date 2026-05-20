@@ -14,10 +14,22 @@ export async function GET() {
 
   // Determine which environments this user can see
   const userId = session.user.id;
-  const isOrgAdmin = await isOrgWideAdmin(userId);
 
-  let environmentFilter: { id: { in: string[] } } | undefined;
-  if (!isOrgAdmin) {
+  const primaryMembership = await prisma.orgMember.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "asc" },
+    select: { organizationId: true },
+  });
+  const userOrgId = primaryMembership?.organizationId ?? null;
+  const isOrgAdmin = userOrgId ? await isOrgWideAdmin(userId, userOrgId) : false;
+
+  let environmentFilter:
+    | { id: { in: string[] } }
+    | { organizationId: string }
+    | undefined;
+  if (isOrgAdmin && userOrgId) {
+    environmentFilter = { organizationId: userOrgId };
+  } else {
     const memberships = await prisma.teamMember.findMany({
       where: { userId },
       select: { teamId: true },
