@@ -53,9 +53,16 @@ interface StreamCompletionParams {
 
 /**
  * Decrypt a Team.aiApiKey ciphertext through the v3-or-v2 wrapper.
- * The DB shape is `"enc:" + <ciphertext>` so we strip the literal
- * prefix before handing off to the wrapper, which routes on the
- * `v3:` / `v2:` prefix embedded in the ciphertext itself.
+ *
+ * Column history:
+ *   - Legacy/plaintext: key stored without any prefix (no encryption). Some
+ *     manual-import / old-version rows may still carry this shape.
+ *   - v2 shape: `"enc:" + <v2-ciphertext>`
+ *   - v3 shape: `"enc:" + "v3:" + <v3-ciphertext>`
+ *
+ * We preserve the plaintext fallback: if the stored value has no `enc:`
+ * prefix it is returned as-is so existing deployments that stored raw keys
+ * continue to work.
  */
 async function decryptTeamAiApiKey(args: {
   encryptedKey: string;
@@ -63,9 +70,11 @@ async function decryptTeamAiApiKey(args: {
   teamId: string;
   dataKeyCiphertext: string | null;
 }): Promise<string> {
-  const stripped = args.encryptedKey.startsWith(ENCRYPTED_PREFIX)
-    ? args.encryptedKey.slice(ENCRYPTED_PREFIX.length)
-    : args.encryptedKey;
+  if (!args.encryptedKey.startsWith(ENCRYPTED_PREFIX)) {
+    // Legacy plaintext key — return as-is (no encryption to undo).
+    return args.encryptedKey;
+  }
+  const stripped = args.encryptedKey.slice(ENCRYPTED_PREFIX.length);
   return decryptForOrgOrFallback(stripped, {
     orgId: args.organizationId,
     dataKeyCiphertext: args.dataKeyCiphertext,
