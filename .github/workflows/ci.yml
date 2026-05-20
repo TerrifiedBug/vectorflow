@@ -26,6 +26,13 @@ on:
 
 permissions: read-all
 
+concurrency:
+  # Cancel in-flight PR runs when a new push lands. Tag pushes (releases)
+  # use the workflow + ref as the group so concurrent tag pushes serialise
+  # rather than cancel; release jobs MUST complete.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || 'push' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   REGISTRY: ghcr.io
 
