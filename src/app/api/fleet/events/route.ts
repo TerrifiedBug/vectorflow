@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
@@ -11,15 +12,30 @@ export async function GET() {
     });
   }
 
-  // Determine which environments this user can see
+  // Resolve the user's org for the isOrgWideAdmin check + env scope.
+  // OSS is single-tenant — every user lives in DEFAULT_ORG_ID — so
+  // taking the oldest OrgMember is unambiguous. Multi-org callers
+  // should derive the org from the request tenant (host header →
+  // organizationId) before reaching this route; this OSS path is
+  // the single-tenant fallback. codex PR #381 P1 flagged the
+  // multi-org case.
   const userId = session.user.id;
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { isSuperAdmin: true },
-  });
 
-  let environmentFilter: { id: { in: string[] } } | undefined;
-  if (!user?.isSuperAdmin) {
+  const primaryMembership = await prisma.orgMember.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "asc" },
+    select: { organizationId: true },
+  });
+  const userOrgId = primaryMembership?.organizationId ?? null;
+  const isOrgAdmin = userOrgId ? await isOrgWideAdmin(userId, userOrgId) : false;
+
+  let environmentFilter:
+    | { id: { in: string[] } }
+    | { organizationId: string }
+    | undefined;
+  if (isOrgAdmin && userOrgId) {
+    environmentFilter = { organizationId: userOrgId };
+  } else {
     const memberships = await prisma.teamMember.findMany({
       where: { userId },
       select: { teamId: true },

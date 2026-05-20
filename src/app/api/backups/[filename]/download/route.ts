@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { auth } from "@/auth";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 import { prisma } from "@/lib/prisma";
 import { getOrgSettings } from "@/lib/org-settings";
 import { DEFAULT_ORG_ID } from "@/lib/org-constants";
@@ -38,12 +39,8 @@ export async function GET(
     return jsonError("Unauthorized", 401);
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { isSuperAdmin: true },
-  });
-
-  if (!user?.isSuperAdmin) {
+  const isOrgAdmin = await isOrgWideAdmin(session.user.id);
+  if (!isOrgAdmin) {
     return jsonError("Forbidden", 403);
   }
 

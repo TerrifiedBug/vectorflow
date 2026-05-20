@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { auth } from "@/auth";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 import { prisma } from "@/lib/prisma";
 import { streamCompletion } from "@/server/services/ai";
 import { buildVrlSystemPrompt } from "@/lib/ai/prompts";
@@ -39,22 +40,31 @@ export async function POST(request: Request) {
     });
   }
 
+  // Resolve team to get organizationId
+  const team = await prisma.team.findUnique({
+    where: { id: body.teamId },
+    select: { organizationId: true },
+  });
+  if (!team) {
+    return new Response(JSON.stringify({ error: "Team not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   // Verify user is at least EDITOR on this team
   const membership = await prisma.teamMember.findUnique({
     where: { userId_teamId: { userId: session.user.id, teamId: body.teamId } },
   });
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { isSuperAdmin: true },
-  });
+  const isOrgAdmin = await isOrgWideAdmin(session.user.id, team.organizationId);
 
-  if (!membership && !user?.isSuperAdmin) {
+  if (!membership && !isOrgAdmin) {
     return new Response(JSON.stringify({ error: "Forbidden" }), {
       status: 403,
       headers: { "Content-Type": "application/json" },
     });
   }
-  if (membership && membership.role === "VIEWER" && !user?.isSuperAdmin) {
+  if (membership && membership.role === "VIEWER" && !isOrgAdmin) {
     return new Response(JSON.stringify({ error: "EDITOR role required" }), {
       status: 403,
       headers: { "Content-Type": "application/json" },

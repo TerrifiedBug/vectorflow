@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 import { prisma } from "@/lib/prisma";
 import { sseRegistry } from "@/server/services/sse-registry";
 
@@ -20,15 +21,30 @@ export async function GET(request: Request): Promise<Response> {
 
   const userId = session.user.id;
 
-  // Resolve which environments this user can see
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { isSuperAdmin: true },
+  // Resolve the user's org for the isOrgWideAdmin check + env scope.
+  // OSS is single-tenant — every user lives in DEFAULT_ORG_ID — so
+  // taking the oldest OrgMember is unambiguous. Multi-org callers
+  // should derive the org from the request tenant (host header →
+  // organizationId) before reaching this route; this OSS path is
+  // the single-tenant fallback.
+  const primaryMembership = await prisma.orgMember.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "asc" },
+    select: { organizationId: true },
   });
+  const userOrgId = primaryMembership?.organizationId ?? null;
+  const isOrgAdmin = userOrgId
+    ? await isOrgWideAdmin(userId, userOrgId)
+    : false;
 
   let environmentIds: string[];
-  if (user?.isSuperAdmin) {
+  if (isOrgAdmin && userOrgId) {
+    // codex PR #381 P1 — `userOrgId` is guaranteed non-null here
+    // because `isOrgAdmin` requires it; the explicit guard satisfies
+    // TS narrowing so the WHERE is ALWAYS bounded by org. No
+    // undefined → unscoped findMany leak.
     const environments = await prisma.environment.findMany({
+      where: { organizationId: userOrgId },
       select: { id: true },
     });
     environmentIds = environments.map((e) => e.id);
