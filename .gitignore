@@ -49,6 +49,7 @@ next-env.d.ts
 # agent build output
 /agent/bin/
 .vectorflow/
+/scripts/internal/
 artifacts/
 
 # codeql
