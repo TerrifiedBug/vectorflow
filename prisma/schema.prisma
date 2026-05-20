@@ -1222,6 +1222,10 @@ model StagedRollout {
 
 model Secret {
   id             String      @id @default(cuid())
+  /// Tenant scope. Mirrors the parent environment's organisation so
+  /// RLS can fence direct queries that bypass the environment ↔ team ↔
+  /// org join (audit P1-2 / docs/plans/2026-05-20-go-live-readiness-audit.md).
+  organizationId String      @default("default")
   name           String
   encryptedValue String
   environmentId  String
@@ -1230,10 +1234,14 @@ model Secret {
   updatedAt      DateTime    @updatedAt
 
   @@unique([environmentId, name])
+  @@index([organizationId])
+  @@index([organizationId, environmentId])
 }
 
 model Certificate {
   id            String              @id @default(cuid())
+  /// Tenant scope — see Secret.organizationId.
+  organizationId String              @default("default")
   name          String
   filename      String
   fileType      String
@@ -1246,10 +1254,14 @@ model Certificate {
   createdAt     DateTime            @default(now())
 
   @@unique([environmentId, name])
+  @@index([organizationId])
+  @@index([organizationId, environmentId])
 }
 
 model CertificateBundle {
   id            String       @id @default(cuid())
+  /// Tenant scope — see Secret.organizationId.
+  organizationId String       @default("default")
   name          String
   environmentId String
   environment   Environment  @relation(fields: [environmentId], references: [id], onDelete: Cascade)
@@ -1263,6 +1275,8 @@ model CertificateBundle {
   updatedAt     DateTime     @updatedAt
 
   @@unique([environmentId, name])
+  @@index([organizationId])
+  @@index([organizationId, environmentId])
 }
 
 model Template {
