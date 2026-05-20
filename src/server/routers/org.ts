@@ -472,6 +472,21 @@ export const orgRouter = router({
           where: { userId: target.id },
         });
 
+        // Codex PR #379 P2 — `withAudit` only persists the input
+        // and a `timestamp` by default. The reset's outcome
+        // (which factors were cleared, how many WebAuthn rows
+        // disappeared) is the load-bearing data for a future
+        // compliance review. Hand it to the middleware via
+        // `ctx.auditMetadata` so the audit row's metadata column
+        // carries the receipts. Pattern is shared with
+        // pipeline-graph.ts.
+        (ctx as Record<string, unknown>).auditMetadata = {
+          targetUserId: target.id,
+          wasTotpEnabled: target.totpEnabled,
+          webAuthnCredentialsRemoved: webAuthnBefore,
+          factorsReset: ["totp", "webauthn"],
+        };
+
         // Return the User entity-id so withAudit logs the correct row.
         return {
           id: target.id,
@@ -562,6 +577,16 @@ export const orgRouter = router({
         await tx.webAuthnChallenge.deleteMany({
           where: { userId: target.id },
         });
+
+        // See `resetMemberAuth` above — pass metadata to withAudit
+        // via ctx so the audit row carries the factorsReset receipts.
+        (ctx as Record<string, unknown>).auditMetadata = {
+          targetUserId: target.id,
+          wasTotpEnabled: target.totpEnabled,
+          webAuthnCredentialsRemoved: webAuthnBefore,
+          factorsReset: ["totp", "webauthn"],
+          via: "resetMemberMfa-alias",
+        };
 
         return {
           id: target.id,

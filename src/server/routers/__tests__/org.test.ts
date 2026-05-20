@@ -453,9 +453,16 @@ describe("org.resetMemberAuth (and legacy resetMemberMfa alias)", () => {
   it("clears TOTP + WebAuthn credentials + WebAuthn challenges on the target", async () => {
     setupTarget({ totpEnabled: true, webAuthnCount: 2 });
 
-    const result = await ownerCaller().resetMemberAuth({
-      targetUserId: "user-2",
-    });
+    // Capture the ctx the caller passes through so we can inspect
+    // `ctx.auditMetadata` after the mutation runs (codex PR #379 P2).
+    const ownerCtx: Record<string, unknown> = {
+      session: { user: { id: "owner-1", email: "owner@example.test" } },
+      organizationId: "org-a",
+      orgMemberRole: "OWNER",
+    };
+    const caller = callerFactory(ownerCtx);
+
+    const result = await caller.resetMemberAuth({ targetUserId: "user-2" });
 
     expect(result).toMatchObject({
       id: "user-2",
@@ -478,6 +485,22 @@ describe("org.resetMemberAuth (and legacy resetMemberMfa alias)", () => {
     expect(prismaMock.webAuthnChallenge.deleteMany).toHaveBeenCalledWith({
       where: { userId: "user-2" },
     });
+
+    // The withAudit middleware reads ctx.auditMetadata that the
+    // mutation set and writes it onto the audit row (codex PR #379
+    // P2). Assert via the writeAuditLog mock since the audit row
+    // is what observability consumers actually see.
+    expect(auditMocks.writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "org.member_auth_reset",
+        metadata: expect.objectContaining({
+          targetUserId: "user-2",
+          wasTotpEnabled: true,
+          webAuthnCredentialsRemoved: 2,
+          factorsReset: ["totp", "webauthn"],
+        }),
+      }),
+    );
   });
 
   it("alias resetMemberMfa clears both factors and exposes wasEnabled for back-compat", async () => {
