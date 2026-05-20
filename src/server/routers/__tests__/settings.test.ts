@@ -313,6 +313,72 @@ describe("settingsRouter", () => {
         }),
       ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
     });
+
+    it("PR #377: accepts a shared-IdP issuer when allowSharedIdpHostnames=true", async () => {
+      // Org settings have the operator-bypass flag flipped on. No verified
+      // claim exists for `accounts.google.com` (no tenant can claim it).
+      mockSettings({ allowSharedIdpHostnames: true });
+      prismaMock.organizationDomainClaim.findMany.mockResolvedValue([]);
+
+      await caller.updateOidc({
+        issuer: "https://accounts.google.com/o/oauth2",
+        clientId: "client-google",
+        clientSecret: "super-secret",
+        displayName: "Google SSO",
+        tokenEndpointAuthMethod: "client_secret_post",
+      });
+
+      expect(prismaMock.organizationSettings.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { organizationId: "default" },
+          update: expect.objectContaining({
+            oidcIssuer: "https://accounts.google.com/o/oauth2",
+          }),
+        }),
+      );
+      expect(invalidateAuthCache).toHaveBeenCalled();
+    });
+
+    it("PR #377: refuses the same shared-IdP issuer when allowSharedIdpHostnames=false (default)", async () => {
+      mockSettings({ allowSharedIdpHostnames: false });
+      prismaMock.organizationDomainClaim.findMany.mockResolvedValue([]);
+
+      await expect(
+        caller.updateOidc({
+          issuer: "https://accounts.google.com/o/oauth2",
+          clientId: "client-google",
+          clientSecret: "super-secret",
+          displayName: "Google SSO",
+          tokenEndpointAuthMethod: "client_secret_post",
+        }),
+      ).rejects.toMatchObject({
+        code: "PRECONDITION_FAILED",
+        message: expect.stringMatching(/verified domain claim/i),
+      });
+      expect(prismaMock.organizationSettings.upsert).not.toHaveBeenCalled();
+    });
+
+    it("PR #377: still encrypts oidcClientSecret on the bypass path (no field-side regression)", async () => {
+      mockSettings({ allowSharedIdpHostnames: true });
+      prismaMock.organizationDomainClaim.findMany.mockResolvedValue([]);
+
+      await caller.updateOidc({
+        issuer: "https://accounts.google.com/o/oauth2",
+        clientId: "client-google",
+        clientSecret: "fresh-secret",
+        displayName: "Google SSO",
+        tokenEndpointAuthMethod: "client_secret_post",
+      });
+
+      expect(encrypt).toHaveBeenCalledWith("fresh-secret");
+      expect(prismaMock.organizationSettings.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({
+            oidcClientSecret: "enc:fresh-secret",
+          }),
+        }),
+      );
+    });
   });
 
   // ─── testOidc ─────────────────────────────────────────────────────────────

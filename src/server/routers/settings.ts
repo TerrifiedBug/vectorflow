@@ -139,10 +139,18 @@ export const settingsRouter = router({
       // verified `OrganizationDomainClaim` whose domain covers the
       // issuer hostname. Prevents a customer admin from pointing
       // their IdP at an attacker-controlled discovery endpoint.
+      // PR #377 escape hatch: when the operator has flipped
+      // `OrganizationSettings.allowSharedIdpHostnames = true` for this
+      // org (two-person rule via `OperatorApprovalRequest`), the gate
+      // accepts any parseable issuer URL so the customer can configure
+      // a shared third-party IdP (e.g. Google / Microsoft / Okta) that
+      // no single tenant can claim under the DNS-TXT primitive.
+      const orgSettings = await getOrgSettings(ctx.organizationId);
       const gate = await assertVerifiedDomainForIssuer({
         prisma,
         organizationId: ctx.organizationId,
         issuerUrl: input.issuer,
+        allowSharedHostnames: orgSettings.allowSharedIdpHostnames,
       });
       if (!gate.ok) {
         throw new TRPCError({

@@ -16,12 +16,16 @@
  *   3. Any other shape — no verified claim, claim owned by another org,
  *      hostname parse failure — is rejected.
  *
- * The gate is **strict** (refuse on miss). There is no soft-fallback
- * and no auto-claim. Operators may extend the gate later to allow
- * shared-IdP hostnames (e.g. `accounts.google.com`) behind an opt-in
- * `OrganizationSettings` flag; that flag is intentionally NOT shipped
- * by default — see Lane 4 in
- * `local://saas-launch-close-audit-gaps.md`.
+ * The gate is **strict by default** (refuse on miss). Operators MAY
+ * relax the gate per-org by setting
+ * `OrganizationSettings.allowSharedIdpHostnames = true` (passed in as
+ * `allowSharedHostnames`). When relaxed, the issuer URL must still
+ * parse and normalise to a valid hostname but no claim lookup is
+ * performed — the result reports `matchedClaimId: "__operator_bypass__"`
+ * so callers can distinguish the two acceptance paths. The flag is
+ * intentionally NOT customer-toggleable: a self-serve switch would
+ * re-introduce the very attack the gate closed (an admin pointing
+ * their IdP at an attacker-controlled discovery endpoint).
  */
 
 import type { PrismaClient } from "@/generated/prisma";
@@ -31,6 +35,16 @@ import { normaliseDomain } from "./domain-claim";
 export type OidcDomainGateResult =
   | { ok: true; matchedClaimId: string; matchedDomain: string }
   | { ok: false; reason: string };
+
+/**
+ * Sentinel `matchedClaimId` returned when the operator-controlled
+ * `allowSharedIdpHostnames` flag was the reason the gate accepted the
+ * issuer (i.e. no `OrganizationDomainClaim` was consulted). Audit
+ * logs and downstream consumers MAY key off this sentinel to record
+ * "accepted via operator bypass" instead of attributing the decision
+ * to a non-existent claim row.
+ */
+export const OPERATOR_BYPASS_CLAIM_ID = "__operator_bypass__";
 
 /**
  * Extract the lowercase ASCII hostname from an issuer URL.
@@ -81,6 +95,12 @@ export async function assertVerifiedDomainForIssuer(args: {
   prisma: PrismaClient;
   organizationId: string;
   issuerUrl: string;
+  /**
+   * When `true`, skip the verified-claim lookup and accept any
+   * parseable issuer URL. Wired through from
+   * `OrganizationSettings.allowSharedIdpHostnames`; operator-controlled.
+   */
+  allowSharedHostnames?: boolean;
 }): Promise<OidcDomainGateResult> {
   const hostname = extractIssuerHostname(args.issuerUrl);
   if (!hostname) {
@@ -106,6 +126,10 @@ export async function assertVerifiedDomainForIssuer(args: {
     };
   }
 
+  // Claim lookup runs first so that an org with both
+  // `allowSharedHostnames` AND a verified matching claim attributes the
+  // acceptance to the claim (audit logs show the specific claim id, not
+  // the bypass sentinel). The bypass falls in below as the last resort.
   const verifiedClaims = await args.prisma.organizationDomainClaim.findMany({
     where: {
       organizationId: args.organizationId,
@@ -114,18 +138,30 @@ export async function assertVerifiedDomainForIssuer(args: {
     select: { id: true, domain: true },
   });
 
+  for (const claim of verifiedClaims) {
+    if (hostnameMatchesClaimDomain(normalisedHost, claim.domain)) {
+      return { ok: true, matchedClaimId: claim.id, matchedDomain: claim.domain };
+    }
+  }
+
+  // Operator-only escape hatch (PR #377). The URL has already parsed
+  // and normalised, so we know the issuer is at least syntactically
+  // valid — refuse the malformed-URL inputs above. With the flag set,
+  // no verified claim is required.
+  if (args.allowSharedHostnames) {
+    return {
+      ok: true,
+      matchedClaimId: OPERATOR_BYPASS_CLAIM_ID,
+      matchedDomain: normalisedHost,
+    };
+  }
+
   if (verifiedClaims.length === 0) {
     return {
       ok: false,
       reason:
         "OIDC configuration requires a verified domain claim. Claim and verify the IdP's domain under Settings → Auth → Domain claims before saving OIDC settings.",
     };
-  }
-
-  for (const claim of verifiedClaims) {
-    if (hostnameMatchesClaimDomain(normalisedHost, claim.domain)) {
-      return { ok: true, matchedClaimId: claim.id, matchedDomain: claim.domain };
-    }
   }
 
   return {
