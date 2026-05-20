@@ -61,11 +61,33 @@ import { decrypt } from "@/server/services/crypto";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
-const caller = t.createCallerFactory(userRouter)({
+const callerFactory = t.createCallerFactory(userRouter);
+
+const caller = callerFactory({
   session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
   userRole: "ADMIN",
   teamId: "team-1",
 });
+
+function ownerCaller() {
+  return callerFactory({
+    session: { user: { id: "owner-1", email: "owner@test.com", name: "Owner" } },
+    userRole: "OWNER",
+    teamId: "team-1",
+    organizationId: "org-a",
+    orgMemberRole: "OWNER",
+  });
+}
+
+function memberCaller() {
+  return callerFactory({
+    session: { user: { id: "member-1", email: "member@test.com", name: "Member" } },
+    userRole: "MEMBER",
+    teamId: "team-1",
+    organizationId: "org-a",
+    orgMemberRole: "MEMBER",
+  });
+}
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
@@ -554,6 +576,140 @@ describe("userRouter", () => {
           typeof caller.eraseSelf
         >[0]),
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    });
+  });
+
+  // ─── eraseUser (admin-driven Art. 17) ─────────────────────────────────────
+
+  describe("eraseUser", () => {
+    function setupOwnerHappyPath(targetRole: "MEMBER" | "ADMIN" | "OWNER" = "MEMBER") {
+      prismaMock.orgMember.findUnique.mockResolvedValue({
+        id: "om-target",
+        role: targetRole,
+      } as never);
+      prismaMock.user.findUnique.mockResolvedValue({
+        id: "target-1",
+        email: "target@test.com",
+      } as never);
+      prismaMock.platformOperator.findUnique.mockResolvedValue(null);
+      prismaMock.$transaction.mockImplementation(
+        async (fn: (tx: PrismaClient) => Promise<unknown>) => fn(prismaMock),
+      );
+      prismaMock.orgMember.deleteMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.teamMember.deleteMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.scimGroupMember.deleteMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.webAuthnCredential.deleteMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.account.deleteMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.userPreference.deleteMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.dashboardView.deleteMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.auditLog.updateMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.user.update.mockResolvedValue({} as never);
+    }
+
+    const goodInput = {
+      targetUserId: "target-1",
+      reason: "Former employee requested removal under GDPR Art. 17.",
+    };
+
+    it("refuses non-OWNER callers", async () => {
+      setupOwnerHappyPath();
+      await expect(
+        memberCaller().eraseUser(goodInput),
+      ).rejects.toMatchObject({
+        code: "FORBIDDEN",
+        message: expect.stringMatching(/OWNER/),
+      });
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("refuses self-erasure (must use eraseSelf)", async () => {
+      setupOwnerHappyPath();
+      await expect(
+        ownerCaller().eraseUser({
+          targetUserId: "owner-1", // same as caller
+          reason: "self-erasure attempt",
+        }),
+      ).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+        message: expect.stringMatching(/eraseSelf/i),
+      });
+    });
+
+    it("refuses when target is not a member of the caller's org", async () => {
+      prismaMock.orgMember.findUnique.mockResolvedValue(null);
+      await expect(
+        ownerCaller().eraseUser(goodInput),
+      ).rejects.toMatchObject({
+        code: "FORBIDDEN",
+        message: expect.stringMatching(/not a member/i),
+      });
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("refuses when target is an OWNER (must transfer ownership first)", async () => {
+      setupOwnerHappyPath("OWNER");
+      await expect(
+        ownerCaller().eraseUser(goodInput),
+      ).rejects.toMatchObject({
+        code: "PRECONDITION_FAILED",
+        message: expect.stringMatching(/Transfer ownership/i),
+      });
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("rejects a too-short reason", async () => {
+      await expect(
+        ownerCaller().eraseUser({ targetUserId: "target-1", reason: "short" }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    });
+
+    it("happy path — pseudonymises the target row and drops every relation", async () => {
+      setupOwnerHappyPath("MEMBER");
+
+      const result = await ownerCaller().eraseUser(goodInput);
+
+      expect(result).toMatchObject({
+        id: "target-1",
+        erasedBy: "owner-1",
+        erased: true,
+        reason: goodInput.reason,
+      });
+      expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+      expect(prismaMock.orgMember.deleteMany).toHaveBeenCalledWith({
+        where: { userId: "target-1" },
+      });
+      expect(prismaMock.webAuthnCredential.deleteMany).toHaveBeenCalledWith({
+        where: { userId: "target-1" },
+      });
+      expect(prismaMock.auditLog.updateMany).toHaveBeenCalledWith({
+        where: { userId: "target-1" },
+        data: { userId: null },
+      });
+      const updateCall = prismaMock.user.update.mock.calls[0][0];
+      expect(updateCall.where).toEqual({ id: "target-1" });
+      expect(updateCall.data).toMatchObject({
+        email: "erased+target-1@anon.invalid",
+        name: null,
+        passwordHash: null,
+        isSuperAdmin: false,
+        lockedBy: "erasure",
+      });
+      expect(updateCall.data.lockedAt).toBeInstanceOf(Date);
+    });
+
+    it("soft-deletes a matching PlatformOperator row tied to target email", async () => {
+      setupOwnerHappyPath("MEMBER");
+      prismaMock.platformOperator.findUnique.mockResolvedValue({
+        id: "op-target",
+        deletedAt: null,
+      } as never);
+
+      await ownerCaller().eraseUser(goodInput);
+
+      expect(prismaMock.platformOperator.update).toHaveBeenCalledWith({
+        where: { id: "op-target" },
+        data: { deletedAt: expect.any(Date) },
+      });
     });
   });
 });
