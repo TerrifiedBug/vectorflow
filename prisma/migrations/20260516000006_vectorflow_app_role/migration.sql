@@ -4,8 +4,8 @@
 -- Multi-tenant deployments. The role has NOBYPASSRLS, NOSUPERUSER, NOCREATEROLE,
 -- NOCREATEDB so the strict RLS policy installed in 20260516000003 actually
 -- fences cross-org access at the database layer. The table-owner role
--- bypasses RLS by default in Postgres; multi-tenant deployments
--- explicitly do NOT use the owner role at runtime.
+-- bypasses RLS by default in Postgres; we explicitly do NOT use the owner
+-- role at runtime in Cloud.
 --
 -- OSS / self-hosted deployments don't need to switch roles. They can keep
 -- using the owner role and rely on application-level org filtering plus the
