@@ -1,8 +1,8 @@
 /**
  * Idempotency helper for inbound webhooks that redeliver on 5xx.
  *
- * Generic primitive — any webhook source (Stripe Billing, git providers,
- * PagerDuty, custom integrations) where the upstream retries on a 5xx
+ * Generic primitive — any webhook source (git providers, PagerDuty,
+ * custom integrations, billing-event sinks) where the upstream retries on a 5xx
  * response uses this to guarantee once-only processing.
  *
  * Usage from a webhook handler:

@@ -28,7 +28,7 @@
  * v2 rows to v3 once per org; the wrapper detects the new prefix on
  * the next read.
  *
- * Per-callsite migration pattern (per §16 Phase 3 list):
+ * Per-callsite migration pattern:
  *
  *   // before
  *   const ct = encrypt(secret, ENCRYPTION_DOMAINS.TOTP);

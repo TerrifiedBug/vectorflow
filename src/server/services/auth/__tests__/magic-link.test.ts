@@ -1,5 +1,5 @@
 /**
- * Phase 5y: magic-link sign-in service tests.
+ * Magic-link sign-in service tests.
  *
  * Covers the token lifecycle (mint -> redeem -> single-use rejection),
  * TTL expiry, SSO-precedence on mint, and the GC sweep. The actual email

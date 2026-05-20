@@ -1,14 +1,13 @@
 /**
- * DEK cache warm-up on stamp startup (
- * §).
+ * DEK cache warm-up on deployment startup.
  *
- * The KMS request budget in §12.5 — ~12 unwraps/hour/org at 5min TTL —
- * is comfortable in steady state. The hot path is a **reconnect storm**:
- * after a stamp restart or rolling deploy, thousands of agents reconnect
- * simultaneously and each handler reaches for the per-org DEK. Without
- * a warm cache, every request races to unwrap from KMS at the same
- * moment, spiking outbound KMS RPS into the regional limit and burning
- * the p95 SLO for the first 30-60 seconds post-restart.
+ * The steady-state KMS request budget (roughly 12 unwraps/hour/org at the
+ * default 5 min DEK TTL) is comfortable. The hot path is a **reconnect
+ * storm**: after a deployment restart or rolling deploy, thousands of
+ * agents reconnect simultaneously and each handler reaches for the per-org
+ * DEK. Without a warm cache, every request races to unwrap from KMS at the
+ * same moment, spiking outbound KMS RPS into the provider rate limit and
+ * burning the p95 SLO for the first 30-60 seconds post-restart.
  *
  * `warmDekCacheForActiveOrgs()` is called from `instrumentation.node.ts`
  * during startup. It selects every non-suspended, non-deleted org with
@@ -19,16 +18,17 @@
  * unwrap rather than issuing a duplicate KMS call.
  *
  * Failures are tolerated. Warm-up is a latency optimization, not a
- * correctness gate; a KMS hiccup at startup must not prevent the stamp
- * from booting. Per-org errors are logged at WARN level so the operator
- * can investigate post-deploy.
+ * correctness gate; a KMS hiccup at startup must not prevent the
+ * deployment from booting. Per-org errors are logged at WARN level so the
+ * operator can investigate post-deploy.
  *
- * Concurrency cap: a stamp with 10k orgs would otherwise dispatch 10k
- * KMS unwraps in parallel. We chunk them at `WARM_PARALLELISM` (default
- * 64) which keeps the AWS KMS RPS well under the regional limit
- * (5,500 RPS shared CMK) and lets a 10k-org stamp warm in roughly
+ * Concurrency cap: a deployment with 10k orgs would otherwise dispatch
+ * 10k KMS unwraps in parallel. We chunk them at `WARM_PARALLELISM` (default
+ * 64) which keeps outbound KMS RPS well under any reasonable provider rate
+ * limit and lets a 10k-org deployment warm in roughly
  * `10000 / 64 * unwrap_latency` seconds — typically under 30s with a
- * 100ms-per-unwrap budget.
+ * 100ms-per-unwrap budget. Tune `VF_DEK_WARM_PARALLELISM` if your KMS
+ * imposes a stricter ceiling.
  */
 
 import { infoLog, warnLog } from "@/lib/logger";

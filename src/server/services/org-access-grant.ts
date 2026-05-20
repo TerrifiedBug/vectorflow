@@ -2,13 +2,13 @@
 //
 // Operator break-glass grant lifecycle (request / approve / revoke / expire).
 //
-// `OrgAccessGrant` (added in Phase 1) is the persistent record of an
-// operator requesting time-bound access to a single organization for a
-// stated reason. The actual decrypt capability comes from a KMS grant
-// token that's only generated in the closed-surface workspace; in
-// OSS the `externalGrantRef` column stays null and these helpers track only
-// the lifecycle state. The same model and the same `isActive` predicate
-// are used in both worlds, so the policy code can live in OSS.
+// `OrgAccessGrant` is the persistent record of an operator requesting
+// time-bound access to a single organization for a stated reason. The
+// helpers in this file track the lifecycle state only — the actual
+// decrypt capability (a KMS grant token referenced by `externalGrantRef`)
+// is minted by whichever deployment overlay owns the operator surface.
+// `externalGrantRef` MAY be left null and the policy code still works:
+// `isGrantActive` keys off APPROVED + expiresAt only.
 //
 // Lifecycle states:
 //   PENDING   — row exists, approvedByCustomerAdminId is null.
@@ -104,7 +104,8 @@ export async function requestOrgAccessGrant(
       reason: input.reason.trim(),
       expiresAt,
       // approvedByCustomerAdminId left null — request is PENDING.
-      // externalGrantRef left null — only the operator-side approval flow sets this.
+      // externalGrantRef left null — set by the deployment overlay when it
+      // mints the corresponding capability for an approved grant.
     },
   });
 }
@@ -243,7 +244,7 @@ export async function revokeOrgAccessGrant(
  * about.
  *
  * Concurrency: uses a single UPDATE with WHERE clause so two concurrent
- * runs don't double-stamp.
+ * runs don't double-write.
  */
 export async function expireStaleOrgAccessGrants(
   opts: { tx?: Client; now?: Date } = {},

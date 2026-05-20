@@ -514,7 +514,7 @@ export function UsersSettings() {
         onOpenChange={(open) => !open && setTogglePlatformOperatorConfirm(null)}
         title={togglePlatformOperatorConfirm?.isOperator ? "Promote to platform operator?" : "Remove platform operator?"}
         description={togglePlatformOperatorConfirm?.isOperator
-          ? <><span className="font-medium">{togglePlatformOperatorConfirm?.userName}</span> will gain platform-operator privileges (operator console, settings, every team in this installation).</>
+          ? <><span className="font-medium">{togglePlatformOperatorConfirm?.userName}</span> will gain platform-operator privileges (system settings and every team in this installation).</>
           : <><span className="font-medium">{togglePlatformOperatorConfirm?.userName}</span> will lose platform-operator privileges and revert to their tenant role.</>
         }
         confirmLabel={togglePlatformOperatorConfirm?.isOperator ? "Promote" : "Remove"}

@@ -39,11 +39,11 @@ model Organization {
   slug              String    @unique
   name              String
   plan              OrgPlan   @default(DEFAULT)
-  deploymentLabel            String    @default("default")
+  deploymentLabel   String    @default("default")
   // Envelope-encryption fields — null for OSS / self-hosted
   dataKeyCiphertext String?
-  dekWrapKeyId         String?
-  byokWrapKeyId        String?
+  dekWrapKeyId      String?
+  byokWrapKeyId     String?
   // Lifecycle
   suspendedAt       DateTime?
   deletedAt         DateTime?
@@ -57,15 +57,15 @@ model Organization {
   /// on terms revision can be implemented by comparing this against
   /// the operator's current published version). Both are NULL for
   /// single-tenant deployments that bypass click-through.
-  acceptedTermsAt      DateTime?
-  acceptedTermsVersion String?
+  acceptedTermsAt       DateTime?
+  acceptedTermsVersion  String?
   /// Incremented to revoke every active session for this org. Mixed
   /// into the HKDF `info` of `deriveJwtSigningKey` so the resulting
   /// signing key changes when the counter changes. Owner-triggered
   /// "revoke all sessions" bumps this; the per-org NextAuth instance
   /// cache is invalidated so subsequent requests build a fresh
   /// instance with the new derived secret.
-  jwtKeyRotationCounter Int     @default(0)
+  jwtKeyRotationCounter Int       @default(0)
 
   members              OrgMember[]
   settings             OrganizationSettings?
@@ -74,7 +74,7 @@ model Organization {
   webhookConfirmations WebhookConfirmation[]
   billingProviderRefs  BillingProviderRef[]
   operatorApprovals    OperatorApprovalRequest[]
-  domainClaims        OrganizationDomainClaim[]
+  domainClaims         OrganizationDomainClaim[]
 }
 
 model OrgMember {
@@ -150,7 +150,7 @@ model OrganizationSettings {
   telemetryInstanceId String?
   telemetryEnabledAt  DateTime?
 
-  // Phase 5z: explicit opt-in for non-allowlisted AI provider baseUrls.
+  // Explicit opt-in for non-allowlisted AI provider baseUrls.
   // When false (default) AI calls MUST target a host in `AI_PROVIDER_ALLOWLIST`
   // (api.openai.com, api.anthropic.com). When true, an org OWNER can set a
   // custom `Team.aiBaseUrl` after passing `validateOutboundUrl` strict mode.
@@ -210,29 +210,29 @@ model OrganizationSettings {
 /// partial-unique indexes are not first-class in Prisma's schema
 /// language at this version.
 model OrganizationDomainClaim {
-  id                  String       @id @default(cuid())
-  organizationId      String
-  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   /// Lowercase, punycoded ASCII domain. Stored without scheme, port,
   /// or trailing dot.
-  domain              String
+  domain            String
   /// Random base32 token published in the `_vectorflow.<domain>` TXT
   /// record as `vf-verify=<verificationToken>`. Unguessable so a rival
   /// cannot guess the value and publish it on a domain they control to
   /// grief the legitimate owner. Rotated on re-claim.
-  verificationToken   String       @unique
+  verificationToken String       @unique
   /// Timestamp of the most recent successful DNS-TXT lookup. NULL =
   /// unverified.
-  verifiedAt          DateTime?
+  verifiedAt        DateTime?
   /// Most recent verification attempt timestamp (success or failure).
   /// Used to rate-limit DNS lookups from the verify endpoint.
-  lastCheckedAt       DateTime?
+  lastCheckedAt     DateTime?
   /// Free-text reason from the resolver when the most recent check
   /// failed (e.g. "NXDOMAIN", "no TXT records", "value mismatch"). NULL
   /// when no check has run or the last check succeeded.
-  lastCheckError      String?
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  lastCheckError    String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
   @@unique([organizationId, domain])
   @@index([domain])
@@ -249,7 +249,7 @@ model OrgAccessGrant {
   operator                  PlatformOperator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
   reason                    String
   approvedByCustomerAdminId String?
-  externalGrantRef             String?
+  externalGrantRef          String?
   expiresAt                 DateTime
   revokedAt                 DateTime?
   createdAt                 DateTime         @default(now())
@@ -274,20 +274,20 @@ model PlatformOperator {
   role      PlatformOperatorRole @default(SUPPORT)
   /// Soft-delete timestamp. Once set, the operator's session is
   /// rejected at `requirePlatformOperator` and they are filtered out
-  /// of the operator console's roster view. Audit-log entries remain.
+  /// of the privileged-operator roster view. Audit-log entries remain.
   deletedAt DateTime?
   createdAt DateTime             @default(now())
   updatedAt DateTime             @updatedAt
 
-  accessGrants OrgAccessGrant[]
+  accessGrants         OrgAccessGrant[]
   platformAuditEntries PlatformAuditLog[]
-  approvalsRequested OperatorApprovalRequest[] @relation("OperatorApprovalRequester")
-  approvalsApproved  OperatorApprovalRequest[] @relation("OperatorApprovalApprover")
-  approvalsExecuted  OperatorApprovalRequest[] @relation("OperatorApprovalExecutor")
+  approvalsRequested   OperatorApprovalRequest[] @relation("OperatorApprovalRequester")
+  approvalsApproved    OperatorApprovalRequest[] @relation("OperatorApprovalApprover")
+  approvalsExecuted    OperatorApprovalRequest[] @relation("OperatorApprovalExecutor")
 }
 
 /// `OperatorApprovalRequest` — generic 2-person approval primitive for
-/// operator-side actions that require dual control. Examples: backup
+/// privileged operator actions that require dual control. Examples: backup
 /// restore, force hard-delete before grace expires, key rotation that
 /// keeps prior versions.
 ///
@@ -308,40 +308,40 @@ model PlatformOperator {
 /// `expiresAt` exists so a stale request can't be approved years
 /// later. Default TTL is 24 hours; configurable per operation.
 model OperatorApprovalRequest {
-  id                     String           @id @default(cuid())
+  id                    String            @id @default(cuid())
   /// Operation identifier. Free-form. Conventional values include
   /// "backup.restore", "tenant.hard_delete_force", "kms.rotate_keep".
-  operation              String
+  operation             String
   /// Free-form JSON payload interpreted by the operation handler.
   /// For "backup.restore", carries `{ recoveryPointArn: string }`.
-  payload                Json
+  payload               Json
   /// Organization this action affects, when applicable. NULL for
-  /// stamp-wide actions (KMS rotation, infra changes).
-  organizationId         String?
-  organization           Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  /// deployment-wide actions (KMS rotation, infra changes).
+  organizationId        String?
+  organization          Organization?     @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   /// Operator who requested the action.
-  requestedByOperatorId  String
-  requestedByOperator    PlatformOperator @relation("OperatorApprovalRequester", fields: [requestedByOperatorId], references: [id], onDelete: Cascade)
+  requestedByOperatorId String
+  requestedByOperator   PlatformOperator  @relation("OperatorApprovalRequester", fields: [requestedByOperatorId], references: [id], onDelete: Cascade)
   /// Second operator who approved. NULL until approved. Service-layer
   /// invariant: MUST be different from requestedByOperatorId.
-  approvedByOperatorId   String?
-  approvedByOperator     PlatformOperator? @relation("OperatorApprovalApprover", fields: [approvedByOperatorId], references: [id], onDelete: SetNull)
+  approvedByOperatorId  String?
+  approvedByOperator    PlatformOperator? @relation("OperatorApprovalApprover", fields: [approvedByOperatorId], references: [id], onDelete: SetNull)
   /// Free-text justification from the requester.
-  reason                 String
+  reason                String
   /// Operator who executed the approved action. NULL until executed.
-  executedByOperatorId   String?
-  executedByOperator     PlatformOperator? @relation("OperatorApprovalExecutor", fields: [executedByOperatorId], references: [id], onDelete: SetNull)
+  executedByOperatorId  String?
+  executedByOperator    PlatformOperator? @relation("OperatorApprovalExecutor", fields: [executedByOperatorId], references: [id], onDelete: SetNull)
   /// State machine status. See model docstring for transitions.
-  status                 String           @default("PENDING_APPROVAL")
+  status                String            @default("PENDING_APPROVAL")
   /// Failure reason if status=FAILED.
-  failureReason          String?
-  requestedAt            DateTime         @default(now())
-  approvedAt             DateTime?
-  executedAt             DateTime?
-  completedAt            DateTime?
+  failureReason         String?
+  requestedAt           DateTime          @default(now())
+  approvedAt            DateTime?
+  executedAt            DateTime?
+  completedAt           DateTime?
   /// Approval window. Past this, status is auto-flipped to EXPIRED
   /// by a cron sweep (or rejected at approve-time).
-  expiresAt              DateTime
+  expiresAt             DateTime
 
   @@index([status, expiresAt])
   @@index([organizationId])
@@ -1288,7 +1288,7 @@ model AuditLog {
   environment    Environment? @relation(fields: [environmentId], references: [id])
   createdAt      DateTime     @default(now())
   /**
-   * Phase 4 tamper-evidence chain.
+   * Tamper-evidence chain.
    * `prevHash` is the previous row's `hash` (or `sha256("vf:audit-genesis:" || orgId)` for the first row).
    * `hash` is `sha256(prevHash || canonical(row))`.
    * NULL means the row pre-dates the chain rollout; `backfillChainForOrg`
@@ -1311,12 +1311,10 @@ model AuditLog {
 /**
  * Idempotency ledger for inbound webhooks that redeliver on 5xx
  * (billing providers, git providers, PagerDuty, custom integrations).
- *
  * The table is provider-agnostic: any handler that needs once-only
  * processing under 5xx-retry semantics inserts `(source, id)` here and
  * skips if the row already exists. `source` is a free-form lowercase
  * provider identifier; `id` is the provider-issued event id.
- *
  * Self-hosted deployments that do not wire any webhook source leave
  * this table empty.
  */
@@ -1345,7 +1343,6 @@ model IdempotentInboundWebhookEvent {
    * When the handler first observed and committed this event.
    */
   processedAt DateTime @default(now())
-
 
   @@id([source, id])
   @@index([processedAt])
@@ -1378,31 +1375,27 @@ model AuditChainTail {
 
 /**
  * Platform operator audit log.
- *
  * Records every operator action that touches a customer org: break-glass
- * grant request/approval/use, suspend/unsuspend, backup restore, deploy
- * restart, key-unwrap during a grant window, etc. Lives in a separate
+ * grant request/approval/use, suspend/unsuspend, backup restore,
+ * deployment restart, key-unwrap during a grant window, etc. Lives in a separate
  * table from `AuditLog` so:
- *
- *   1. The two streams have different retention / export policies.
- *      `AuditLog` is customer-visible (per-org export endpoint);
- *      `PlatformAuditLog` is operator-internal but mirrored into the
- *      customer's `AuditLog` with a "support actor" label whenever an
- *      action affects an org the customer can see.
- *   2. An external archiver sidecar can ship rows to a WORM-storage
- *      bucket (e.g. S3 Object Lock) without involving the customer-
- *      side `AuditLog` stream.
- *   3. RLS does not apply: this table is read only by the operator
- *      Postgres role (separate from the app role).
- *
+ * 1. The two streams have different retention / export policies.
+ * `AuditLog` is customer-visible (per-org export endpoint);
+ * `PlatformAuditLog` is operator-internal but mirrored into the
+ * customer's `AuditLog` with a "support actor" label whenever an
+ * action affects an org the customer can see.
+ * 2. An external archiver sidecar can ship rows to a WORM-storage
+ * bucket (e.g. S3 Object Lock) without involving the customer-
+ * side `AuditLog` stream.
+ * 3. RLS does not apply: this table is read only by the operator
+ * Postgres role (separate from the app role).
  * Append-only enforced at three layers:
- *   - No `updatedAt` field (rows are immutable by schema shape).
- *   - Postgres rules in the migration prevent `UPDATE` and `DELETE`
- *     against this table for the operator role; only the platform-audit
- *     writer role can INSERT.
- *   - The bundled verifier script walks the per-deployment hash chain
- *     and refuses an export where any link is broken.
- *
+ * - No `updatedAt` field (rows are immutable by schema shape).
+ * - Postgres rules in the migration prevent `UPDATE` and `DELETE`
+ * against this table for the operator role; only the platform-audit
+ * writer role can INSERT.
+ * - The bundled verifier script walks the per-deployment hash chain
+ * and refuses an export where any link is broken.
  * Hash chain (`prevHash`, `hash`) uses the same scheme as `AuditLog`
  * (sha256(prevHash || canonical(row))) but chains per-deployment rather
  * than per-org — the "key" passed to `AuditChainTailLookup.getTailHash`
@@ -1410,54 +1403,54 @@ model AuditChainTail {
  * `sha256("vf:platform-audit-genesis:" || deploymentId)`.
  */
 model PlatformAuditLog {
-  id              String   @id @default(cuid())
+  id                String                @id @default(cuid())
   /**
-   * Stamp identifier — distinguishes between multiple regional stamps
-   * that share a global PlatformAuditLog warehouse (rare; typically
-   * each stamp has its own DB). Defaults to "default" for single-stamp
-   * deployments.
+   * Deployment identifier — distinguishes between multiple regional
+   * deployments that share a global PlatformAuditLog warehouse (rare;
+   * typically each deployment has its own DB). Defaults to "default"
+   * for single-deployment installs.
    */
-  deploymentId         String   @default("default")
+  deploymentId      String                @default("default")
   /**
    * The PlatformOperator who performed the action. NULL only for
-   * system-initiated events (e.g. automated stamp restart from a
-   * health check); always set for human-initiated actions.
+   * system-initiated events (e.g. automated deployment restart from
+   * a health check); always set for human-initiated actions.
    */
-  operatorId      String?
-  operator        PlatformOperator? @relation(fields: [operatorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  operatorId        String?
+  operator          PlatformOperator?     @relation(fields: [operatorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   /**
    * Operator role at time of action ("SUPPORT", "INFRA", "BILLING",
    * "INCIDENT"). Cached on the row so a later role change doesn't
    * obscure the historical record.
    */
-  operatorRole    PlatformOperatorRole?
+  operatorRole      PlatformOperatorRole?
   /**
    * Verb identifying the action. Stable identifier ("grant.request",
    * "grant.approve", "grant.use", "org.suspend", "backup.restore",
-   * "stamp.restart", "kms.unwrap"). Kept as a free-text TEXT to avoid
+   * "deployment.restart", "kms.unwrap"). Kept as a free-text TEXT to avoid
    * coupling the audit log to an enum migration cadence.
    */
-  action          String
+  action            String
   /**
    * Organization affected by the action, when applicable. NULL for
-   * stamp-wide actions (stamp restart, KMS rotation, etc.). When set,
+   * deployment-wide actions (deployment restart, KMS rotation, etc.). When set,
    * a mirror row is inserted into the customer's `AuditLog` with
    * `userName = "VectorFlow Support"`.
    */
-  organizationId  String?
+  organizationId    String?
   /**
    * Free-text justification supplied by the operator (required for
    * break-glass actions; optional for routine ops). Stored verbatim
    * for post-incident review.
    */
-  reason          String?
+  reason            String?
   /**
    * Entity acted on (table + id) for actions that have a definite
    * subject ("BackupRecord", "rec_abc123"). NULL for actions where
-   * the subject is the org itself or the stamp.
+   * the subject is the org itself or the deployment.
    */
-  entityType      String?
-  entityId        String?
+  entityType        String?
+  entityId          String?
   /**
    * Structured action-specific context. e.g. `{ grantId: "...",
    * expiresAt: "..." }` for grant requests; `{ backupId: "...",
@@ -1465,31 +1458,30 @@ model PlatformAuditLog {
    * the same canonicalization rules as `AuditLog.diff` so the hash
    * chain is reproducible.
    */
-  metadata        Json?
+  metadata          Json?
   /**
    * Source IP of the operator session that performed the action.
-   * Captured from the operator-console request handler.
+   * Captured from the privileged-operator request handler.
    */
-  ipAddress       String?
-  createdAt       DateTime @default(now())
+  ipAddress         String?
+  createdAt         DateTime              @default(now())
   /**
    * Tamper-evidence chain — same primitive as `AuditLog.prevHash` /
    * `AuditLog.hash` (sha256(prevHash || canonical(row))), keyed per
-   * stamp instead of per org.
+   * deployment instead of per org.
    */
-  prevHash        String
-  hash            String
+  prevHash          String
+  hash              String
   /**
    * Audit object-store archive timestamp. NULL until an external
    * archiver sidecar successfully PUTs the row to its configured
    * object store. The archiver polls
    * `WHERE archivedAt IS NULL ORDER BY createdAt ASC` and stamps this
    * column on success.
-   *
    * Self-hosted installs that leave the archiver disabled keep this
    * column NULL everywhere; it costs nothing.
    */
-  archivedAt      DateTime?
+  archivedAt        DateTime?
   /**
    * Object key (or equivalent identifier) returned by the archiver
    * sidecar on successful upload. Free-form text so the same column
@@ -1514,14 +1506,14 @@ model PlatformAuditLog {
 }
 
 /**
- * Per-stamp PlatformAuditLog chain tail pointer. Mirrors the per-org
- * `AuditChainTail` for the customer-facing `AuditLog`.
+ * Per-deployment PlatformAuditLog chain tail pointer. Mirrors the
+ * per-org `AuditChainTail` for the customer-facing `AuditLog`.
  */
 model PlatformAuditChainTail {
-  deploymentId     String   @id
-  lastHash    String
-  lastWriteAt DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  deploymentId String   @id
+  lastHash     String
+  lastWriteAt  DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model SystemSettings {
@@ -1776,7 +1768,8 @@ enum AlertMetric {
   certificate_expiring
   node_joined
   node_left
-  // Phase 5 event — enum value added early so subscriptions can be created
+  // Subscriptions can be created against this event verb in advance of
+  // wiring it up.
   promotion_completed
   git_sync_failed
   cost_threshold_exceeded // fires when monthly cost exceeds costBudgetCents
@@ -1840,8 +1833,7 @@ model WebhookEndpoint {
   eventTypes      AlertMetric[]
   encryptedSecret String?
   enabled         Boolean               @default(true)
-  /// Phase 5aa: timestamp of the most recent successful one-time
-  /// confirmation. Until set, `deliverOutboundWebhook` short-circuits to
+  /// Timestamp of the most recent successful one-time confirmation. Until set, `deliverOutboundWebhook` short-circuits to
   /// a non-retryable failure. URL changes clear it; the owner re-confirms.
   confirmedAt     DateTime?
   createdAt       DateTime              @default(now())
@@ -1853,7 +1845,7 @@ model WebhookEndpoint {
   @@index([organizationId])
 }
 
-/// Phase 5aa: one-time confirmation token for a `WebhookEndpoint`. Created
+/// One-time confirmation token for a `WebhookEndpoint`. Created
 /// when an endpoint is added or its URL changes, mailed to the org's
 /// OWNER role. Consuming the token sets `WebhookEndpoint.confirmedAt`;
 /// until then the endpoint cannot deliver.

@@ -1,5 +1,5 @@
 /**
- * Phase 5cc: org data export → import round-trip.
+ * Org data export → import round-trip.
  *
  * Loads a deterministic fixture into the export-side Prisma mock, runs
  * `buildOrgDataExport(orgA)`, replays the resulting envelope into a
@@ -219,7 +219,7 @@ beforeEach(() => {
   mockReset(prismaMock);
 });
 
-describe("importOrgData (Phase 5cc)", () => {
+describe("importOrgData ", () => {
   it("rejects when no targetOrganizationId is supplied", async () => {
     const sink = makeImportSink();
     await expect(
@@ -270,7 +270,7 @@ describe("importOrgData (Phase 5cc)", () => {
   });
 });
 
-describe("export → import round-trip (Phase 5cc)", () => {
+describe("export → import round-trip ", () => {
   it("preserves entity counts and FK topology end-to-end", async () => {
     setupExportSource();
     const envelope = await buildOrgDataExport(SOURCE_ORG_ID);

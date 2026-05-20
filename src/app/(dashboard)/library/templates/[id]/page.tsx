@@ -19,7 +19,7 @@ export default function TemplateDetailPage() {
         description="Per-template detail pages do not have an approved v2 design. Use the templates gallery for now; this route stays in place so existing links fail truthfully instead of showing invented UI."
         secondary={{ label: "Back to templates", href: "/library/templates" }}
         helperLines={[
-          { icon: "scope", text: "Source of truth: HANDOFF §2 marks per-template detail as not yet designed." },
+          { icon: "scope", text: "Coming soon — per-template detail is not part of the current shipped surface." },
           { icon: "gate", text: "Requires design approval before adding template graph, usage, or create-from-template controls." },
         ]}
       />

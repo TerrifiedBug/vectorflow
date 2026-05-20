@@ -10,7 +10,7 @@
 # TimescaleDB carve-out: hypertables with columnstore (compression) enabled
 # cannot have RLS enabled at the parent level (timescale/timescaledb#6827),
 # and parent-table policies do not propagate to chunks anyway
-# (timescale/timescaledb#7830). Phase 5a (migration 20260516000001) skips
+# (timescale/timescaledb#7830). The RLS migration (20260516000001) skips
 # those tables and relies on application-layer isolation via `withOrgTx` +
 # the composite `(organizationId, …)` indexes. This script applies the same
 # skip so it doesn't fail spuriously on TimescaleDB hosts.

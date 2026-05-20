@@ -22,7 +22,7 @@
 //
 // Library only; the org-scoped HTTP endpoint that exposes this needs an
 // org-admin auth surface (WebAuthn/passkey + OrgMember check) that lives
-// alongside the operator console UI.
+// alongside the operator UI.
 
 import { createHash } from "node:crypto";
 import { ulid } from "ulid";

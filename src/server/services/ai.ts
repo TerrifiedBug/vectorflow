@@ -149,7 +149,7 @@ export async function streamCompletion({
 
   const config = await getTeamAiConfig(teamId);
   await validateBaseUrl(config.baseUrl);
-  // Phase 5z: gate non-vendor URLs on the per-org opt-in.
+  // Gate non-vendor URLs on the per-org opt-in.
   await enforceAiBaseUrlPolicy({
     baseUrl: config.baseUrl,
     organizationId: config.organizationId,
@@ -224,7 +224,7 @@ export async function testAiConnection(teamId: string): Promise<{ ok: boolean; e
   try {
     const config = await getTeamAiConfig(teamId, { requireEnabled: false });
     await validateBaseUrl(config.baseUrl);
-    // Phase 5z: gate non-vendor URLs on the per-org opt-in.
+    // Gate non-vendor URLs on the per-org opt-in.
     await enforceAiBaseUrlPolicy({
       baseUrl: config.baseUrl,
       organizationId: config.organizationId,

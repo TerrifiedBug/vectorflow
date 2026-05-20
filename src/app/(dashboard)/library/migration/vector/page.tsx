@@ -19,7 +19,7 @@ export default function VectorMigrationPage() {
         description="The current v2.0 spec does not define the upload, topology review, subgraph selection, or import result states for Vector config migration. This route is gated so users do not mistake parser output for an approved production workflow."
         secondary={{ label: "Back to migration library", href: "/library/migration" }}
         helperLines={[
-          { icon: "scope", text: "Source of truth: HANDOFF §2 inventory does not include Vector config import as a designed surface." },
+          { icon: "scope", text: "Coming soon — Vector config import is not part of the current shipped surface." },
           { icon: "gate", text: "Requires approved topology review, validation diagnostics, and import recovery states before enabling uploads." },
         ]}
       />

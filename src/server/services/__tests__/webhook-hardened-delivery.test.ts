@@ -1,5 +1,5 @@
 /**
- * Phase 5aa: redirect cap + DNS rebinding mitigation.
+ * Redirect cap + DNS rebinding mitigation.
  *
  * `validateOutboundUrl` is exercised by `validate-outbound-url.test.ts`;
  * we mock it here to focus on the redirect / DNS-cache wiring.

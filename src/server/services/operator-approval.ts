@@ -1,7 +1,7 @@
 /**
  * `OperatorApprovalRequest` lifecycle service (plan).
  *
- * Generic 2-person approval primitive for operator-side actions
+ * Generic 2-person approval primitive for privileged operator actions
  * (backup restore, force hard-delete, KMS rotation). The service owns
  * the state machine; handlers own the side-effect (the
  * actual restore, the actual KMS call).
@@ -219,7 +219,7 @@ export interface MarkExecutingInput {
  * Mark an APPROVED request as EXECUTING. The handler calls
  * this immediately before invoking the side-effect (e.g. AWS Backup
  * StartRestoreJob). If the handler crashes between mark-executing and
- * complete, the request is stuck at EXECUTING — the operator console
+ * complete, the request is stuck at EXECUTING — the operator surface
  * surfaces these for manual reconciliation.
  *
  * Enforces the approval TTL: an APPROVED request that has passed
@@ -374,7 +374,7 @@ export async function cancelApprovalRequest(
 
 /**
  * Cron sweep — flip PENDING_APPROVAL rows past their expiresAt to
- * EXPIRED so the operator console doesn't surface stale requests.
+ * EXPIRED so the operator UI doesn't surface stale requests.
  * Returns the count of rows updated.
  */
 export async function expireStaleApprovalRequests(

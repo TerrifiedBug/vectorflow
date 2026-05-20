@@ -557,7 +557,7 @@ export const teamRouter = router({
         }
       }
 
-      // Phase 5z: setting a non-allowlisted `aiBaseUrl` requires:
+      // Setting a non-allowlisted `aiBaseUrl` requires:
       //   1. an OWNER OrgMember (enforced via `ctx.orgMemberRole`), AND
       //   2. the org's `OrganizationSettings.aiBaseUrlOptIn` flag.
       // Allowlisted hosts (api.openai.com, api.anthropic.com) are exempt.

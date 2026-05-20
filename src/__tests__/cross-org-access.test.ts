@@ -1,5 +1,5 @@
 /**
- * Phase 5bb: cross-org access auto-generated test harness.
+ * cross-org access auto-generated test harness.
  *
  * Walks every procedure in `appRouter`, finds the ones whose input schema
  * accepts a tenant-scoped identifier (`teamId` / `environmentId` /
@@ -15,7 +15,7 @@
  * Recognised gates (any one is sufficient):
  *   - `withTeamAccess` — the canonical tenant gate (uses `isOrgWideAdmin`
  *     against `OrgMember` as the admin fast-path).
- *   - `requirePlatformOperator` — Phase 5ee tenant-aware operator gate.
+ *   - `requirePlatformOperator` — the tenant-aware operator gate.
  *
  * Detection is via `mw.toString()` inspection. tRPC wraps middlewares
  * such that the factory body (and its identifiers) ARE preserved in the
@@ -114,7 +114,7 @@ const TENANT_INPUT_KEYS = [
  *   - `userId_teamId` — the Prisma composite-key lookup used by
  *     `withTeamAccess` to verify membership. Other middlewares don't
  *     do this lookup.
- *   - `platformOperator.findUnique` — Phase 5ee's `requirePlatformOperator`.
+ *   - `platformOperator.findUnique` — the `requirePlatformOperator` middleware.
  *   - `orgMember.findUnique` — `isOrgWideAdmin` lookup used by `withTeamAccess`
  *     after slice 7c dropped the legacy `User.isSuperAdmin` reader.
  *
@@ -365,7 +365,7 @@ function auditRouter(): AuditEntry[] {
   return entries;
 }
 
-describe("Cross-org access audit (Phase 5bb)", () => {
+describe("Cross-org access audit", () => {
   const audit = auditRouter();
 
   it("audits a non-trivial number of procedures", () => {

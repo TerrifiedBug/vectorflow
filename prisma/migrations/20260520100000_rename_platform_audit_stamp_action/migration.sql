@@ -1,0 +1,11 @@
+-- Align the platform-audit action vocabulary with the deployment-id rename
+-- landed in 20260517100000_rename_provider_specific_field_names.
+--
+-- `PlatformAuditLog.action` is free-text TEXT (not a Postgres enum), so this
+-- is a pure data migration: in-place UPDATE on existing rows. New inserts
+-- emit "deployment.restart" via the TypeScript writer; this brings legacy
+-- rows from older OSS releases into the same vocabulary so audit-log
+-- consumers can filter on a single canonical verb.
+--
+-- Idempotent. The migration's WHERE clause matches only the legacy value.
+UPDATE "PlatformAuditLog" SET action = 'deployment.restart' WHERE action = 'stamp.restart';

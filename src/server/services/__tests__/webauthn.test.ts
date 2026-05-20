@@ -1,5 +1,5 @@
 /**
- * Phase 5x: WebAuthn / passkey service tests.
+ * WebAuthn / passkey service tests.
  *
  * The library `@simplewebauthn/server` is mocked at the module boundary so
  * these tests focus on the wiring this codebase owns:

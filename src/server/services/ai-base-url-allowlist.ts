@@ -96,7 +96,7 @@ function hostnameOf(baseUrl: string): string {
  *      - flag false → throw `AiBaseUrlNotAllowedError`
  *
  * Callers SHOULD pair this with `validateOutboundUrl(baseUrl)` from
- * Phase 5u. The two policies compose: allowlist gates which vendor
+ * the outbound-URL validator. The two policies compose: allowlist gates which vendor
  * payloads (API keys, prompt content) go to; `validateOutboundUrl`
  * gates whether the network destination is safe at all.
  */

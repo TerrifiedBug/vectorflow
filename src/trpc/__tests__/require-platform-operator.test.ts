@@ -1,7 +1,7 @@
 /**
- * Phase 5ee: `requirePlatformOperator(role)` middleware.
+ * `requirePlatformOperator(role)` middleware.
  *
- * Phase 5ee migration is complete: every router callsite has been flipped
+ * Migration to this middleware is complete: every router callsite has been flipped
  * from the legacy `requireSuperAdmin` to this gate, and the legacy
  * middleware (along with the `User.isSuperAdmin` column) was removed in
  * slice 7c.

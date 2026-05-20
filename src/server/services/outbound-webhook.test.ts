@@ -23,7 +23,7 @@ vi.mock("@/server/services/url-validation", () => ({
   validateOutboundUrl: vi.fn().mockResolvedValue(undefined),
 }));
 
-// Phase 5aa: `deliverOutboundWebhook` now routes through `fetchHardened`
+// `deliverOutboundWebhook` routes through `fetchHardened`
 // for per-hop SSRF re-validation + DNS rebinding caching. The existing
 // tests are still about the SIGNING + RESULT shape and shouldn't care
 // about the hop machinery — replace `fetchHardened` with a thin shim
@@ -147,9 +147,9 @@ describe("deliverOutboundWebhook", () => {
     expect(headers["webhook-signature"]).toBe(`v1,${expectedSig}`);
   });
 
-  it("delegates redirect handling to fetchHardened (Phase 5aa)", async () => {
-    // Pre-Phase-5aa the test asserted `init.redirect === "manual"` on the
-    // direct fetch call. After 5aa the redirect policy is encapsulated in
+  it("delegates redirect handling to fetchHardened", async () => {
+    // Previously the test asserted `init.redirect === "manual"` on the
+    // direct fetch call. The redirect policy is now encapsulated in
     // `fetchHardened` (max 3 hops, per-hop re-validation, no protocol
     // downgrade). The assertion: `deliverOutboundWebhook` ALWAYS routes
     // through `fetchHardened` rather than calling the raw `fetch` directly.

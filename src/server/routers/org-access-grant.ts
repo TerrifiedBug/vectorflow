@@ -1,10 +1,9 @@
 /**
  * Customer-admin OrgAccessGrant router.
  *
- * This is the customer half of the break-glass flow. The operator
- * side opens / revokes grants via the operator console
- * (`operator-console` in the closed-surface workspace);
- * this router lets the customer's OWNER / ADMIN approve them.
+ * Customer half of the break-glass flow: an org's OWNER / ADMIN reviews
+ * and approves (or revokes) time-bound operator access requests recorded
+ * in the `OrgAccessGrant` table.
  *
  * Procedures:
  *
@@ -12,19 +11,19 @@
  *     caller's org. OWNER + ADMIN role on the OrgMember.
  *   - `approve({ grantId })` — customer-admin approves a pending
  *     grant. Sets `approvedByCustomerAdminId` + writes an `AuditLog`
- *     row. OWNER + ADMIN role on the OrgMember. The KMS grant token
- *     issuance is a follow-up (the OSS approval path
- *     records intent; the calling overlay mints the GrantToken on
- *     approval transition).
+ *     row. OWNER + ADMIN role on the OrgMember. The router records
+ *     customer consent only; deployment overlays that mint the actual
+ *     `externalGrantRef` (e.g. a KMS grant token) hook into the
+ *     APPROVED state transition separately.
  *   - `revoke({ grantId })` — customer-admin revokes a grant before
- *     it expires (e.g. operator opened it for the wrong reason).
- *     OWNER role only — revocation is owner-scoped because it can
- *     interfere with incident response.
+ *     it expires (e.g. it was opened for the wrong reason). OWNER role
+ *     only — revocation is owner-scoped because it can interfere with
+ *     incident response.
  *
  * Gating: each procedure wraps its DB work in `withOrgTx(orgId, ...)` so
  * `app.org_id` is set before touching any tenant table. This satisfies the
- * strict RLS policies added in 20260516000003_phase5a_rls_strict_policies;
- * without an org context, the non-owner app role sees no rows.
+ * strict RLS policies; without an org context, the non-owner app role
+ * sees no rows.
  */
 
 import { z } from "zod";
@@ -132,9 +131,10 @@ export const orgAccessGrantRouter = router({
     }),
 
   /**
-   * Approve a pending grant. The operator-side request has already
-   * been logged; this records customer-admin consent + writes an
-   * `auth.grant_approved` audit row visible in the org's audit page.
+   * Approve a pending grant. The grant request has already been logged
+   * by the operator-facing path; this records customer-admin consent +
+   * writes an `auth.grant_approved` audit row visible in the org's
+   * audit page.
    */
   approve: protectedProcedure
     .input(

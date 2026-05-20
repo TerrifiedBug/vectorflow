@@ -1,5 +1,5 @@
 /**
- * Phase 5t: a tRPC call against a suspended organization MUST return HTTP 423
+ * A tRPC call against a suspended organization MUST return HTTP 423
  * (Locked), not 403 (Forbidden). The mapping is wired by the `responseMeta`
  * callback in `src/app/api/trpc/[trpc]/route.ts`, which detects the
  * `OrgSuspendedError` sentinel attached as `cause` to the `TRPCError` thrown by
@@ -71,7 +71,7 @@ function makePingRequest() {
   });
 }
 
-describe("orgProcedure suspension -> HTTP 423 (Phase 5t)", () => {
+describe("orgProcedure suspension -> HTTP 423", () => {
   beforeEach(() => {
     mockReset(prismaMock);
     authMock.mockReset();
@@ -159,7 +159,7 @@ describe("orgProcedure suspension -> HTTP 423 (Phase 5t)", () => {
   });
 });
 
-describe("isCallerOrgSuspended (Phase 5t streaming-client path)", () => {
+describe("isCallerOrgSuspended (streaming-client path)", () => {
   beforeEach(() => {
     mockReset(prismaMock);
     authMock.mockReset();

@@ -1,5 +1,5 @@
 /**
- * Phase 5z: AI provider base-URL allowlist + per-org opt-in.
+ * AI provider base-URL allowlist + per-org opt-in.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";
@@ -21,7 +21,7 @@ const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
 beforeEach(() => {
   mockReset(prismaMock);
-  // Phase 5z: `enforceAiBaseUrlPolicy` short-circuits when
+  // `enforceAiBaseUrlPolicy` short-circuits when
   // `VF_STRICT_OUTBOUND` is unset (OSS default). The policy tests
   // below describe strict-outbound behaviour, so flip the flag on for them.
   vi.stubEnv("VF_STRICT_OUTBOUND", "true");

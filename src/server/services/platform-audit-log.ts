@@ -2,7 +2,7 @@
  * Platform operator audit log writer..
  *
  * Mirror primitive to `writeAuditLog` in `audit-chain-insert.ts`, but
- * keyed per stamp instead of per org. Use from operator-side handlers
+ * keyed per deployment instead of per org. Use from privileged operator handlers
  * (suspend, break-glass open/approve/use, backup restore, KMS unwrap).
  *
  *   await writePlatformAuditLog({
@@ -61,7 +61,7 @@ export type PlatformActionVerb =
   | "backup.create"
   | "backup.restore"
   | "backup.delete"
-  | "stamp.restart"
+  | "deployment.restart"
   | "kms.rotate"
   | "kms.unwrap"
   | "config.change"
@@ -89,7 +89,7 @@ export interface WritePlatformAuditLogResult {
 }
 
 /**
- * Genesis hash for the platform-audit chain on a given stamp.
+ * Genesis hash for the platform-audit chain on a given deployment.
  * Exposed for the verifier script + tests.
  */
 export function platformAuditGenesisHash(deploymentId: string): string {
@@ -166,8 +166,8 @@ function computeRowHash(
 
 /**
  * Insert a row into `PlatformAuditLog` with a tamper-evidence chain
- * link. Runs inside `prisma.$transaction` with a per-stamp advisory
- * lock so concurrent operator actions on the same stamp serialise on
+ * link. Runs inside `prisma.$transaction` with a per-deployment advisory
+ * lock so concurrent operator actions on the same deployment serialise on
  * the chain tail.
  *
  * Returns the inserted row's id + chain hashes (for tests / debugging).
@@ -180,7 +180,7 @@ export async function writePlatformAuditLog(
   // lock is acquired (see lock acquisition below). Do not hoist it here.
 
   return prisma.$transaction(async (tx) => {
-    // Per-stamp advisory lock — keeps concurrent writers in line so
+    // Per-deployment advisory lock — keeps concurrent writers in line so
     // the chain tail is never read stale.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`platform-audit:${deploymentId}`}))`;
 

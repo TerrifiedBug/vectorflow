@@ -170,7 +170,7 @@ export class RetryService {
             encryptedSecret: delivery.webhookEndpoint.encryptedSecret,
             id: delivery.webhookEndpointId,
             organizationId: delivery.webhookEndpoint.organizationId,
-            // Phase 5aa: thread confirmedAt so a pending-confirmation endpoint
+            // Thread confirmedAt so a pending-confirmation endpoint
             // can't be delivered to even from the retry loop.
             confirmedAt: delivery.webhookEndpoint.confirmedAt,
           },

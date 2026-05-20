@@ -19,7 +19,7 @@ export default function NewMigrationPage() {
         description="The current handoff does not include a designed migration wizard. This route stays stable, but upload, parse, AI translation, and pipeline-generation controls are gated so the product does not imply unsupported completeness."
         secondary={{ label: "Back to migration library", href: "/library/migration" }}
         helperLines={[
-          { icon: "scope", text: "Source of truth: HANDOFF §2 inventory does not list migration creation as a designed v2.0 surface." },
+          { icon: "scope", text: "Coming soon — migration creation is not part of the current shipped surface." },
           { icon: "gate", text: "Requires approved creation flow, diagnostics, and recovery actions before accepting configs." },
         ]}
       />

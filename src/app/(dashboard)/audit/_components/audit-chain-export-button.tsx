@@ -61,9 +61,9 @@ export function AuditChainExportButton() {
       const blob = new Blob([downloadPayload], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       a.href = url;
-      a.download = `audit-chain-${stamp}.json`;
+      a.download = `audit-chain-${timestamp}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

@@ -81,7 +81,7 @@ describe("POST /api/agent/enroll -- NODE-03 label template auto-assignment", () 
       identifier: "0123456789abcdef",
     });
     prismaMock.environment.findMany.mockResolvedValue([mockEnv] as never);
-    // §10 quota gate: $transaction wraps the vectorNode insert. Stub it so
+    // quota gate: $transaction wraps the vectorNode insert. Stub it so
     // the callback runs against the same prismaMock, and arrange the org +
     // count mocks so the FREE plan (5 agents) is below the limit before and
     // after the create. Individual tests can override these.
@@ -212,7 +212,7 @@ describe("POST /api/agent/enroll -- demo mode", () => {
   });
 });
 
-describe("POST /api/agent/enroll -- per-org agents quota (Phase 5v)", () => {
+describe("POST /api/agent/enroll — per-org agents quota", () => {
   beforeEach(async () => {
     mockReset(prismaMock);
     vi.mocked(verifyEnrollmentToken).mockResolvedValue(true);

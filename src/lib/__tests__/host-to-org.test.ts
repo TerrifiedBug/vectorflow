@@ -1,5 +1,5 @@
 /**
- * Phase 5w: host-to-org resolution for per-org OIDC.
+ * Host-to-org resolution for per-org OIDC.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";
