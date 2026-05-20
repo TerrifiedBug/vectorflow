@@ -1,7 +1,7 @@
 export const runtime = "nodejs";
 
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 import { importBackup } from "@/server/services/backup";
 
 const MAX_UPLOAD_SIZE = 500 * 1024 * 1024; // 500 MB
@@ -19,12 +19,8 @@ export async function POST(request: Request) {
     return jsonError("Unauthorized", 401);
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { isSuperAdmin: true },
-  });
-
-  if (!user?.isSuperAdmin) {
+  const isOrgAdmin = await isOrgWideAdmin(session.user.id);
+  if (!isOrgAdmin) {
     return jsonError("Forbidden", 403);
   }
 

@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 import { streamCompletion } from "@/server/services/ai";
 import { buildVrlChatSystemPrompt } from "@/lib/ai/prompts";
 import { writeAuditLog } from "@/server/services/audit";
@@ -50,18 +51,15 @@ export async function POST(request: Request) {
   const membership = await prisma.teamMember.findUnique({
     where: { userId_teamId: { userId: session.user.id, teamId: body.teamId } },
   });
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { isSuperAdmin: true },
-  });
+  const isOrgAdmin = await isOrgWideAdmin(session.user.id);
 
-  if (!membership && !user?.isSuperAdmin) {
+  if (!membership && !isOrgAdmin) {
     return new Response(JSON.stringify({ error: "Forbidden" }), {
       status: 403,
       headers: { "Content-Type": "application/json" },
     });
   }
-  if (membership && membership.role === "VIEWER" && !user?.isSuperAdmin) {
+  if (membership && membership.role === "VIEWER" && !isOrgAdmin) {
     return new Response(JSON.stringify({ error: "EDITOR role required" }), {
       status: 403,
       headers: { "Content-Type": "application/json" },

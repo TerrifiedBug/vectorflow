@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
@@ -13,13 +14,10 @@ export async function GET() {
 
   // Determine which environments this user can see
   const userId = session.user.id;
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { isSuperAdmin: true },
-  });
+  const isOrgAdmin = await isOrgWideAdmin(userId);
 
   let environmentFilter: { id: { in: string[] } } | undefined;
-  if (!user?.isSuperAdmin) {
+  if (!isOrgAdmin) {
     const memberships = await prisma.teamMember.findMany({
       where: { userId },
       select: { teamId: true },

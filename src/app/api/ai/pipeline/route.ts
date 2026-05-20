@@ -10,6 +10,7 @@ import { writeAuditLog } from "@/server/services/audit";
 import { errorLog } from "@/lib/logger";
 
 import { Prisma } from "@/generated/prisma";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -57,18 +58,15 @@ export async function POST(request: Request) {
   const membership = await prisma.teamMember.findUnique({
     where: { userId_teamId: { userId: session.user.id, teamId: body.teamId } },
   });
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { isSuperAdmin: true },
-  });
+  const isOrgAdmin = await isOrgWideAdmin(session.user.id);
 
-  if (!membership && !user?.isSuperAdmin) {
+  if (!membership && !isOrgAdmin) {
     return new Response(JSON.stringify({ error: "Forbidden" }), {
       status: 403,
       headers: { "Content-Type": "application/json" },
     });
   }
-  if (membership && membership.role === "VIEWER" && !user?.isSuperAdmin) {
+  if (membership && membership.role === "VIEWER" && !isOrgAdmin) {
     return new Response(JSON.stringify({ error: "EDITOR role required" }), {
       status: 403,
       headers: { "Content-Type": "application/json" },

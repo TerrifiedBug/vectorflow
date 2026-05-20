@@ -36,7 +36,7 @@ describe("GET /api/backups/[filename]/download", () => {
   beforeEach(() => {
     mockReset(prismaMock);
     vi.mocked(auth).mockResolvedValue({ user: { id: "user-1" } } as never);
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
     fsMock.access.mockRejectedValue(new Error("missing"));
   });
 
