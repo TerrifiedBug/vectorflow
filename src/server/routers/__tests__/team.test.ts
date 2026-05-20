@@ -171,13 +171,13 @@ describe("team router", () => {
   // ─── teamRole ─────────────────────────────────────────────────────────────
 
   describe("teamRole", () => {
-    it("returns ADMIN with isSuperAdmin true when caller is an org-wide admin (OWNER)", async () => {
+    it("returns ADMIN with isOrgAdmin true when caller is an org-wide admin (OWNER)", async () => {
       prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
 
       const result = await adminCaller.teamRole({ teamId: "team-1" });
 
       expect(result.role).toBe("ADMIN");
-      expect(result.isSuperAdmin).toBe(true);
+      expect(result.isOrgAdmin).toBe(true);
     });
 
     it("returns ADMIN for an org-wide ADMIN as well", async () => {
@@ -186,7 +186,7 @@ describe("team router", () => {
       const result = await adminCaller.teamRole({ teamId: "team-1" });
 
       expect(result.role).toBe("ADMIN");
-      expect(result.isSuperAdmin).toBe(true);
+      expect(result.isOrgAdmin).toBe(true);
     });
 
     it("returns the membership role for non-org-admin users", async () => {
@@ -196,7 +196,7 @@ describe("team router", () => {
       const result = await adminCaller.teamRole({ teamId: "team-1" });
 
       expect(result.role).toBe("EDITOR");
-      expect(result.isSuperAdmin).toBe(false);
+      expect(result.isOrgAdmin).toBe(false);
     });
 
     it("defaults to VIEWER when user has no org or team membership", async () => {

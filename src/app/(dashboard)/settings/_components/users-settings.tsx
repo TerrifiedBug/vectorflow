@@ -66,7 +66,7 @@ export function UsersSettings() {
   const [assignRole, setAssignRole] = useState<"VIEWER" | "EDITOR" | "ADMIN">("VIEWER");
   const [deleteDialog, setDeleteDialog] = useState<{ userId: string; userName: string } | null>(null);
   const [removeFromTeamConfirm, setRemoveFromTeamConfirm] = useState<{ userId: string; userName: string; teamId: string; teamName: string } | null>(null);
-  const [toggleSuperAdminConfirm, setToggleSuperAdminConfirm] = useState<{ userId: string; userName: string; isSuperAdmin: boolean } | null>(null);
+  const [togglePlatformOperatorConfirm, setTogglePlatformOperatorConfirm] = useState<{ userId: string; userName: string; isOperator: boolean } | null>(null);
   const [createUserOpen, setCreateUserOpen] = useState(false);
   const [showCreatedPassword, setShowCreatedPassword] = useState(false);
   const [createdPassword, setCreatedPassword] = useState("");
@@ -86,17 +86,19 @@ export function UsersSettings() {
     })
   );
 
-  const toggleSuperAdminMutation = useMutation(
-    trpc.admin.toggleSuperAdmin.mutationOptions({
+  const togglePlatformOperatorMutation = useMutation(
+    trpc.admin.togglePlatformOperator.mutationOptions({
       onSuccess: (data) => {
         queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
         toast.success(
-          data.isSuperAdmin ? "User promoted to super admin" : "Super admin status removed"
+          data.isPlatformOperator
+            ? "User promoted to platform operator"
+            : "Platform operator status removed",
         );
-        setToggleSuperAdminConfirm(null);
+        setTogglePlatformOperatorConfirm(null);
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to toggle super admin status", { duration: 6000 });
+        toast.error(error.message || "Failed to toggle platform operator status", { duration: 6000 });
       },
     })
   );
@@ -278,7 +280,7 @@ export function UsersSettings() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    {user.isSuperAdmin ? (
+                    {user.isPlatformOperator ? (
                       <Badge className="text-xs">
                         <Crown className="mr-1 h-3 w-3" />
                         Yes
@@ -372,18 +374,18 @@ export function UsersSettings() {
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8"
-                        title={user.isSuperAdmin ? "Remove super admin" : "Make super admin"}
-                        aria-label={user.isSuperAdmin ? "Remove super admin" : "Make super admin"}
-                        disabled={toggleSuperAdminMutation.isPending}
+                        title={user.isPlatformOperator ? "Remove platform operator" : "Promote to platform operator"}
+                        aria-label={user.isPlatformOperator ? "Remove platform operator" : "Promote to platform operator"}
+                        disabled={togglePlatformOperatorMutation.isPending}
                         onClick={() =>
-                          setToggleSuperAdminConfirm({
+                          setTogglePlatformOperatorConfirm({
                             userId: user.id,
                             userName: user.name ?? user.email,
-                            isSuperAdmin: !user.isSuperAdmin,
+                            isOperator: !user.isPlatformOperator,
                           })
                         }
                       >
-                        <Shield className={`h-4 w-4 ${user.isSuperAdmin ? "text-primary" : ""}`} />
+                        <Shield className={`h-4 w-4 ${user.isPlatformOperator ? "text-primary" : ""}`} />
                       </Button>
                       <Button
                         variant="ghost"
@@ -506,21 +508,24 @@ export function UsersSettings() {
         }}
       />
 
-      {/* Toggle super admin confirmation */}
+      {/* Toggle platform operator confirmation */}
       <ConfirmDialog
-        open={!!toggleSuperAdminConfirm}
-        onOpenChange={(open) => !open && setToggleSuperAdminConfirm(null)}
-        title={toggleSuperAdminConfirm?.isSuperAdmin ? "Grant super admin?" : "Remove super admin?"}
-        description={toggleSuperAdminConfirm?.isSuperAdmin
-          ? <><span className="font-medium">{toggleSuperAdminConfirm?.userName}</span> will get full platform access including all teams, user management, and system settings.</>
-          : <><span className="font-medium">{toggleSuperAdminConfirm?.userName}</span> will lose platform-wide admin access and only see teams they are a member of.</>
+        open={!!togglePlatformOperatorConfirm}
+        onOpenChange={(open) => !open && setTogglePlatformOperatorConfirm(null)}
+        title={togglePlatformOperatorConfirm?.isOperator ? "Promote to platform operator?" : "Remove platform operator?"}
+        description={togglePlatformOperatorConfirm?.isOperator
+          ? <><span className="font-medium">{togglePlatformOperatorConfirm?.userName}</span> will gain platform-operator privileges (operator console, settings, every team in this installation).</>
+          : <><span className="font-medium">{togglePlatformOperatorConfirm?.userName}</span> will lose platform-operator privileges and revert to their tenant role.</>
         }
-        confirmLabel={toggleSuperAdminConfirm?.isSuperAdmin ? "Grant" : "Remove"}
-        variant={toggleSuperAdminConfirm?.isSuperAdmin ? "default" : "destructive"}
-        isPending={toggleSuperAdminMutation.isPending}
+        confirmLabel={togglePlatformOperatorConfirm?.isOperator ? "Promote" : "Remove"}
+        variant={togglePlatformOperatorConfirm?.isOperator ? "default" : "destructive"}
+        isPending={togglePlatformOperatorMutation.isPending}
         onConfirm={() => {
-          if (!toggleSuperAdminConfirm) return;
-          toggleSuperAdminMutation.mutate({ userId: toggleSuperAdminConfirm.userId, isSuperAdmin: toggleSuperAdminConfirm.isSuperAdmin });
+          if (!togglePlatformOperatorConfirm) return;
+          togglePlatformOperatorMutation.mutate({
+            userId: togglePlatformOperatorConfirm.userId,
+            isOperator: togglePlatformOperatorConfirm.isOperator,
+          });
         }}
       />
     </div>

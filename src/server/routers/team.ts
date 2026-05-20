@@ -62,10 +62,10 @@ export const teamRouter = router({
       // Migrated from `User.isSuperAdmin` to the org-scoped equivalent.
       // OWNER/ADMIN of the resolved organisation gets the same team
       // visibility super-admins previously had. The legacy
-      // `isSuperAdmin: true` shape is preserved in the return value
+      // `isOrgAdmin: true` shape is preserved in the return value
       // until the UI migrates to read `isOrgAdmin`.
       const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
-      if (orgAdmin) return { role: "ADMIN" as const, isSuperAdmin: true };
+      if (orgAdmin) return { role: "ADMIN" as const, isOrgAdmin: true };
 
       const membership = await prisma.teamMember.findUnique({
         where: { userId_teamId: { userId, teamId: input.teamId } },
@@ -73,7 +73,7 @@ export const teamRouter = router({
       });
       return {
         role: (membership?.role ?? "VIEWER") as "VIEWER" | "EDITOR" | "ADMIN",
-        isSuperAdmin: false,
+        isOrgAdmin: false,
       };
     }),
 

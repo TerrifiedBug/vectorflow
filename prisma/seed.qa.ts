@@ -588,7 +588,6 @@ async function seedQa(prisma: PrismaClient) {
       passwordHash: null,
       authMethod: "LOCAL",
       totpEnabled: true,
-      isSuperAdmin: true,
       mustChangePassword: false,
       createdAt: daysAgo(14),
     },

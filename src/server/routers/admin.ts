@@ -10,30 +10,47 @@ import { assertManualAssignmentAllowed } from "@/server/routers/team";
 import { isStrictMultiTenantMode } from "@/lib/security-headers";
 
 export const adminRouter = router({
-  /** List all platform users with their team memberships */
+  /**
+   * List all platform users with their team memberships.
+   *
+   * `isPlatformOperator` is derived from `PlatformOperator.email` matching
+   * `User.email`. The legacy `User.isSuperAdmin` column was dropped in
+   * slice 7c; operator status now lives exclusively on the
+   * `PlatformOperator` table.
+   */
   listUsers: protectedProcedure
     .use(requirePlatformOperator())
     .query(async () => {
-      return prisma.user.findMany({
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          image: true,
-          authMethod: true,
-          isSuperAdmin: true,
-          totpEnabled: true,
-          lockedAt: true,
-          createdAt: true,
-          memberships: {
-            select: {
-              role: true,
-              team: { select: { id: true, name: true } },
+      const [users, operatorEmails] = await Promise.all([
+        prisma.user.findMany({
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            image: true,
+            authMethod: true,
+            totpEnabled: true,
+            lockedAt: true,
+            createdAt: true,
+            memberships: {
+              select: {
+                role: true,
+                team: { select: { id: true, name: true } },
+              },
             },
           },
-        },
-        orderBy: { createdAt: "asc" },
-      });
+          orderBy: { createdAt: "asc" },
+        }),
+        prisma.platformOperator.findMany({
+          where: { deletedAt: null },
+          select: { email: true },
+        }),
+      ]);
+      const operatorEmailSet = new Set(operatorEmails.map((o) => o.email));
+      return users.map((u) => ({
+        ...u,
+        isPlatformOperator: operatorEmailSet.has(u.email),
+      }));
     }),
 
   /** Assign a user to a team with a specific role */
@@ -108,55 +125,69 @@ export const adminRouter = router({
       return { deleted: true };
     }),
 
-  /** Toggle super admin status */
-  toggleSuperAdmin: protectedProcedure
+  /**
+   * Toggle Platform Operator status for a tenant User (by id).
+   *
+   * The legacy `admin.toggleSuperAdmin` mutation (slice 7a) mutated
+   * `User.isSuperAdmin` and mirrored the value into PlatformOperator. The
+   * column was dropped in slice 7c; this mutation now operates directly
+   * on the `PlatformOperator` table — no `User` write, no mirror to keep
+   * in sync. Email is the natural join key (PlatformOperator has a
+   * `@unique` email column).
+   *
+   * Strict multi-tenant mode is a no-op: operators are provisioned via
+   * a separate surface there, never from the tenant admin UI.
+   */
+  togglePlatformOperator: protectedProcedure
     .use(denyInDemo())
     .use(requirePlatformOperator())
-    .use(withAudit("admin.super_admin_toggled", "User"))
-    .input(z.object({ userId: z.string(), isSuperAdmin: z.boolean() }))
+    .use(withAudit("admin.platform_operator_toggled", "User"))
+    .input(z.object({ userId: z.string(), isOperator: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
-      if (input.userId === ctx.session.user!.id! && !input.isSuperAdmin) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot remove your own super admin status" });
+      if (input.userId === ctx.session.user!.id! && !input.isOperator) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot remove your own platform operator status",
+        });
       }
 
-      // OSS only: mirror the super-admin flip into PlatformOperator so the
-      // admin/settings gate (`requirePlatformOperator`) stays
-      // consistent with `User.isSuperAdmin` without manual SQL. Multi-tenant deployments use a separate operator-provisioning
-      // surface (`User.isSuperAdmin` is not toggled there), so this branch is a
-      // no-op there.
-      //
-      // Atomic: both writes inside one transaction so the two rows can never
-      // diverge on transient failure. On re-grant after a prior revoke, the
-      // existing PlatformOperator row is reused with `deletedAt` cleared so we
-      // don't trip the email-unique constraint.
-      return prisma.$transaction(async (tx) => {
-        const updated = await tx.user.update({
-          where: { id: input.userId },
-          data: { isSuperAdmin: input.isSuperAdmin },
-          select: { id: true, email: true, name: true, isSuperAdmin: true },
+      if (isStrictMultiTenantMode()) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "Platform operators are provisioned via a separate surface in strict multi-tenant mode.",
         });
+      }
 
-        if (!isStrictMultiTenantMode()) {
-          if (input.isSuperAdmin) {
-            await tx.platformOperator.upsert({
-              where: { email: updated.email },
-              create: {
-                email: updated.email,
-                name: updated.name ?? updated.email,
-                role: "INCIDENT",
-              },
-              update: { deletedAt: null },
-            });
-          } else {
-            await tx.platformOperator.updateMany({
-              where: { email: updated.email, deletedAt: null },
-              data: { deletedAt: new Date() },
-            });
-          }
-        }
-
-        return { id: updated.id, isSuperAdmin: updated.isSuperAdmin };
+      // Load the target user to derive the operator's email/name. Surface
+      // a clear NOT_FOUND rather than letting the upsert fail on a
+      // synthetic null email.
+      const user = await prisma.user.findUnique({
+        where: { id: input.userId },
+        select: { id: true, email: true, name: true },
       });
+      if (!user) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+      }
+
+      if (input.isOperator) {
+        await prisma.platformOperator.upsert({
+          where: { email: user.email },
+          create: {
+            email: user.email,
+            name: user.name ?? user.email,
+            role: "INCIDENT",
+          },
+          update: { deletedAt: null },
+        });
+      } else {
+        await prisma.platformOperator.updateMany({
+          where: { email: user.email, deletedAt: null },
+          data: { deletedAt: new Date() },
+        });
+      }
+
+      return { id: user.id, isPlatformOperator: input.isOperator };
     }),
 
   /** List all teams (for assignment dialog) */

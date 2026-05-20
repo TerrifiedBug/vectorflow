@@ -143,7 +143,7 @@ describe("tenant scoping with real authorization middleware", () => {
     prismaMock.pipeline.findUnique.mockResolvedValue({
       environment: { teamId: "team-2" },
     } as never);
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findUnique.mockResolvedValue(null);
 
     await expect(
@@ -197,7 +197,7 @@ describe("tenant scoping with real authorization middleware", () => {
   });
 
   it("narrows audit list results to the caller's team memberships", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findMany.mockResolvedValue([{ teamId: "team-1" }] as never);
     prismaMock.auditLog.findMany.mockResolvedValue([]);
 
@@ -207,7 +207,7 @@ describe("tenant scoping with real authorization middleware", () => {
   });
 
   it("narrows audit list teamId filters to the caller's team memberships", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findMany.mockResolvedValue([{ teamId: "team-1" }] as never);
     prismaMock.auditLog.findMany.mockResolvedValue([]);
 
@@ -224,7 +224,7 @@ describe("tenant scoping with real authorization middleware", () => {
   });
 
   it("narrows audit filter metadata to the caller's team memberships", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findMany.mockResolvedValue([{ teamId: "team-1" }] as never);
     prismaMock.auditLog.findMany.mockResolvedValue([]);
 
@@ -244,7 +244,7 @@ describe("tenant scoping with real authorization middleware", () => {
     prismaMock.pipeline.findUnique.mockResolvedValue({
       environment: { teamId: "team-2" },
     } as never);
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findUnique.mockResolvedValue(null);
 
     await expect(
@@ -258,7 +258,7 @@ describe("tenant scoping with real authorization middleware", () => {
     prismaMock.pipeline.findUnique.mockResolvedValue({
       environment: { teamId: "team-1" },
     } as never);
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findUnique.mockResolvedValue({ role: "VIEWER" } as never);
     prismaMock.pipeline.findMany.mockResolvedValue([
       { id: "pipe-1", environment: { teamId: "team-1" } },
@@ -282,7 +282,7 @@ describe("tenant scoping with real authorization middleware", () => {
     prismaMock.pipeline.findUnique.mockResolvedValue({
       environment: { teamId: "team-1" },
     } as never);
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findUnique.mockResolvedValue({ role: "EDITOR" } as never);
     prismaMock.pipeline.findMany.mockResolvedValue([
       { id: "pipe-1", environment: { teamId: "team-1" } },
@@ -303,7 +303,7 @@ describe("tenant scoping with real authorization middleware", () => {
     prismaMock.pipeline.findUnique.mockResolvedValue({
       environment: { teamId: "team-1" },
     } as never);
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findUnique.mockResolvedValue({ role: "VIEWER" } as never);
     prismaMock.pipeline.findMany.mockResolvedValue([
       { id: "pipe-1", environment: { teamId: "team-1" } },
@@ -324,7 +324,7 @@ describe("tenant scoping with real authorization middleware", () => {
     prismaMock.pipeline.findMany.mockResolvedValue([
       { id: "pipe-team-2", environment: { teamId: "team-2" } },
     ] as never);
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     // Even if the caller is a member of team-1, the resolved team from pipelineIds is team-2.
     prismaMock.teamMember.findUnique.mockResolvedValue(null);
 
@@ -343,7 +343,7 @@ describe("tenant scoping with real authorization middleware", () => {
     prismaMock.pipeline.findUnique.mockResolvedValue({
       environment: { teamId: "team-1" },
     } as never);
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findUnique.mockResolvedValue({ role: "EDITOR" } as never);
     prismaMock.pipeline.findMany.mockResolvedValue([
       { id: "pipe-1", environment: { teamId: "team-1" } },
@@ -365,7 +365,7 @@ describe("tenant scoping with real authorization middleware", () => {
     prismaMock.pipeline.findUnique.mockResolvedValue({
       environment: { teamId: "team-2" },
     } as never);
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findUnique.mockResolvedValue(null);
 
     await expect(

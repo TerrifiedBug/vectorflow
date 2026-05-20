@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useSession } from "next-auth/react";
-import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
+import { useQuery } from "@tanstack/react-query";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { isDemoMode } from "@/lib/is-demo-mode";
 import { settingsNavGroups } from "@/components/settings-sidebar-nav";
@@ -17,32 +16,31 @@ import { PageHeader } from "@/components/ui/page-header";
  * v2 Settings hub (D2): dense tile grid landing page linking to existing settings sub-routes.
  */
 export function SettingsOverview() {
-  const { data: session } = useSession();
-  const user = session?.user as ({ isSuperAdmin?: boolean; role?: string } & NonNullable<typeof session>["user"]) | undefined;
-  const isSuperAdmin = user?.isSuperAdmin === true;
-
   const trpc = useTRPC();
+  const meQuery = useQuery(trpc.user.me.queryOptions());
+  const isOrgAdmin = meQuery.data?.isOrgAdmin === true;
+
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
   const demoMode = isDemoMode();
 
   const readinessQuery = useQuery({
     ...trpc.settings.productionReadiness.queryOptions(),
-    enabled: isSuperAdmin,
+    enabled: isOrgAdmin,
     staleTime: 5 * 60 * 1000,
   });
   const versionQuery = useQuery({
     ...trpc.settings.checkVersion.queryOptions(),
-    enabled: isSuperAdmin,
+    enabled: isOrgAdmin,
     staleTime: 5 * 60 * 1000,
   });
   const settingsQuery = useQuery({
     ...trpc.settings.get.queryOptions(),
-    enabled: isSuperAdmin,
+    enabled: isOrgAdmin,
     retry: false,
   });
   const fleetQuery = useQuery({
     ...trpc.fleet.list.queryOptions({ environmentId: selectedEnvironmentId ?? "" }),
-    enabled: isSuperAdmin && !!selectedEnvironmentId,
+    enabled: isOrgAdmin && !!selectedEnvironmentId,
   });
 
   function getCardStatus(title: string): React.ReactNode {
@@ -97,7 +95,7 @@ export function SettingsOverview() {
       items: group.items.filter((item) => {
         if (item.designHidden) return false;
         if (demoMode && item.demoHidden) return false;
-        if (item.requiredSuperAdmin) return isSuperAdmin;
+        if (item.requiredSuperAdmin) return isOrgAdmin;
         return true;
       }),
     }))

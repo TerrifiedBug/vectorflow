@@ -9,11 +9,10 @@
  *   `PlatformOperator`, not `User`. This helper returns the org-scoped
  *   equivalent: "this user is an OWNER or ADMIN of this organisation".
  *
- * Migration plan:
- *   Per-callsite, replace `user.isSuperAdmin` reads on routers with a
- *   call to `isOrgWideAdmin(userId, ctx.organizationId)`. Once every
- *   reader has been migrated, drop the column and the deprecated
- *   `requireSuperAdmin()` rail.
+ * Migration (complete, slice 7c):
+ *   The legacy `User.isSuperAdmin` column has been dropped. Every reader
+ *   uses `isOrgWideAdmin(userId, ctx.organizationId)`; the deprecated
+ *   `requireSuperAdmin()` middleware was removed alongside the column.
  *
  * Single-tenant OSS installs are unaffected: the install bootstrap
  * (`setup.ts`) creates the first user as OWNER of `DEFAULT_ORG_ID`,

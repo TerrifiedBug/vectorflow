@@ -27,7 +27,6 @@ export const userRouter = router({
           authMethod: true,
           mustChangePassword: true,
           totpEnabled: true,
-          isSuperAdmin: true,
           memberships: {
             select: { team: { select: { requireTwoFactor: true } } },
           },
@@ -45,11 +44,6 @@ export const userRouter = router({
       authMethod: user?.authMethod ?? "LOCAL",
       mustChangePassword: user?.mustChangePassword ?? false,
       totpEnabled: user?.totpEnabled ?? false,
-      /**
-       * @deprecated Read `isOrgAdmin` instead. This field is retained
-       *   for back-compat while UI callsites migrate.
-       */
-      isSuperAdmin: user?.isSuperAdmin ?? false,
       /** True when the caller is OWNER or ADMIN of their resolved org. */
       isOrgAdmin,
       twoFactorRequired: user?.authMethod !== "OIDC" && teamRequires2fa,
@@ -416,7 +410,6 @@ export const userRouter = router({
             totpSecret: null,
             totpBackupCodes: null,
             scimExternalId: null,
-            isSuperAdmin: false,
             lockedAt: new Date(),
             lockedBy: "erasure",
           },
@@ -616,7 +609,6 @@ export const userRouter = router({
             totpSecret: null,
             totpBackupCodes: null,
             scimExternalId: null,
-            isSuperAdmin: false,
             lockedAt: new Date(),
             lockedBy: "erasure",
           },

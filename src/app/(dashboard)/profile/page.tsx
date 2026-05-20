@@ -164,9 +164,9 @@ export default function ProfilePage() {
                     <Badge variant="secondary">
                       {roleQuery.data.role}
                     </Badge>
-                    {roleQuery.data.isSuperAdmin && (
+                    {roleQuery.data.isOrgAdmin && (
                       <Badge variant="outline" className="border-amber-500/50 text-amber-700 dark:text-amber-400">
-                        Super Admin
+                        Org Admin
                       </Badge>
                     )}
                   </>

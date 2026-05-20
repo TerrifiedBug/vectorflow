@@ -309,12 +309,11 @@ export async function buildOrgDataExport(
 
   checkpoint();
   // Tenant users referenced from orgMembers. Use an explicit `select` so
-  // sensitive User columns (totpSecret, totpBackupCodes, isSuperAdmin,
-  // mustChangePassword, lockedBy, scimExternalId, passwordHash, image)
-  // never leave the database row \u2014 they're not portability data, and
-  // some are credential material that a leak would compromise. Whitelist
-  // only the identity fields the customer needs to map orgMembers.userId
-  // to a real person.
+  // sensitive User columns (totpSecret, totpBackupCodes, mustChangePassword,
+  // lockedBy, scimExternalId, passwordHash, image) never leave the
+  // database row — they're not portability data, and some are credential
+  // material that a leak would compromise. Whitelist only the identity
+  // fields the customer needs to map orgMembers.userId to a real person.
   const memberUserIds = orgMembers.map((m: { userId: string }) => m.userId);
   const tenantUsers = memberUserIds.length
     ? await db.user.findMany({
