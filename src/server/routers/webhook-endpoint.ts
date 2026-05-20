@@ -4,7 +4,11 @@ import { router, protectedProcedure, withTeamAccess, denyInDemo } from "@/trpc/i
 import { prisma } from "@/lib/prisma";
 import { AlertMetric } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
-import { encrypt } from "@/server/services/crypto";
+import { ENCRYPTION_DOMAINS } from "@/server/services/crypto";
+import {
+  encryptForOrgOrFallback,
+  loadOrgDataKeyCiphertext,
+} from "@/server/services/crypto-v3-callsite";
 import { validatePublicUrl } from "@/server/services/url-validation";
 import { deliverOutboundWebhook } from "@/server/services/outbound-webhook";
 
@@ -57,21 +61,40 @@ export const webhookEndpointRouter = router({
     .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("webhookEndpoint.created", "WebhookEndpoint"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       await validatePublicUrl(input.url);
 
-      const encryptedSecret = input.secret ? encrypt(input.secret) : null;
-
+      // Create the endpoint row first (without the secret) so we have a
+      // real endpoint.id to use as the AAD rowId when encrypting. Using a
+      // surrogate rowId (like teamId) would make the ciphertext unreadable
+      // by the delivery path which decrypts with rowId=endpoint.id.
       const endpoint = await prisma.webhookEndpoint.create({
         data: {
           teamId: input.teamId,
+          organizationId: ctx.organizationId,
           name: input.name,
           url: input.url,
           eventTypes: input.eventTypes,
-          encryptedSecret,
+          encryptedSecret: null,
         },
-        select: ENDPOINT_SELECT,
+        select: { id: true, name: true, url: true, eventTypes: true, enabled: true, createdAt: true, updatedAt: true },
       });
+      // Encrypt the secret with the real endpoint.id and update the row.
+      // PR 9-B — v3-or-v2 wrapper; GENERIC domain matches the decrypt side.
+      if (input.secret) {
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+        const encryptedSecret = await encryptForOrgOrFallback(input.secret, {
+          orgId: ctx.organizationId,
+          dataKeyCiphertext,
+          domain: ENCRYPTION_DOMAINS.GENERIC,
+          rowTable: "WebhookEndpoint",
+          rowId: endpoint.id,
+        });
+        await prisma.webhookEndpoint.update({
+          where: { id: endpoint.id },
+          data: { encryptedSecret },
+        });
+      }
 
       // Return the plaintext secret once so the admin can copy it.
       // After this response, the secret is never exposed again.
@@ -99,11 +122,11 @@ export const webhookEndpointRouter = router({
     .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("webhookEndpoint.updated", "WebhookEndpoint"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       // Verify ownership
       const existing = await prisma.webhookEndpoint.findFirst({
         where: { id: input.id, teamId: input.teamId },
-        select: { id: true },
+        select: { id: true, organizationId: true },
       });
       if (!existing) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Webhook endpoint not found" });
@@ -117,7 +140,22 @@ export const webhookEndpointRouter = router({
       if (input.name !== undefined) updateData.name = input.name;
       if (input.url !== undefined) updateData.url = input.url;
       if (input.eventTypes !== undefined) updateData.eventTypes = input.eventTypes;
-      if (input.secret !== undefined) updateData.encryptedSecret = encrypt(input.secret);
+      if (input.secret !== undefined) {
+        // Use the row's persisted organizationId for the AAD, not ctx.organizationId.
+        // This keeps the AAD consistent between encrypt (here) and decrypt
+        // (outbound-webhook.ts, which reads endpoint.organizationId from the DB).
+        // For endpoints created before the organizationId column was populated,
+        // the persisted value is the source of truth because delivery uses it.
+        const rowOrgId = existing.organizationId;
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, rowOrgId);
+        updateData.encryptedSecret = await encryptForOrgOrFallback(input.secret, {
+          orgId: rowOrgId,
+          dataKeyCiphertext,
+          domain: ENCRYPTION_DOMAINS.GENERIC,
+          rowTable: "WebhookEndpoint",
+          rowId: existing.id,
+        });
+      }
 
       return prisma.webhookEndpoint.update({
         where: { id: input.id },
@@ -188,6 +226,7 @@ export const webhookEndpointRouter = router({
           id: true,
           url: true,
           encryptedSecret: true,
+          organizationId: true,
           // Phase 5aa: include confirmedAt so the delivery call below sees
           // an explicit confirmation status. Test delivery against an
           // unconfirmed endpoint must still fail closed.
@@ -212,6 +251,7 @@ export const webhookEndpointRouter = router({
           url: endpoint.url,
           encryptedSecret: endpoint.encryptedSecret,
           id: endpoint.id,
+          organizationId: endpoint.organizationId,
           confirmedAt: endpoint.confirmedAt,
         },
         testPayload,

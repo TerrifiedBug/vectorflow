@@ -6,7 +6,12 @@ import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { generateEnrollmentToken } from "@/server/services/agent-token";
 import { DEFAULT_ORG_ID, DEFAULT_ORG_SLUG } from "@/lib/org-constants";
-import { encrypt, decrypt } from "@/server/services/crypto";
+import { encrypt, decrypt, ENCRYPTION_DOMAINS } from "@/server/services/crypto";
+import {
+  encryptForOrgOrFallback,
+  decryptForOrgOrFallback,
+  loadOrgDataKeyCiphertext,
+} from "@/server/services/crypto-v3-callsite";
 import { testVaultConnection as testVaultClientConnection, listVaultFields, type VaultBackendConfig } from "@/server/services/vault-client";
 import { enforceQuota } from "@/server/services/quotas-trpc";
 
@@ -292,7 +297,20 @@ export const environmentRouter = router({
         data.requireDeployApproval = requireDeployApproval;
       }
       if (gitToken !== undefined) {
-        data.gitToken = gitToken ? encrypt(gitToken) : null;
+        if (gitToken === null || gitToken === "") {
+          data.gitToken = null;
+        } else {
+          // PR 9-B — wrap through v3-or-v2. Same `GENERIC` HKDF domain
+          // as the legacy v2 path keeps historical ciphertexts readable.
+          const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, existing.organizationId);
+          data.gitToken = await encryptForOrgOrFallback(gitToken, {
+            orgId: existing.organizationId,
+            dataKeyCiphertext,
+            domain: ENCRYPTION_DOMAINS.GENERIC,
+            rowTable: "Environment",
+            rowId: existing.id,
+          });
+        }
       }
       if (gitProvider !== undefined) {
         data.gitProvider = gitProvider;
@@ -419,12 +437,19 @@ export const environmentRouter = router({
       if (!resolvedToken) {
         const env = await prisma.environment.findUnique({
           where: { id: input.environmentId },
-          select: { gitToken: true },
+          select: { id: true, organizationId: true, gitToken: true },
         });
         if (!env?.gitToken) {
           return { success: false, error: "No access token configured" };
         }
-        resolvedToken = decrypt(env.gitToken);
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, env.organizationId);
+        resolvedToken = await decryptForOrgOrFallback(env.gitToken, {
+          orgId: env.organizationId,
+          dataKeyCiphertext,
+          domain: ENCRYPTION_DOMAINS.GENERIC,
+          rowTable: "Environment",
+          rowId: env.id,
+        });
       }
 
       const parsedUrl = new URL(input.repoUrl);

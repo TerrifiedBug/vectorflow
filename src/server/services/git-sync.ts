@@ -2,7 +2,8 @@ import simpleGit, { SimpleGit } from "simple-git";
 import { mkdtemp, writeFile, rm, mkdir } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import { decrypt } from "@/server/services/crypto";
+import { ENCRYPTION_DOMAINS } from "@/server/services/crypto";
+import { decryptForOrgOrFallback } from "@/server/services/crypto-v3-callsite";
 import { errorLog, debugLog } from "@/lib/logger";
 import { isDemoMode } from "@/lib/is-demo-mode";
 
@@ -10,6 +11,13 @@ export interface GitSyncConfig {
   repoUrl: string;
   branch: string;
   encryptedToken: string;
+  /** Org that owns the Environment row carrying `gitToken`. */
+  orgId: string;
+  /** Environment row id; bound into the v3 AAD so a cross-row
+   * ciphertext swap cannot be silently decrypted. */
+  environmentId: string;
+  /** Org's `Organization.dataKeyCiphertext`. Null in OSS / self-hosted. */
+  dataKeyCiphertext: string | null;
 }
 
 export interface GitSyncResult {
@@ -77,7 +85,13 @@ export async function gitSyncCommitPipeline(
   let workdir: string | null = null;
 
   try {
-    const token = decrypt(config.encryptedToken);
+    const token = await decryptForOrgOrFallback(config.encryptedToken, {
+      orgId: config.orgId,
+      dataKeyCiphertext: config.dataKeyCiphertext,
+      domain: ENCRYPTION_DOMAINS.GENERIC,
+      rowTable: "Environment",
+      rowId: config.environmentId,
+    });
     const url = authenticatedUrl(config.repoUrl, token);
     workdir = await mkdtemp(join(tmpdir(), "vf-git-sync-"));
     const repoDir = join(workdir, "repo");
@@ -143,7 +157,13 @@ export async function gitSyncDeletePipeline(
   let workdir: string | null = null;
 
   try {
-    const token = decrypt(config.encryptedToken);
+    const token = await decryptForOrgOrFallback(config.encryptedToken, {
+      orgId: config.orgId,
+      dataKeyCiphertext: config.dataKeyCiphertext,
+      domain: ENCRYPTION_DOMAINS.GENERIC,
+      rowTable: "Environment",
+      rowId: config.environmentId,
+    });
     const url = authenticatedUrl(config.repoUrl, token);
     workdir = await mkdtemp(join(tmpdir(), "vf-git-sync-"));
     const repoDir = join(workdir, "repo");

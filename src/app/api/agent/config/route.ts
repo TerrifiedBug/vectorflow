@@ -5,7 +5,11 @@ import { authenticateAgentInOrg } from "@/server/services/agent-auth";
 import { resolveAgentOrg } from "@/server/services/agent-org-binding";
 import { collectSecretRefs, convertSecretRefsToEnvVars, resolveCertRefs, secretNameToEnvVar } from "@/server/services/secret-resolver";
 import { collectVarRefs, resolveVarRefs } from "@/server/services/variable-resolver";
-import { decrypt } from "@/server/services/crypto";
+import { decrypt, ENCRYPTION_DOMAINS } from "@/server/services/crypto";
+import {
+  decryptForOrgOrFallback,
+  loadOrgDataKeyCiphertext,
+} from "@/server/services/crypto-v3-callsite";
 import { fetchVaultSecrets, readVaultSecretObject, type VaultBackendConfig } from "@/server/services/vault-client";
 import { createHash } from "crypto";
 import { setExpectedChecksum } from "@/server/services/drift-metrics";
@@ -88,6 +92,7 @@ export async function GET(request: Request) {
       where: { id: agent.environmentId },
       select: {
         id: true,
+        organizationId: true,
         secretBackend: true,
         secretBackendConfig: true,
       },
@@ -167,13 +172,21 @@ export async function GET(request: Request) {
             environmentId: agent.environmentId,
             name: { in: Array.from(referencedNames) },
           },
+          select: { id: true, name: true, encryptedValue: true },
         });
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, environment.organizationId);
         for (const s of envSecrets) {
           const envKey = secretNameToEnvVar(s.name);
           if (secrets[envKey] !== undefined) {
             warnLog("agent-config", `Secret name collision: "${s.name}" normalizes to "${envKey}" which is already set`);
           }
-          secrets[envKey] = decrypt(s.encryptedValue);
+          secrets[envKey] = await decryptForOrgOrFallback(s.encryptedValue, {
+            orgId: environment.organizationId,
+            dataKeyCiphertext,
+            domain: ENCRYPTION_DOMAINS.GENERIC,
+            rowTable: "Secret",
+            rowId: `${agent.environmentId}:${s.name}`,
+          });
         }
       }
 

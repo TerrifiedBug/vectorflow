@@ -99,6 +99,7 @@ describe("GitSyncRetryService", () => {
       environment: {
         id: "env-1",
         name: "production",
+        organizationId: "default",
         gitRepoUrl: "https://github.com/acme/configs",
         gitBranch: "main",
         gitToken: "encrypted-token",
@@ -117,6 +118,9 @@ describe("GitSyncRetryService", () => {
         repoUrl: "https://github.com/acme/configs",
         branch: "main",
         encryptedToken: "encrypted-token",
+        orgId: "default",
+        environmentId: "env-1",
+        dataKeyCiphertext: null,
       },
       "production",
       "my-pipeline",

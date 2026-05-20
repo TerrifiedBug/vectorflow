@@ -71,6 +71,7 @@ describe("outbound-webhook", () => {
         id: "ep-1",
         url: "https://customer.example.com/webhook",
         encryptedSecret: null,
+        organizationId: "org_a",
         // Phase 5aa: pre-confirm so the test exercises the SSRF guard,
         // not the new confirmation-required short-circuit.
         confirmedAt: new Date(),
@@ -106,6 +107,7 @@ describe("outbound-webhook", () => {
         id: "ep-1",
         url: "http://10.0.0.5/hook",
         encryptedSecret: null,
+        organizationId: "org_a",
         // Phase 5aa: pre-confirm so we exercise the SSRF rejection path.
         confirmedAt: new Date(),
       },
@@ -131,6 +133,7 @@ describe("ai.ts streamCompletion", () => {
       prisma: {
         team: {
           findUnique: vi.fn().mockResolvedValue({
+            organizationId: "org_a",
             aiEnabled: true,
             aiProvider: "openai",
             aiBaseUrl: "http://localhost:11434/v1",
@@ -138,13 +141,24 @@ describe("ai.ts streamCompletion", () => {
             aiModel: "llama3",
           }),
         },
+        organization: {
+          findUnique: vi.fn().mockResolvedValue({ dataKeyCiphertext: null }),
+        },
       },
     }));
     vi.doMock("./crypto", () => ({
+      ENCRYPTION_DOMAINS: { GENERIC: "generic" } as const,
+      encrypt: vi.fn((s: string) => `enc:${s}`),
       decrypt: vi.fn((s: string) => s),
+      encryptForOrg: vi.fn(async (s: string) => `v3:${s}`),
+      decryptForOrg: vi.fn(async (s: string) => s.replace(/^v3:/, "")),
     }));
     vi.doMock("@/server/services/crypto", () => ({
+      ENCRYPTION_DOMAINS: { GENERIC: "generic" } as const,
+      encrypt: vi.fn((s: string) => `enc:${s}`),
       decrypt: vi.fn((s: string) => s),
+      encryptForOrg: vi.fn(async (s: string) => `v3:${s}`),
+      decryptForOrg: vi.fn(async (s: string) => s.replace(/^v3:/, "")),
     }));
     vi.doMock("@/lib/ai/rate-limiter", () => ({
       checkRateLimit: vi.fn().mockReturnValue({ allowed: true }),

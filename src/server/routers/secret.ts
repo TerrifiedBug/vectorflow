@@ -2,10 +2,26 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
-import { encrypt, decrypt } from "@/server/services/crypto";
+import { ENCRYPTION_DOMAINS } from "@/server/services/crypto";
+import {
+  encryptForOrgOrFallback,
+  decryptForOrgOrFallback,
+  loadOrgDataKeyCiphertext,
+} from "@/server/services/crypto-v3-callsite";
 import { withAudit } from "@/server/middleware/audit";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { collectSecretRefs } from "@/server/services/secret-resolver";
+
+/**
+ * AAD-row-id used for Secret v3 envelope encryption. Composite of
+ * environmentId + name so encrypt and decrypt see the same key without
+ * needing to round-trip the Prisma-default cuid. Stable for the lifetime
+ * of the row (rename is not supported — name is part of the unique
+ * constraint).
+ */
+function secretRowId(environmentId: string, name: string): string {
+  return `${environmentId}:${name}`;
+}
 
 export const secretRouter = router({
   list: protectedProcedure
@@ -33,17 +49,25 @@ export const secretRouter = router({
     .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("secret.created", "Secret"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const existing = await prisma.secret.findUnique({
         where: { environmentId_name: { environmentId: input.environmentId, name: input.name } },
       });
       if (existing) {
         throw new TRPCError({ code: "CONFLICT", message: "A secret with this name already exists in this environment" });
       }
+      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+      const encryptedValue = await encryptForOrgOrFallback(input.value, {
+        orgId: ctx.organizationId,
+        dataKeyCiphertext,
+        domain: ENCRYPTION_DOMAINS.GENERIC,
+        rowTable: "Secret",
+        rowId: secretRowId(input.environmentId, input.name),
+      });
       return prisma.secret.create({
         data: {
           name: input.name,
-          encryptedValue: encrypt(input.value),
+          encryptedValue,
           environmentId: input.environmentId,
         },
         select: { id: true, name: true, createdAt: true, updatedAt: true },
@@ -61,14 +85,22 @@ export const secretRouter = router({
     .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("secret.updated", "Secret"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const secret = await prisma.secret.findUnique({ where: { id: input.id } });
       if (!secret || secret.environmentId !== input.environmentId) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Secret not found" });
       }
+      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+      const encryptedValue = await encryptForOrgOrFallback(input.value, {
+        orgId: ctx.organizationId,
+        dataKeyCiphertext,
+        domain: ENCRYPTION_DOMAINS.GENERIC,
+        rowTable: "Secret",
+        rowId: secretRowId(secret.environmentId, secret.name),
+      });
       return prisma.secret.update({
         where: { id: input.id },
-        data: { encryptedValue: encrypt(input.value) },
+        data: { encryptedValue },
         select: { id: true, name: true, updatedAt: true },
       });
     }),
@@ -92,14 +124,22 @@ export const secretRouter = router({
     .input(z.object({ environmentId: z.string(), name: z.string() }))
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("secret.accessed", "Secret"))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const secret = await prisma.secret.findUnique({
         where: { environmentId_name: { environmentId: input.environmentId, name: input.name } },
       });
       if (!secret) {
         throw new TRPCError({ code: "NOT_FOUND", message: `Secret "${input.name}" not found` });
       }
-      return { value: decrypt(secret.encryptedValue) };
+      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+      const value = await decryptForOrgOrFallback(secret.encryptedValue, {
+        orgId: ctx.organizationId,
+        dataKeyCiphertext,
+        domain: ENCRYPTION_DOMAINS.GENERIC,
+        rowTable: "Secret",
+        rowId: secretRowId(secret.environmentId, secret.name),
+      });
+      return { value };
     }),
 
   /**

@@ -18,33 +18,29 @@ import { PageHeader } from "@/components/ui/page-header";
 export function SettingsOverview() {
   const trpc = useTRPC();
   const meQuery = useQuery(trpc.user.me.queryOptions());
-  // Gate platform-operator-only queries on `isPlatformOperator`, not on
-  // `isOrgAdmin`. The settings procedures (productionReadiness, checkVersion,
-  // settings.get) are protected by `requirePlatformOperator()` — an org admin
-  // who is not an operator would get 403s on every render.
-  const isPlatformOperator = meQuery.data?.isPlatformOperator === true;
+  const isOrgAdmin = meQuery.data?.isOrgAdmin === true;
 
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
   const demoMode = isDemoMode();
 
   const readinessQuery = useQuery({
     ...trpc.settings.productionReadiness.queryOptions(),
-    enabled: isPlatformOperator,
+    enabled: isOrgAdmin,
     staleTime: 5 * 60 * 1000,
   });
   const versionQuery = useQuery({
     ...trpc.settings.checkVersion.queryOptions(),
-    enabled: isPlatformOperator,
+    enabled: isOrgAdmin,
     staleTime: 5 * 60 * 1000,
   });
   const settingsQuery = useQuery({
     ...trpc.settings.get.queryOptions(),
-    enabled: isPlatformOperator,
+    enabled: isOrgAdmin,
     retry: false,
   });
   const fleetQuery = useQuery({
     ...trpc.fleet.list.queryOptions({ environmentId: selectedEnvironmentId ?? "" }),
-    enabled: isPlatformOperator && !!selectedEnvironmentId,
+    enabled: isOrgAdmin && !!selectedEnvironmentId,
   });
 
   function getCardStatus(title: string): React.ReactNode {
@@ -99,7 +95,7 @@ export function SettingsOverview() {
       items: group.items.filter((item) => {
         if (item.designHidden) return false;
         if (demoMode && item.demoHidden) return false;
-        if (item.requiredSuperAdmin) return isPlatformOperator;
+        if (item.requiredSuperAdmin) return isOrgAdmin;
         return true;
       }),
     }))

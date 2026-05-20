@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
 import { apiRoute } from "../_lib/api-handler";
-import { encrypt } from "@/server/services/crypto";
+import { ENCRYPTION_DOMAINS } from "@/server/services/crypto";
+import {
+  encryptForOrgOrFallback,
+  loadOrgDataKeyCiphertext,
+} from "@/server/services/crypto-v3-callsite";
 
 export const GET = apiRoute("secrets.read", async (_req, ctx) => {
   const secrets = await prisma.secret.findMany({
@@ -60,10 +64,18 @@ export const POST = apiRoute(
       );
     }
 
+    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+    const encryptedValue = await encryptForOrgOrFallback(body.value, {
+      orgId: ctx.organizationId,
+      dataKeyCiphertext,
+      domain: ENCRYPTION_DOMAINS.GENERIC,
+      rowTable: "Secret",
+      rowId: `${ctx.environmentId}:${body.name}`,
+    });
     const secret = await prisma.secret.create({
       data: {
         name: body.name,
-        encryptedValue: encrypt(body.value),
+        encryptedValue,
         environmentId: ctx.environmentId,
       },
       select: { id: true, name: true, createdAt: true, updatedAt: true },
@@ -135,9 +147,17 @@ export const PUT = apiRoute(
       );
     }
 
+    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+    const encryptedValue = await encryptForOrgOrFallback(body.value, {
+      orgId: ctx.organizationId,
+      dataKeyCiphertext,
+      domain: ENCRYPTION_DOMAINS.GENERIC,
+      rowTable: "Secret",
+      rowId: `${secret.environmentId}:${secret.name}`,
+    });
     const updated = await prisma.secret.update({
       where: { id: secret.id },
-      data: { encryptedValue: encrypt(body.value) },
+      data: { encryptedValue },
       select: { id: true, name: true, updatedAt: true },
     });
 

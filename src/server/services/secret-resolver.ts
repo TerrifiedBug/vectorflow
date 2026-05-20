@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { decrypt } from "./crypto";
+import { decrypt, ENCRYPTION_DOMAINS } from "./crypto";
+import {
+  decryptForOrgOrFallback,
+  loadOrgDataKeyCiphertext,
+} from "./crypto-v3-callsite";
 
 const SECRET_REF_PATTERN = /^SECRET\[(.+)]$/;
 const CERT_REF_PATTERN = /^CERT\[(.+)]$/;
@@ -23,16 +27,41 @@ export async function resolveSecretRefs(
 
   if (refs.size === 0) return config;
 
-  const secrets = await prisma.secret.findMany({
-    where: {
-      environmentId,
-      name: { in: Array.from(refs) },
-    },
-  });
+  // Load the environment's organizationId once so we can route every
+  // secret-row decrypt through the v3-or-v2 wrapper with the right org
+  // context.
+  const [environment, secrets] = await Promise.all([
+    prisma.environment.findUnique({
+      where: { id: environmentId },
+      select: { organizationId: true },
+    }),
+    prisma.secret.findMany({
+      where: {
+        environmentId,
+        name: { in: Array.from(refs) },
+      },
+      select: { id: true, name: true, encryptedValue: true },
+    }),
+  ]);
+
+  if (!environment) {
+    throw new Error(`Environment "${environmentId}" not found`);
+  }
+
+  const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, environment.organizationId);
 
   const secretMap = new Map<string, string>();
   for (const secret of secrets) {
-    secretMap.set(secret.name, decrypt(secret.encryptedValue));
+    secretMap.set(
+      secret.name,
+      await decryptForOrgOrFallback(secret.encryptedValue, {
+        orgId: environment.organizationId,
+        dataKeyCiphertext,
+        domain: ENCRYPTION_DOMAINS.GENERIC,
+        rowTable: "Secret",
+        rowId: `${environmentId}:${secret.name}`,
+      }),
+    );
   }
 
   for (const ref of refs) {

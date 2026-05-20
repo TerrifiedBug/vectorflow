@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { importVectorConfig } from "@/lib/config-generator";
-import { decrypt } from "@/server/services/crypto";
+import { decrypt, ENCRYPTION_DOMAINS } from "@/server/services/crypto";
+import {
+  decryptForOrgOrFallback,
+  loadOrgDataKeyCiphertext,
+} from "@/server/services/crypto-v3-callsite";
 import { encryptNodeConfig } from "@/server/services/config-crypto";
 import { writeAuditLog } from "@/server/services/audit";
 import { ComponentKind, Prisma } from "@/generated/prisma";
@@ -157,8 +161,18 @@ export async function POST(req: NextRequest) {
   // For Bitbucket: push events may not include file-level changes.
   // If we got commits but no changed files, fetch the diffstat.
   if (changedFiles.size === 0 && event.commits.length > 0 && provider.name === "bitbucket" && event.afterSha) {
-    // Bitbucket push events don't include file-level changes — fetch via diffstat API
-    const bbToken = matchedEnv.gitToken ? decrypt(matchedEnv.gitToken) : null;
+    // Bitbucket push events don't include file-level changes — fetch via diffstat API.
+    // Resolve the org's wrap state once so the wrapper picks v2 / v3 by ciphertext prefix.
+    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, matchedEnv.organizationId);
+    const bbToken = matchedEnv.gitToken
+      ? await decryptForOrgOrFallback(matchedEnv.gitToken, {
+          orgId: matchedEnv.organizationId,
+          dataKeyCiphertext,
+          domain: ENCRYPTION_DOMAINS.GENERIC,
+          rowTable: "Environment",
+          rowId: matchedEnv.id,
+        })
+      : null;
     if (bbToken && matchedEnv.gitRepoUrl) {
       const { BitbucketProvider } = await import("@/server/services/git-providers/bitbucket");
       const bbProvider = new BitbucketProvider();
@@ -179,8 +193,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "No YAML changes", processed: 0 });
   }
 
-  // Decrypt token once for file fetching
-  const token = matchedEnv.gitToken ? decrypt(matchedEnv.gitToken) : null;
+  // Decrypt token once for file fetching.
+  const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, matchedEnv.organizationId);
+  const token = matchedEnv.gitToken
+    ? await decryptForOrgOrFallback(matchedEnv.gitToken, {
+        orgId: matchedEnv.organizationId,
+        dataKeyCiphertext,
+        domain: ENCRYPTION_DOMAINS.GENERIC,
+        rowTable: "Environment",
+        rowId: matchedEnv.id,
+      })
+    : null;
   if (!token || !matchedEnv.gitRepoUrl) {
     return NextResponse.json(
       { error: "No git token or repo URL configured" },
