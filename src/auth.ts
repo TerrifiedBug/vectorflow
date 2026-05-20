@@ -410,15 +410,22 @@ async function getAuthInstance() {
                   userId: dbUser.id, action: "auth.user_provisioned", entityType: "Auth", entityId: "oidc",
                   ipAddress, userEmail: dbUser.email, userName: dbUser.name,
                 }).catch(() => {});
-              } else if (dbUser.authMethod === "LOCAL") {
-                // Block OIDC login for existing local accounts — admin must explicitly link
+              } else if (dbUser.authMethod && dbUser.authMethod !== "OIDC") {
+                // Block OIDC login for existing non-OIDC accounts — an
+                // admin MUST explicitly link the account through the
+                // settings surface, never via implicit email collision.
+                // Audit P2-1 / docs/plans/2026-05-20-go-live-readiness-audit.md:
+                // the old check only blocked authMethod === "LOCAL",
+                // letting an attacker who controlled an OIDC issuer
+                // silently fuse with an account whose primary
+                // authMethod was WEBAUTHN or MAGIC_LINK.
                 const ipAddress = await getClientIp();
                 writeAuditLog({
                   userId: dbUser.id, action: "auth.oidc_link_blocked", entityType: "Auth", entityId: "oidc",
                   ipAddress, userEmail: dbUser.email, userName: dbUser.name,
-                  metadata: { reason: "local_account_exists" },
+                  metadata: { reason: "non_oidc_account_exists", existingAuthMethod: dbUser.authMethod },
                 }).catch(() => {});
-                warnLog("auth", `OIDC login blocked: local account exists for ${dbUser.email}. Admin must explicitly link accounts.`);
+                warnLog("auth", `OIDC login blocked: existing account uses ${dbUser.authMethod} for ${dbUser.email}. Admin must explicitly link accounts.`);
                 return "/login?error=local_account";
               }
 
@@ -505,10 +512,12 @@ async function getAuthInstance() {
             // session's natural lifetime — Codex P1 finding on the
             // org-domain-claim PR.
             //
-            // Cached for 60s on the token itself so we don't hit the DB
-            // on every authenticated request. The trade-off is a worst-
-            // case 60s delay between erasure and session termination,
-            // which is well inside the GDPR-erasure latency expectation.
+            // Cached for 5s on the token itself so we don't hit the DB
+            // on every authenticated request. Audit P2-2 reduced the
+            // window from 60s; GDPR Art. 17 expectations are tighter
+            // than a minute, and 5s is short enough that an admin who
+            // just erased a user can refresh the dashboard and see the
+            // session gone.
             // Other lockedBy values (e.g. "brute_force") are sign-in
             // gates only — they auto-clear on the next sign-in attempt
             // past the unlock window and we leave active sessions alone.
@@ -518,7 +527,7 @@ async function getAuthInstance() {
               const lastCheck =
                 typeof lastCheckRaw === "number" ? lastCheckRaw : 0;
               const nowMs = Date.now();
-              if (nowMs - lastCheck > 60_000) {
+              if (nowMs - lastCheck > 5_000) {
                 const u = await prisma.user.findUnique({
                   where: { id: token.id as string },
                   select: { lockedAt: true, lockedBy: true },

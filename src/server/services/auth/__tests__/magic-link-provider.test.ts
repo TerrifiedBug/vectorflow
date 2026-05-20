@@ -192,7 +192,7 @@ describe("authorizeMagicLink", () => {
     expect(result).toBeNull();
   });
 
-  it("requires organizationId; refuses redeem when missing (codex P1)", async () => {
+  it("ignores credentials.organizationId; the token row is the org binding (audit P2-4)", async () => {
     mocks.consumeMagicLink.mockResolvedValue({
       ok: true,
       email: "a@example.test",
@@ -206,13 +206,14 @@ describe("authorizeMagicLink", () => {
       lockedAt: null,
     });
 
-    // Missing organizationId → reject without ever calling consumeMagicLink.
+    // No organizationId in credentials — the provider used to refuse,
+    // but the token alone is the org binding so the call succeeds.
     const result = await authorizeMagicLink({ token: "tok-no-org" });
-    expect(result).toBeNull();
-    expect(mocks.consumeMagicLink).not.toHaveBeenCalled();
+    expect(result).not.toBeNull();
+    expect(mocks.consumeMagicLink).toHaveBeenCalledWith({ token: "tok-no-org" });
   });
 
-  it("passes expectedOrganizationId verbatim when supplied", async () => {
+  it("does NOT forward credentials.organizationId to consumeMagicLink (audit P2-4)", async () => {
     mocks.consumeMagicLink.mockResolvedValue({
       ok: true,
       email: "a@example.test",
@@ -226,19 +227,31 @@ describe("authorizeMagicLink", () => {
       lockedAt: null,
     });
 
-    await authorizeMagicLink({ token: "tok-with-org", organizationId: "org-b" });
+    // Even when a (potentially attacker-controlled) organizationId is
+    // in the credentials, the provider trusts only the token row.
+    await authorizeMagicLink({ token: "tok-with-org", organizationId: "org-attacker" });
     expect(mocks.consumeMagicLink).toHaveBeenLastCalledWith({
       token: "tok-with-org",
-      expectedOrganizationId: "org-b",
     });
   });
 
-  it("refuses redeem when organizationId is an empty string", async () => {
+  it("succeeds when credentials.organizationId is an empty string — it is no longer used (audit P2-4)", async () => {
+    mocks.consumeMagicLink.mockResolvedValue({
+      ok: true,
+      email: "a@example.test",
+      organizationId: "org-a",
+    });
+    mocks.userFindFirst.mockResolvedValue({
+      id: "u",
+      email: "a@example.test",
+      name: null,
+      image: null,
+      lockedAt: null,
+    });
     const result = await authorizeMagicLink({
       token: "tok-empty-org",
       organizationId: "",
     });
-    expect(result).toBeNull();
-    expect(mocks.consumeMagicLink).not.toHaveBeenCalled();
+    expect(result).not.toBeNull();
   });
 });

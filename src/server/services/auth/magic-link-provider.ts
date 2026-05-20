@@ -56,27 +56,18 @@ export async function authorizeMagicLink(
     return null;
   }
 
-  // Codex P1 (PR #352): `expectedOrganizationId` is REQUIRED here. If
-  // credentials don't carry organizationId, `consumeMagicLink` would
-  // skip the tenant check, letting a token captured from org A be
-  // redeemed on org B. Refuse the redeem outright when missing.
-  if (
-    typeof credentials.organizationId !== "string" ||
-    credentials.organizationId.length === 0
-  ) {
-    warnLog(
-      "magic-link-provider",
-      "magic-link credentials missing organizationId; refusing redeem",
-    );
-    return null;
-  }
-  const expectedOrganizationId = credentials.organizationId;
-
+  // Audit P2-4 / docs/plans/2026-05-20-go-live-readiness-audit.md:
+  // do NOT trust `credentials.organizationId`. The token row IS the
+  // org binding — `consumeMagicLink` reads `organizationId` from the
+  // persisted row and returns it on success. The redeem ROUTE (not
+  // the provider) already validated that the request host matches
+  // the token's org BEFORE invoking signIn("magic-link"); the provider
+  // just trusts the token's own state and never reads
+  // `credentials.organizationId`.
   let result: Awaited<ReturnType<typeof consumeMagicLink>>;
   try {
     result = await consumeMagicLink({
       token: credentials.token,
-      expectedOrganizationId,
     });
   } catch (err) {
     warnLog("magic-link-provider", "consumeMagicLink threw", err);
@@ -177,7 +168,6 @@ export const magicLinkProvider = Credentials({
   name: "Magic Link",
   credentials: {
     token: { label: "Token", type: "text" },
-    organizationId: { label: "Organization", type: "text" },
   },
   authorize: authorizeMagicLink,
 });
