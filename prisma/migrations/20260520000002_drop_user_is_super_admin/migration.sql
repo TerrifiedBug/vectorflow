@@ -16,9 +16,9 @@
 -- 42704 (undefined_column) error. Use IF EXISTS so re-applies on dev
 -- DBs that may already have run the drop manually are no-ops.
 --
--- Cloud-OSS coupling: cloud retains the column in its own schema and
--- the legacy reader in `vectorflow-cloud/src/server/authz.ts` until
--- the next OSS→cloud sync PR. The OSS Prisma client is regenerated
--- without the field as part of this migration.
+-- Sync note: the cloud sync PR carries a paired edit to the cloud-side
+-- authz module to drop its legacy reader once the column is gone there.
+-- The OSS Prisma client is regenerated without the field as part of
+-- this migration.
 
 ALTER TABLE "User" DROP COLUMN IF EXISTS "isSuperAdmin";
