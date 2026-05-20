@@ -9,18 +9,15 @@ on:
       - "prisma/**"
       - "package.json"
       - "pnpm-lock.yaml"
-  push:
-    branches: [main]
-    paths:
-      - "src/**"
-      - "agent/**"
-      - "prisma/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
   schedule:
     - cron: "30 5 * * 1" # Monday 5:30 UTC
+  workflow_dispatch:
 
 permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   analyze-javascript:

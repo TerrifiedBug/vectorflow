@@ -1,23 +1,13 @@
 name: Smoke E2E
 
 on:
+  # Opt-in via the `e2e-ready` label. Re-runs only fire on synchronize
+  # when the label is already present, so a typical PR pays nothing
+  # for the E2E suite unless an operator marks it ready. Manual
+  # workflow_dispatch stays for ad-hoc runs.
   pull_request:
+    types: [labeled, synchronize, reopened]
     branches: [main]
-    paths:
-      - "src/**"
-      - "e2e/**"
-      - "prisma/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "eslint.config.mjs"
-      - "next.config.ts"
-      - "playwright.config.ts"
-      - "postcss.config.mjs"
-      - "prisma.config.ts"
-      - "sentry.*.config.ts"
-      - "tsconfig.json"
-      - "tsconfig.*.json"
-      - ".github/workflows/smoke-e2e.yml"
   workflow_dispatch:
 
 permissions:
@@ -29,6 +19,16 @@ concurrency:
 
 jobs:
   smoke-e2e:
+    # `labeled` fires once per label-add event; we MUST filter to the
+    # specific label so adding any random label doesn't fire the suite.
+    # On `synchronize`, the label set comes from
+    # `github.event.pull_request.labels` — we run only when the PR
+    # already carries `e2e-ready`.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+        ((github.event.action == 'labeled' && github.event.label.name == 'e2e-ready') ||
+         (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'e2e-ready'))))
     runs-on: ubuntu-latest
     timeout-minutes: 12
 

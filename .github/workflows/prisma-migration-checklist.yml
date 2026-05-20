@@ -2,7 +2,10 @@ name: Prisma Migration Checklist
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened, ready_for_review]
+    # `edited` fires on title/description tweaks — wasteful. `ready_for_review`
+    # is redundant with `synchronize` for draft transitions. Keep only the
+    # event types that actually change diff contents.
+    types: [opened, synchronize, reopened]
     paths:
       - "prisma/schema.prisma"
       - "prisma/migrations/**"
@@ -13,6 +16,10 @@ on:
 permissions:
   contents: read
   pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   checklist:
