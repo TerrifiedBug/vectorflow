@@ -238,6 +238,38 @@ export const requireRole = (minRole: Role) =>
   });
 
 /**
+ * Per-organisation admin authorization middleware. The org-scoped
+ * counterpart to `requirePlatformOperator`: an OrgMember whose role is
+ * OWNER or ADMIN of the caller's resolved organisation passes.
+ *
+ * Audit P1-3 / docs/plans/2026-05-20-go-live-readiness-audit.md: per-org
+ * settings (OIDC, sub-processor notice email, etc.) were gated behind
+ * `requirePlatformOperator()` which forced VectorFlow staff to mutate
+ * customer-owned settings on the customer's behalf — violating the
+ * "operators are NEVER tenant Users" boundary and breaking self-service
+ * SSO setup for cloud customers. This gate restores org-level control
+ * to org OWNERs/ADMINs while still being a defense-in-depth barrier in
+ * front of mutations (the per-procedure validation — e.g. the OIDC
+ * domain-claim gate — remains).
+ */
+export const requireOrgAdmin = () =>
+  t.middleware(async ({ ctx, next }) => {
+    if (!ctx.session?.user?.id) {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
+    const ok = await isOrgWideAdmin(ctx.session.user.id, ctx.organizationId);
+    if (!ok) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "This action requires an organisation OWNER or ADMIN role",
+      });
+    }
+    return next({
+      ctx: { ...ctx, session: ctx.session, userRole: "ADMIN" as Role },
+    });
+  });
+
+/**
  * Platform-operator authorization middleware.
  *
  * The platform-operator boundary is a hard line: operators are NEVER

@@ -17,6 +17,7 @@ vi.mock("@/trpc/init", () => {
     protectedProcedure: t.procedure,
     withTeamAccess: passthrough,
     requirePlatformOperator: passthrough,
+    requireOrgAdmin: passthrough,
     denyInDemo: passthrough,
     middleware: t.middleware,
   };
