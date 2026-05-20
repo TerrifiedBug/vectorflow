@@ -20,7 +20,14 @@ vi.mock("@/lib/logger", () => ({
 
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
-import { scimCreateUser } from "@/server/services/scim";
+import {
+  scimCreateUser,
+  scimUpdateUser,
+  scimPatchUser,
+  scimDeleteUser,
+  scimGetUser,
+  scimListUsers,
+} from "@/server/services/scim";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const writeAuditLogMock = vi.mocked(writeAuditLog);
@@ -41,7 +48,7 @@ describe("SCIM audit status logging", () => {
       lockedAt: null,
     } as never);
 
-    await scimCreateUser({
+    await scimCreateUser("org-1", {
       schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"],
       userName: "ada@example.com",
       externalId: "ext-1",
@@ -56,6 +63,7 @@ describe("SCIM audit status logging", () => {
           email: "ada@example.com",
           scimExternalId: "ext-1",
           status: "success",
+          organizationId: "org-1",
         }),
       }),
     );
@@ -72,7 +80,7 @@ describe("SCIM audit status logging", () => {
     } as never);
 
     await expect(
-      scimCreateUser({
+      scimCreateUser("org-1", {
         schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"],
         userName: "ada@example.com",
         externalId: "ext-1",
@@ -89,13 +97,14 @@ describe("SCIM audit status logging", () => {
           email: "ada@example.com",
           scimExternalId: "ext-1",
           status: "failure",
+          organizationId: "org-1",
           error: expect.stringContaining("cannot be adopted via SCIM"),
         }),
       }),
     );
   });
 
-  it("preserves the adoption action when a SCIM user adoption fails", async () => {
+  it("preserves the adoption action when a SCIM user adoption transaction fails", async () => {
     prismaMock.user.findUnique.mockResolvedValue({
       id: "user-1",
       email: "ada@example.com",
@@ -104,10 +113,12 @@ describe("SCIM audit status logging", () => {
       lockedAt: null,
       authMethod: "OIDC",
     } as never);
-    prismaMock.user.update.mockRejectedValue(new Error("adoption failed") as never);
+    // Adoption now upserts OrgMember alongside the User update inside a
+    // single $transaction([update, upsert]). Mock the array form failing.
+    prismaMock.$transaction.mockRejectedValue(new Error("adoption failed") as never);
 
     await expect(
-      scimCreateUser({
+      scimCreateUser("org-1", {
         schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"],
         userName: "ada@example.com",
         externalId: "ext-1",
@@ -124,9 +135,66 @@ describe("SCIM audit status logging", () => {
           email: "ada@example.com",
           scimExternalId: "ext-1",
           status: "failure",
+          organizationId: "org-1",
           error: "adoption failed",
         }),
       }),
     );
+  });
+});
+
+describe("SCIM cross-tenant isolation (audit P0-2)", () => {
+  it("scimGetUser returns null for users not in the caller's org", async () => {
+    prismaMock.user.findFirst.mockResolvedValue(null);
+    const result = await scimGetUser("org-A", "user-from-org-B");
+    expect(result).toBeNull();
+    // The query MUST filter by OrgMember to prevent existence leak.
+    expect(prismaMock.user.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "user-from-org-B",
+          orgMemberships: { some: { organizationId: "org-A" } },
+        }),
+      }),
+    );
+  });
+
+  it("scimListUsers filters by OrgMember in the caller's org", async () => {
+    prismaMock.user.findMany.mockResolvedValue([] as never);
+    prismaMock.user.count.mockResolvedValue(0 as never);
+    await scimListUsers("org-A");
+    expect(prismaMock.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          orgMemberships: { some: { organizationId: "org-A" } },
+        }),
+      }),
+    );
+  });
+
+  it("scimUpdateUser returns null when caller is not a member of the user's org", async () => {
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
+    const result = await scimUpdateUser("org-A", "user-from-org-B", {
+      name: { formatted: "Mallory" },
+    });
+    expect(result).toBeNull();
+    // Update MUST NOT be attempted on the global User row.
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it("scimPatchUser returns null when caller is not a member of the user's org", async () => {
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
+    const result = await scimPatchUser("org-A", "user-from-org-B", [
+      { op: "replace", path: "active", value: false },
+    ]);
+    expect(result).toBeNull();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it("scimDeleteUser returns null when caller is not a member of the user's org", async () => {
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
+    const result = await scimDeleteUser("org-A", "user-from-org-B");
+    expect(result).toBeNull();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 });
