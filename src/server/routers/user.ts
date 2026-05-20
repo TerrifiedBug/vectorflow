@@ -536,6 +536,15 @@ export const userRouter = router({
       // when the target has no other org memberships left after that.
       // A caller cannot reach into another customer's data.
       const result = await prisma.$transaction(async (tx) => {
+        // Codex PR #378 round-2 P1 — serialise concurrent
+        // erase/membership writes on the same user. Without the lock
+        // a peer org could OrgMember.create the target between our
+        // `orgMember.count` and the full-erasure update; the count
+        // returns 0, we pseudonymise, and the new membership ends up
+        // pointing at an erased User row. Postgres advisory locks
+        // serialise on userId; releases on commit/abort.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`vf:user-erase:${target.id}`})::bigint)`;
+
         // 1. Drop org-scoped relations for caller's org only.
         await tx.orgMember.deleteMany({
           where: { userId: target.id, organizationId },

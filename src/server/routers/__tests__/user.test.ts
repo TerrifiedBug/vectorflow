@@ -598,6 +598,7 @@ describe("userRouter", () => {
       prismaMock.$transaction.mockImplementation(
         async (fn: (tx: PrismaClient) => Promise<unknown>) => fn(prismaMock),
       );
+      prismaMock.$executeRaw.mockResolvedValue(1 as never);
       prismaMock.orgMember.deleteMany.mockResolvedValue({ count: 1 } as never);
       prismaMock.teamMember.deleteMany.mockResolvedValue({ count: 0 } as never);
       prismaMock.scimGroupMember.deleteMany.mockResolvedValue({ count: 0 } as never);
