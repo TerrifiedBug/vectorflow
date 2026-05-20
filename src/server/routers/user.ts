@@ -438,4 +438,217 @@ export const userRouter = router({
 
       return { id: userId, erased: true };
     }),
+
+  /**
+   * Admin-driven GDPR Art. 17 erasure.
+   *
+   * Lets an OWNER pseudonymise another OrgMember's User row when the
+   * customer asks the org to delete a former employee's account. The
+   * transaction body mirrors `eraseSelf` — same anonymise-email,
+   * same locked-out-of-future-signin invariants — but is initiated by
+   * an OWNER, not the target themselves.
+   *
+   * Constraints:
+   *   - Caller MUST be `OrgMember.role === "OWNER"` in the resolved org.
+   *   - Caller MUST NOT be the target (callers erase themselves via
+   *     `eraseSelf`, which also re-confirms credentials).
+   *   - Target MUST be a current OrgMember of the caller's org.
+   *   - Target MUST NOT be OWNER. Demote / `transferOwnership` first
+   *     so the org can never end up ownerless because of an erasure.
+   *   - The `reason` field is recorded in the audit row metadata so a
+   *     compliance review can trace why the erasure happened.
+   *
+   * Cross-org safety: we resolve target membership inside the same
+   * `ctx.organizationId` scope, so a caller cannot erase a user that
+   * belongs to a different organisation.
+   */
+  eraseUser: protectedProcedure
+    .use(denyInDemo())
+    .input(
+      z.object({
+        targetUserId: z.string().min(1),
+        reason: z
+          .string()
+          .min(12, "Provide a reason of at least 12 characters for the audit log.")
+          .max(2000),
+      }),
+    )
+    .use(withAudit("user.erased_by_admin", "User"))
+    .mutation(async ({ ctx, input }) => {
+      const orgMemberRole = (ctx as { orgMemberRole?: string }).orgMemberRole;
+      if (orgMemberRole !== "OWNER") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Erasing another user's account requires the OWNER role.",
+        });
+      }
+      const callerId = ctx.session?.user?.id;
+      if (!callerId) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
+      if (callerId === input.targetUserId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Use `user.eraseSelf` to erase your own account (it re-confirms your credentials).",
+        });
+      }
+
+      const organizationId = ctx.organizationId;
+
+      // Resolve the target's OrgMember row within the caller's org.
+      // If absent, the user either doesn't exist or belongs to another
+      // org — either way the caller has no authority to erase them.
+      const targetMembership = await prisma.orgMember.findUnique({
+        where: {
+          userId_organizationId: {
+            userId: input.targetUserId,
+            organizationId,
+          },
+        },
+        select: { id: true, role: true },
+      });
+      if (!targetMembership) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Target user is not a member of this organisation.",
+        });
+      }
+      if (targetMembership.role === "OWNER") {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message:
+            "Cannot erase an OWNER. Transfer ownership to another member first, then erase.",
+        });
+      }
+
+      const target = await prisma.user.findUnique({
+        where: { id: input.targetUserId },
+        select: { id: true, email: true },
+      });
+      if (!target) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+
+      // Codex PR #378 P1 — the caller's authority is bounded by their
+      // organisation. Tear down EVERY membership tying the target to
+      // THIS org first; only escalate to full User-row pseudonymisation
+      // when the target has no other org memberships left after that.
+      // A caller cannot reach into another customer's data.
+      const result = await prisma.$transaction(async (tx) => {
+        // Codex PR #378 round-2 P1 — serialise concurrent
+        // erase/membership writes on the same user. Without the lock
+        // a peer org could OrgMember.create the target between our
+        // `orgMember.count` and the full-erasure update; the count
+        // returns 0, we pseudonymise, and the new membership ends up
+        // pointing at an erased User row. Postgres advisory locks
+        // serialise on userId; releases on commit/abort.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`vf:user-erase:${target.id}`})::bigint)`;
+
+        // 1. Drop org-scoped relations for caller's org only.
+        await tx.orgMember.deleteMany({
+          where: { userId: target.id, organizationId },
+        });
+        await tx.teamMember.deleteMany({
+          where: { userId: target.id, team: { organizationId } },
+        });
+
+        // ScimGroup is intentionally single-tenant in the OSS schema
+        // (no organizationId column). Multi-tenant SCIM is a follow-up
+        // — for now, dropping the target's ScimGroupMember rows is
+        // scoped to this OSS install which IS one tenant.
+        await tx.scimGroupMember.deleteMany({ where: { userId: target.id } });
+
+        // 2. Anonymise AuditLog rows that reference the target IN
+        //    this org only. Other orgs' audit history stays intact
+        //    and continues to attribute past actions to the target's
+        //    User row (which we may keep alive below).
+        await tx.auditLog.updateMany({
+          where: { userId: target.id, organizationId },
+          data: { userId: null },
+        });
+
+        // 3. Check whether the target still belongs to any org after
+        //    this delete. If so, we MUST NOT touch the User row,
+        //    WebAuthn credentials, accounts, or PlatformOperator —
+        //    those would corrupt the target's identity in orgs the
+        //    caller has no authority over.
+        const remainingMemberships = await tx.orgMember.count({
+          where: { userId: target.id },
+        });
+
+        if (remainingMemberships > 0) {
+          return {
+            id: target.id,
+            erasureScope: "this_org_only" as const,
+            remainingOrgMemberships: remainingMemberships,
+          };
+        }
+
+        // 4. No other memberships — the target belongs only to this
+        //    org. Pseudonymise the User row + drop user-level
+        //    relations (same shape as `eraseSelf`). This is the full
+        //    Art. 17 path.
+        const anonEmail = `erased+${target.id}@anon.invalid`;
+        await tx.webAuthnCredential.deleteMany({ where: { userId: target.id } });
+        await tx.account.deleteMany({ where: { userId: target.id } });
+        await tx.userPreference.deleteMany({ where: { userId: target.id } });
+        await tx.dashboardView.deleteMany({ where: { userId: target.id } });
+
+        // Also blank cross-org audit rows now that the User itself
+        // is being pseudonymised — keeping the historical attribution
+        // would point at a row whose PII columns we're about to wipe.
+        await tx.auditLog.updateMany({
+          where: { userId: target.id },
+          data: { userId: null },
+        });
+
+        await tx.user.update({
+          where: { id: target.id },
+          data: {
+            email: anonEmail,
+            name: null,
+            image: null,
+            passwordHash: null,
+            authMethod: "LOCAL",
+            mustChangePassword: false,
+            totpEnabled: false,
+            totpSecret: null,
+            totpBackupCodes: null,
+            scimExternalId: null,
+            isSuperAdmin: false,
+            lockedAt: new Date(),
+            lockedBy: "erasure",
+          },
+        });
+
+        // Soft-delete a matching PlatformOperator row (single-tenant
+        // installs may have minted one tied to the user's email).
+        const operator = await tx.platformOperator.findUnique({
+          where: { email: target.email },
+          select: { id: true, deletedAt: true },
+        });
+        if (operator && !operator.deletedAt) {
+          await tx.platformOperator.update({
+            where: { id: operator.id },
+            data: { deletedAt: new Date() },
+          });
+        }
+
+        return {
+          id: target.id,
+          erasureScope: "full" as const,
+          remainingOrgMemberships: 0,
+        };
+      });
+
+      return {
+        id: result.id,
+        erasedBy: callerId,
+        reason: input.reason,
+        erased: true,
+        erasureScope: result.erasureScope,
+        remainingOrgMemberships: result.remainingOrgMemberships,
+      };
+    }),
 });
