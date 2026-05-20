@@ -21,7 +21,12 @@ export async function GET(request: Request): Promise<Response> {
 
   const userId = session.user.id;
 
-  // Resolve user's primary org, then check admin status within that org
+  // Resolve the user's org for the isOrgWideAdmin check + env scope.
+  // OSS is single-tenant — every user lives in DEFAULT_ORG_ID — so
+  // taking the oldest OrgMember is unambiguous. In multi-org cloud
+  // surfaces the org SHOULD come from the request tenant (host
+  // header → organizationId); that resolver lives in vectorflow-cloud
+  // and the cloud-side route overrides this path.
   const primaryMembership = await prisma.orgMember.findFirst({
     where: { userId },
     orderBy: { createdAt: "asc" },
@@ -33,9 +38,13 @@ export async function GET(request: Request): Promise<Response> {
     : false;
 
   let environmentIds: string[];
-  if (isOrgAdmin) {
+  if (isOrgAdmin && userOrgId) {
+    // codex PR #381 P1 — `userOrgId` is guaranteed non-null here
+    // because `isOrgAdmin` requires it; the explicit guard satisfies
+    // TS narrowing so the WHERE is ALWAYS bounded by org. No
+    // undefined → unscoped findMany leak.
     const environments = await prisma.environment.findMany({
-      where: { organizationId: userOrgId ?? undefined },
+      where: { organizationId: userOrgId },
       select: { id: true },
     });
     environmentIds = environments.map((e) => e.id);
