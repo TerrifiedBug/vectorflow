@@ -17,7 +17,13 @@ export const TAP_TTL_MS = 5 * 60 * 1000;
 
 export async function setActiveTap(
   requestId: string,
-  tap: { nodeId: string; pipelineId: string; componentId: string },
+  tap: {
+    nodeId: string;
+    pipelineId: string;
+    componentId: string;
+    /** Tenant scope persisted on the tap row (audit P2-10). */
+    organizationId?: string;
+  },
 ): Promise<void> {
   await prisma.activeTap.create({
     data: {
@@ -25,6 +31,7 @@ export async function setActiveTap(
       nodeId: tap.nodeId,
       pipelineId: tap.pipelineId,
       componentId: tap.componentId,
+      organizationId: tap.organizationId ?? "default",
       expiresAt: new Date(Date.now() + TAP_TTL_MS),
     },
   });

@@ -436,6 +436,11 @@ model WebAuthnCredential {
 /// enough for the platform/authenticator round trip.
 model WebAuthnChallenge {
   id        String   @id @default(cuid())
+  /// Tenant scope (audit P2-10). The challenge bytes are themselves a
+  /// 256-bit secret so cross-org enumeration is not feasible without
+  /// guessing, but having the column lets the cleanup job filter by
+  /// tenant and lets RLS fence direct reads end-to-end.
+  organizationId String  @default("default")
   /// One of "register" or "authenticate".
   kind      String
   /// The challenge bytes, base64url-encoded.
@@ -449,6 +454,7 @@ model WebAuthnChallenge {
 
   @@index([expiresAt])
   @@index([userId])
+  @@index([organizationId, expiresAt])
 }
 
 /// Magic-link sign-in token.
@@ -1034,6 +1040,10 @@ model EventSampleRequest {
 /// survives across server instances in HA deployments.
 model ActiveTap {
   requestId   String   @id
+  /// Tenant scope (audit P2-10). `pipeline.stopTap` runs inline
+  /// authorisation on top of this row; the column adds RLS coverage
+  /// for any future direct query that bypasses the handler.
+  organizationId String   @default("default")
   nodeId      String
   pipelineId  String
   componentId String
@@ -1042,6 +1052,7 @@ model ActiveTap {
 
   @@index([expiresAt])
   @@index([nodeId])
+  @@index([organizationId, expiresAt])
 }
 
 model EventSample {

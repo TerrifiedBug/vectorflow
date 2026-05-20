@@ -83,6 +83,8 @@ export async function startRegistration(opts: {
   userId: string;
   userName: string;
   userDisplayName?: string;
+  /** Tenant scope persisted on the challenge row (audit P2-10). */
+  organizationId?: string;
   /**
    * Existing credentials for the user; passed as `excludeCredentials` so
    * the authenticator refuses to register the same passkey twice.
@@ -116,6 +118,7 @@ export async function startRegistration(opts: {
       kind: "register",
       challenge: options.challenge,
       userId: opts.userId,
+      organizationId: opts.organizationId ?? "default",
       expiresAt: new Date(Date.now() + CHALLENGE_TTL_MS),
     },
   });
@@ -236,6 +239,8 @@ export async function finishRegistration(opts: {
 export async function startAuthentication(opts: {
   rp: WebAuthnRpConfig;
   userId?: string;
+  /** Tenant scope persisted on the challenge row (audit P2-10). */
+  organizationId?: string;
 }): Promise<PublicKeyCredentialRequestOptionsJSON> {
   const allowCredentials = opts.userId
     ? (
@@ -260,6 +265,7 @@ export async function startAuthentication(opts: {
       kind: "authenticate",
       challenge: options.challenge,
       userId: opts.userId ?? null,
+      organizationId: opts.organizationId ?? "default",
       expiresAt: new Date(Date.now() + CHALLENGE_TTL_MS),
     },
   });
