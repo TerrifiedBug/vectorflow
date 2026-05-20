@@ -4,7 +4,11 @@ import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { encrypt, decrypt } from "@/server/services/crypto";
+import { encrypt, decrypt, ENCRYPTION_DOMAINS } from "@/server/services/crypto";
+import {
+  decryptForOrgOrFallback,
+  loadOrgDataKeyCiphertext,
+} from "@/server/services/crypto-v3-callsite";
 import { verifyTotpCode, verifyBackupCode } from "@/server/services/totp";
 import { authConfig } from "@/auth.config";
 import { writeAuditLog } from "@/server/services/audit";
@@ -102,7 +106,14 @@ async function getOidcSettings(orgIdOverride?: string) {
     if (settings?.oidcIssuer && settings?.oidcClientId && settings?.oidcClientSecret) {
       let clientSecret: string;
       try {
-        clientSecret = decrypt(settings.oidcClientSecret);
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, orgId);
+        clientSecret = await decryptForOrgOrFallback(settings.oidcClientSecret, {
+          orgId,
+          dataKeyCiphertext,
+          domain: ENCRYPTION_DOMAINS.GENERIC,
+          rowTable: "OrganizationSettings",
+          rowId: settings.id,
+        });
       } catch {
         return null;
       }

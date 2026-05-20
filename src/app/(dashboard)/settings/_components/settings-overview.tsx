@@ -18,29 +18,29 @@ import { PageHeader } from "@/components/ui/page-header";
 export function SettingsOverview() {
   const trpc = useTRPC();
   const meQuery = useQuery(trpc.user.me.queryOptions());
-  const isOrgAdmin = meQuery.data?.isOrgAdmin === true;
+  const isPlatformOperator = meQuery.data?.isPlatformOperator === true;
 
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
   const demoMode = isDemoMode();
 
   const readinessQuery = useQuery({
     ...trpc.settings.productionReadiness.queryOptions(),
-    enabled: isOrgAdmin,
+    enabled: isPlatformOperator,
     staleTime: 5 * 60 * 1000,
   });
   const versionQuery = useQuery({
     ...trpc.settings.checkVersion.queryOptions(),
-    enabled: isOrgAdmin,
+    enabled: isPlatformOperator,
     staleTime: 5 * 60 * 1000,
   });
   const settingsQuery = useQuery({
     ...trpc.settings.get.queryOptions(),
-    enabled: isOrgAdmin,
+    enabled: isPlatformOperator,
     retry: false,
   });
   const fleetQuery = useQuery({
     ...trpc.fleet.list.queryOptions({ environmentId: selectedEnvironmentId ?? "" }),
-    enabled: isOrgAdmin && !!selectedEnvironmentId,
+    enabled: isPlatformOperator && !!selectedEnvironmentId,
   });
 
   function getCardStatus(title: string): React.ReactNode {
@@ -95,7 +95,7 @@ export function SettingsOverview() {
       items: group.items.filter((item) => {
         if (item.designHidden) return false;
         if (demoMode && item.demoHidden) return false;
-        if (item.requiredSuperAdmin) return isOrgAdmin;
+        if (item.requiredSuperAdmin) return isPlatformOperator;
         return true;
       }),
     }))

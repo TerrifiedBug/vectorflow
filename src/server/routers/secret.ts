@@ -49,16 +49,25 @@ export const secretRouter = router({
     .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("secret.created", "Secret"))
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ input }) => {
       const existing = await prisma.secret.findUnique({
         where: { environmentId_name: { environmentId: input.environmentId, name: input.name } },
       });
       if (existing) {
         throw new TRPCError({ code: "CONFLICT", message: "A secret with this name already exists in this environment" });
       }
-      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+      // Use the environment's organizationId for the AAD so that runtime
+      // decrypt paths (secret-resolver, agent config) use the same org
+      // as the write path. For legacy environments this may differ from
+      // ctx.organizationId.
+      const env = await prisma.environment.findUnique({
+        where: { id: input.environmentId },
+        select: { organizationId: true },
+      });
+      const envOrgId = env?.organizationId ?? input.environmentId;
+      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, envOrgId);
       const encryptedValue = await encryptForOrgOrFallback(input.value, {
-        orgId: ctx.organizationId,
+        orgId: envOrgId,
         dataKeyCiphertext,
         domain: ENCRYPTION_DOMAINS.GENERIC,
         rowTable: "Secret",
@@ -85,14 +94,22 @@ export const secretRouter = router({
     .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("secret.updated", "Secret"))
-    .mutation(async ({ input, ctx }) => {
-      const secret = await prisma.secret.findUnique({ where: { id: input.id } });
+    .mutation(async ({ input }) => {
+      const secret = await prisma.secret.findUnique({
+        where: { id: input.id },
+        select: { environmentId: true, name: true },
+      });
       if (!secret || secret.environmentId !== input.environmentId) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Secret not found" });
       }
-      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+      const env = await prisma.environment.findUnique({
+        where: { id: secret.environmentId },
+        select: { organizationId: true },
+      });
+      const envOrgId = env?.organizationId ?? secret.environmentId;
+      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, envOrgId);
       const encryptedValue = await encryptForOrgOrFallback(input.value, {
-        orgId: ctx.organizationId,
+        orgId: envOrgId,
         dataKeyCiphertext,
         domain: ENCRYPTION_DOMAINS.GENERIC,
         rowTable: "Secret",
@@ -124,16 +141,23 @@ export const secretRouter = router({
     .input(z.object({ environmentId: z.string(), name: z.string() }))
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("secret.accessed", "Secret"))
-    .query(async ({ input, ctx }) => {
-      const secret = await prisma.secret.findUnique({
-        where: { environmentId_name: { environmentId: input.environmentId, name: input.name } },
-      });
+    .query(async ({ input }) => {
+      const [secret, env] = await Promise.all([
+        prisma.secret.findUnique({
+          where: { environmentId_name: { environmentId: input.environmentId, name: input.name } },
+        }),
+        prisma.environment.findUnique({
+          where: { id: input.environmentId },
+          select: { organizationId: true },
+        }),
+      ]);
       if (!secret) {
         throw new TRPCError({ code: "NOT_FOUND", message: `Secret "${input.name}" not found` });
       }
-      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+      const envOrgId = env?.organizationId ?? input.environmentId;
+      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, envOrgId);
       const value = await decryptForOrgOrFallback(secret.encryptedValue, {
-        orgId: ctx.organizationId,
+        orgId: envOrgId,
         dataKeyCiphertext,
         domain: ENCRYPTION_DOMAINS.GENERIC,
         rowTable: "Secret",

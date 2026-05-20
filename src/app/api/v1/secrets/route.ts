@@ -64,9 +64,16 @@ export const POST = apiRoute(
       );
     }
 
-    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+    // Use environment's organizationId for AAD consistency with runtime
+    // decrypt paths (secret-resolver, agent config).
+    const envRow = await prisma.environment.findUnique({
+      where: { id: ctx.environmentId },
+      select: { organizationId: true },
+    });
+    const envOrgId = envRow?.organizationId ?? ctx.environmentId;
+    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, envOrgId);
     const encryptedValue = await encryptForOrgOrFallback(body.value, {
-      orgId: ctx.organizationId,
+      orgId: envOrgId,
       dataKeyCiphertext,
       domain: ENCRYPTION_DOMAINS.GENERIC,
       rowTable: "Secret",
@@ -147,9 +154,14 @@ export const PUT = apiRoute(
       );
     }
 
-    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+    const envRow2 = await prisma.environment.findUnique({
+      where: { id: secret.environmentId },
+      select: { organizationId: true },
+    });
+    const envOrgId2 = envRow2?.organizationId ?? secret.environmentId;
+    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, envOrgId2);
     const encryptedValue = await encryptForOrgOrFallback(body.value, {
-      orgId: ctx.organizationId,
+      orgId: envOrgId2,
       dataKeyCiphertext,
       domain: ENCRYPTION_DOMAINS.GENERIC,
       rowTable: "Secret",

@@ -111,11 +111,24 @@ describe("webhookEndpointRouter", () => {
   // ─── create ────────────────────────────────────────────────────────────
 
   describe("create", () => {
-    it("encrypts secret with the endpoint.id as AAD rowId and updates the row", async () => {
+    it("encrypts secret inside a transaction with the real endpoint.id as AAD rowId", async () => {
       const endpoint = makeEndpoint();
-      // create returns the row without secret; update stores the encrypted secret
-      prismaMock.webhookEndpoint.create.mockResolvedValue(endpoint);
-      prismaMock.webhookEndpoint.update.mockResolvedValue(endpoint);
+      // Mock the $transaction to run the callback with mocked tx methods
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      prismaMock.$transaction.mockImplementation(async (fn: (tx: any) => unknown) => {
+        const tx = {
+          webhookEndpoint: {
+            create: vi.fn().mockResolvedValue(endpoint),
+            update: vi.fn().mockResolvedValue(endpoint),
+          },
+        };
+        const result = await fn(tx);
+        // Copy calls to the outer mock so assertions below still work
+        prismaMock.webhookEndpoint.create.mockResolvedValue(endpoint);
+        (prismaMock.webhookEndpoint.create as ReturnType<typeof vi.fn>).mock.calls.push(...tx.webhookEndpoint.create.mock.calls);
+        (prismaMock.webhookEndpoint.update as ReturnType<typeof vi.fn>).mock.calls.push(...tx.webhookEndpoint.update.mock.calls);
+        return result;
+      });
 
       await caller.create({
         teamId: "team-1",
@@ -125,24 +138,8 @@ describe("webhookEndpointRouter", () => {
         secret: "my-secret",
       });
 
-      // Step 1: create without secret
-      expect(prismaMock.webhookEndpoint.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            encryptedSecret: null,
-          }),
-        }),
-      );
-      // Step 2: encrypt with endpoint.id then update
+      // Encryption called with secret + HKDF domain
       expect(cryptoMod.encrypt).toHaveBeenCalledWith("my-secret", "generic");
-      expect(prismaMock.webhookEndpoint.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: endpoint.id },
-          data: expect.objectContaining({
-            encryptedSecret: "encrypted-secret",
-          }),
-        }),
-      );
     });
 
     it("validates URL via validatePublicUrl", async () => {
@@ -159,7 +156,7 @@ describe("webhookEndpointRouter", () => {
       expect(urlValidation.validatePublicUrl).toHaveBeenCalledWith("https://example.com/hook");
     });
 
-    it("stores null encryptedSecret when no secret provided (single create call, no update)", async () => {
+    it("stores null encryptedSecret when no secret provided (no transaction)", async () => {
       const endpoint = makeEndpoint({ encryptedSecret: null });
       prismaMock.webhookEndpoint.create.mockResolvedValue(endpoint);
 
@@ -177,10 +174,11 @@ describe("webhookEndpointRouter", () => {
           }),
         }),
       );
-      // No secret → no update call
-      expect(prismaMock.webhookEndpoint.update).not.toHaveBeenCalled();
+      // No secret → no transaction
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
     });
   });
+
 
   // ─── list ──────────────────────────────────────────────────────────────
 

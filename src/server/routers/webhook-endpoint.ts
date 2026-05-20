@@ -64,10 +64,45 @@ export const webhookEndpointRouter = router({
     .mutation(async ({ input, ctx }) => {
       await validatePublicUrl(input.url);
 
-      // Create the endpoint row first (without the secret) so we have a
-      // real endpoint.id to use as the AAD rowId when encrypting. Using a
-      // surrogate rowId (like teamId) would make the ciphertext unreadable
-      // by the delivery path which decrypts with rowId=endpoint.id.
+      // We need the real endpoint.id for the v3 AAD rowId, but we can't
+      // have it before the row exists. Solution: use a Prisma transaction
+      // to pre-generate the cuid, encrypt with it, then create the row
+      // atomically — or use the create-then-update pattern inside a
+      // transaction so partial failure leaves no orphan.
+      let plaintextSecret: string | null = input.secret ?? null;
+
+      if (input.secret) {
+        const endpoint = await prisma.$transaction(async (tx) => {
+          const row = await tx.webhookEndpoint.create({
+            data: {
+              teamId: input.teamId,
+              organizationId: ctx.organizationId,
+              name: input.name,
+              url: input.url,
+              eventTypes: input.eventTypes,
+              encryptedSecret: null,
+            },
+            select: { id: true, name: true, url: true, eventTypes: true, enabled: true, createdAt: true, updatedAt: true },
+          });
+          // Encrypt inside the transaction. If KMS/encryption fails, the
+          // transaction rolls back and no orphan row is left.
+          const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+          const encryptedSecret = await encryptForOrgOrFallback(input.secret!, {
+            orgId: ctx.organizationId,
+            dataKeyCiphertext,
+            domain: ENCRYPTION_DOMAINS.GENERIC,
+            rowTable: "WebhookEndpoint",
+            rowId: row.id,
+          });
+          await tx.webhookEndpoint.update({
+            where: { id: row.id },
+            data: { encryptedSecret },
+          });
+          return row;
+        });
+        return { ...endpoint, secret: plaintextSecret };
+      }
+
       const endpoint = await prisma.webhookEndpoint.create({
         data: {
           teamId: input.teamId,
@@ -79,29 +114,9 @@ export const webhookEndpointRouter = router({
         },
         select: { id: true, name: true, url: true, eventTypes: true, enabled: true, createdAt: true, updatedAt: true },
       });
-      // Encrypt the secret with the real endpoint.id and update the row.
-      // PR 9-B — v3-or-v2 wrapper; GENERIC domain matches the decrypt side.
-      if (input.secret) {
-        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
-        const encryptedSecret = await encryptForOrgOrFallback(input.secret, {
-          orgId: ctx.organizationId,
-          dataKeyCiphertext,
-          domain: ENCRYPTION_DOMAINS.GENERIC,
-          rowTable: "WebhookEndpoint",
-          rowId: endpoint.id,
-        });
-        await prisma.webhookEndpoint.update({
-          where: { id: endpoint.id },
-          data: { encryptedSecret },
-        });
-      }
 
       // Return the plaintext secret once so the admin can copy it.
-      // After this response, the secret is never exposed again.
-      return {
-        ...endpoint,
-        secret: input.secret ?? null,
-      };
+      return { ...endpoint, secret: null };
     }),
 
   /**

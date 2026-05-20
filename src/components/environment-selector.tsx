@@ -47,12 +47,11 @@ export function EnvironmentSelector() {
 
   // Fetch current user info to check super admin status
   const { data: me } = useQuery(trpc.user.me.queryOptions());
-  const isOrgAdmin = me?.isOrgAdmin ?? false;
+  const isPlatformOperator = me?.isPlatformOperator ?? false;
 
-  // Fetch system environment for org-wide admins
   const systemEnvQuery = useQuery(
     trpc.environment.getSystem.queryOptions(undefined, {
-      enabled: isOrgAdmin,
+      enabled: isPlatformOperator,
     }),
   );
   const systemEnvironment = systemEnvQuery.data;
@@ -203,7 +202,7 @@ export function EnvironmentSelector() {
               </div>
             );
           })}
-          {isOrgAdmin && systemEnvironment && (
+          {isPlatformOperator && systemEnvironment && (
             <>
               <div className="bg-border pointer-events-none -mx-1 my-1 h-px" />
               <div
