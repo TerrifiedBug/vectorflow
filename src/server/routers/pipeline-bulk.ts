@@ -15,7 +15,7 @@ export const pipelineBulkRouter = router({
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user?.id;
       if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
-      await assertPipelineBatchAccess(input.pipelineIds, userId, "ADMIN");
+      await assertPipelineBatchAccess(input.pipelineIds, userId, "ADMIN", ctx.organizationId);
 
       const results: Array<{ pipelineId: string; success: boolean; error?: string }> = [];
 
@@ -69,7 +69,7 @@ export const pipelineBulkRouter = router({
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user?.id;
       if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
-      const { teamId } = await assertPipelineBatchAccess(input.pipelineIds, userId, "EDITOR");
+      const { teamId } = await assertPipelineBatchAccess(input.pipelineIds, userId, "EDITOR", ctx.organizationId);
 
       // Validate tags against team.availableTags ONCE before the loop
       const team = await prisma.team.findUnique({
@@ -132,7 +132,7 @@ export const pipelineBulkRouter = router({
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user?.id;
       if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
-      await assertPipelineBatchAccess(input.pipelineIds, userId, "EDITOR");
+      await assertPipelineBatchAccess(input.pipelineIds, userId, "EDITOR", ctx.organizationId);
 
       const results: Array<{ pipelineId: string; success: boolean; error?: string }> = [];
 

@@ -4,6 +4,7 @@ import { Prisma } from "@/generated/prisma";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 
 const templateNodeSchema = z.object({
   id: z.string(),
@@ -57,12 +58,28 @@ export const templateRouter = router({
     .query(async ({ input, ctx }) => {
       const template = await prisma.template.findUnique({
         where: { id: input.id },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          category: true,
+          nodes: true,
+          edges: true,
+          teamId: true,
+          team: { select: { organizationId: true } },
+        },
       });
       if (!template) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Template not found",
         });
+      }
+
+      // PR #380 P1: org-isolation — org admin sees only their own org's templates.
+      // An org admin on org-A must not be able to read a template owned by org-B's team.
+      if (template.teamId !== null && template.team?.organizationId !== ctx.organizationId) {
+        throw new TRPCError({ code: "NOT_FOUND" });
       }
 
       // Codex P1 round-9 finding (PR #336 audit harness): templates with
@@ -74,11 +91,8 @@ export const templateRouter = router({
       if (template.teamId !== null) {
         const userId = ctx.session.user?.id;
         if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
-        const user = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { isSuperAdmin: true },
-        });
-        if (!user?.isSuperAdmin) {
+        const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
+        if (!orgAdmin) {
           const membership = await prisma.teamMember.findUnique({
             where: { userId_teamId: { userId, teamId: template.teamId } },
             select: { role: true },
@@ -142,6 +156,7 @@ export const templateRouter = router({
     .mutation(async ({ input, ctx }) => {
       const existing = await prisma.template.findUnique({
         where: { id: input.id },
+        select: { id: true, teamId: true, team: { select: { organizationId: true } } },
       });
       if (!existing) {
         throw new TRPCError({
@@ -157,17 +172,19 @@ export const templateRouter = router({
         });
       }
 
+      // PR #380 P1: org-isolation — org admin cannot delete a template from another org.
+      if (existing.team?.organizationId !== ctx.organizationId) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+
       // Codex P1 round-9 finding (PR #336 audit harness): deletion was
       // unauthenticated beyond \`protectedProcedure\`. Inline membership
       // check (super-admin bypasses) so a team\'s template can only be
       // deleted by a member of that team.
       const userId = ctx.session.user?.id;
       if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isSuperAdmin: true },
-      });
-      if (!user?.isSuperAdmin) {
+      const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
+      if (!orgAdmin) {
         const membership = await prisma.teamMember.findUnique({
           where: { userId_teamId: { userId, teamId: existing.teamId } },
           select: { role: true },

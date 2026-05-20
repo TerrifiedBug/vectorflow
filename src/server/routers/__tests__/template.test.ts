@@ -39,6 +39,7 @@ const caller = t.createCallerFactory(templateRouter)({
   session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
   userRole: "ADMIN",
   teamId: "team-1",
+  organizationId: "org-1",
 });
 
 const NOW = new Date("2026-03-01T12:00:00Z");
@@ -50,6 +51,7 @@ function makeTemplate(overrides: Record<string, unknown> = {}) {
     description: "A basic log pipeline template",
     category: "logging",
     teamId: "team-1",
+    team: { organizationId: "org-1" },
     nodes: [
       {
         id: "n1",
@@ -123,8 +125,8 @@ describe("templateRouter", () => {
       const tmpl = makeTemplate();
       prismaMock.template.findUnique.mockResolvedValueOnce(tmpl as never);
       // Phase 5bb round-9: get now does an inline membership check for
-      // team-owned templates. Mock the user + membership lookups.
-      prismaMock.user.findUnique.mockResolvedValueOnce({ isSuperAdmin: false } as never);
+      // team-owned templates. Mock the orgAdmin + membership lookups.
+      prismaMock.orgMember.findUnique.mockResolvedValueOnce(null as never);
       prismaMock.teamMember.findUnique.mockResolvedValueOnce({ role: "VIEWER" } as never);
 
       const result = await caller.get({ id: "tmpl-1" });
@@ -192,7 +194,7 @@ describe("templateRouter", () => {
       const tmpl = makeTemplate();
       prismaMock.template.findUnique.mockResolvedValueOnce(tmpl as never);
       // Phase 5bb round-9: delete now does an inline membership check.
-      prismaMock.user.findUnique.mockResolvedValueOnce({ isSuperAdmin: false } as never);
+      prismaMock.orgMember.findUnique.mockResolvedValueOnce(null as never);
       prismaMock.teamMember.findUnique.mockResolvedValueOnce({ role: "ADMIN" } as never);
       prismaMock.template.delete.mockResolvedValueOnce(tmpl as never);
 

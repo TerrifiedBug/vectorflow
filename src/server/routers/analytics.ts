@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 import { prisma } from "@/lib/prisma";
 import {
   getCostSummary,
@@ -107,14 +108,15 @@ export const analyticsRouter = router({
     .query(async ({ ctx, input }) => {
       // Resolve team IDs the user has access to
       const userId = ctx.session!.user!.id!;
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isSuperAdmin: true },
-      });
+      const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
 
       let teamIds: string[];
-      if (user?.isSuperAdmin) {
-        const teams = await prisma.team.findMany({ select: { id: true } });
+      if (orgAdmin) {
+        // PR #380 P1: scope admin path to caller's org
+        const teams = await prisma.team.findMany({
+          where: { organizationId: ctx.organizationId },
+          select: { id: true },
+        });
         teamIds = teams.map((t) => t.id);
       } else {
         const memberships = await prisma.teamMember.findMany({
@@ -139,13 +141,10 @@ export const analyticsRouter = router({
     .query(async ({ ctx, input }) => {
       // Get all environments the user can see in their teams
       const userId = ctx.session!.user!.id!;
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isSuperAdmin: true },
-      });
+      const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
 
       let envFilter: Record<string, unknown> = {};
-      if (!user?.isSuperAdmin) {
+      if (!orgAdmin) {
         const memberships = await prisma.teamMember.findMany({
           where: { userId },
           select: { teamId: true },
@@ -153,8 +152,9 @@ export const analyticsRouter = router({
         envFilter = { teamId: { in: memberships.map((m) => m.teamId) } };
       }
 
+      // PR #380 P1: always bound to caller's org; admin bypasses team-membership but not org
       const environments = await prisma.environment.findMany({
-        where: { isSystem: false, ...envFilter },
+        where: { isSystem: false, organizationId: ctx.organizationId, ...envFilter },
         select: { id: true },
       });
 

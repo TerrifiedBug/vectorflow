@@ -213,7 +213,7 @@ describe("team router", () => {
 
   describe("list", () => {
     it("strips aiApiKey from returned teams", async () => {
-      prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+      prismaMock.orgMember.findUnique.mockResolvedValue(null);
       prismaMock.team.findMany.mockResolvedValue([
         {
           id: "team-1",
@@ -500,7 +500,7 @@ describe("team router", () => {
   describe("lockMember", () => {
     it("locks a team member account", async () => {
       prismaMock.teamMember.findUnique.mockResolvedValue({ id: "member-1" } as never);
-      prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+      prismaMock.orgMember.findUnique.mockResolvedValue(null);
       prismaMock.user.update.mockResolvedValue({
         id: "user-2",
         lockedAt: new Date(),
@@ -520,13 +520,13 @@ describe("team router", () => {
       ).rejects.toThrow("Cannot lock your own account");
     });
 
-    it("throws FORBIDDEN when trying to lock a super admin", async () => {
+    it("throws FORBIDDEN when trying to lock an org admin", async () => {
       prismaMock.teamMember.findUnique.mockResolvedValue({ id: "member-1" } as never);
-      prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+      prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
 
       await expect(
         adminCaller.lockMember({ teamId: "team-1", userId: "user-sa" }),
-      ).rejects.toThrow("Cannot lock a super admin");
+      ).rejects.toThrow("Cannot lock an org admin");
     });
   });
 
@@ -535,7 +535,7 @@ describe("team router", () => {
   describe("unlockMember", () => {
     it("unlocks a team member account", async () => {
       prismaMock.teamMember.findUnique.mockResolvedValue({ id: "member-1" } as never);
-      prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+      prismaMock.orgMember.findUnique.mockResolvedValue(null);
       prismaMock.user.update.mockResolvedValue({
         id: "user-2",
         lockedAt: null,
@@ -549,13 +549,13 @@ describe("team router", () => {
       expect(result.lockedAt).toBeNull();
     });
 
-    it("throws FORBIDDEN when trying to unlock a super admin", async () => {
+    it("throws FORBIDDEN when trying to unlock an org admin", async () => {
       prismaMock.teamMember.findUnique.mockResolvedValue({ id: "member-1" } as never);
-      prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+      prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
 
       await expect(
         adminCaller.unlockMember({ teamId: "team-1", userId: "user-sa" }),
-      ).rejects.toThrow("Cannot modify a super admin");
+      ).rejects.toThrow("Cannot modify an org admin");
     });
   });
 
@@ -565,8 +565,9 @@ describe("team router", () => {
     it("resets password and returns temporary password", async () => {
       prismaMock.teamMember.findUnique.mockResolvedValue({
         id: "member-1",
-        user: { authMethod: "LOCAL", isSuperAdmin: false },
+        user: { authMethod: "LOCAL" },
       } as never);
+      prismaMock.orgMember.findUnique.mockResolvedValue(null);
       prismaMock.user.update.mockResolvedValue({} as never);
 
       const result = await adminCaller.resetMemberPassword({
@@ -578,22 +579,24 @@ describe("team router", () => {
       expect(typeof result.temporaryPassword).toBe("string");
     });
 
-    it("throws FORBIDDEN when trying to reset super admin password", async () => {
+    it("throws FORBIDDEN when trying to reset an org admin's password", async () => {
       prismaMock.teamMember.findUnique.mockResolvedValue({
         id: "member-1",
-        user: { authMethod: "LOCAL", isSuperAdmin: true },
+        user: { authMethod: "LOCAL" },
       } as never);
+      prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
 
       await expect(
         adminCaller.resetMemberPassword({ teamId: "team-1", userId: "user-sa" }),
-      ).rejects.toThrow("Cannot reset a super admin password");
+      ).rejects.toThrow("Cannot reset an org admin");
     });
 
     it("throws BAD_REQUEST when trying to reset SSO user password", async () => {
       prismaMock.teamMember.findUnique.mockResolvedValue({
         id: "member-1",
-        user: { authMethod: "OIDC", isSuperAdmin: false },
+        user: { authMethod: "OIDC" },
       } as never);
+      prismaMock.orgMember.findUnique.mockResolvedValue(null);
 
       await expect(
         adminCaller.resetMemberPassword({ teamId: "team-1", userId: "user-oidc" }),

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 
 /** Actions that represent deployment lifecycle events */
 export const DEPLOYMENT_ACTIONS = [
@@ -21,22 +22,22 @@ export const DEPLOYMENT_ACTIONS = [
 ] as const;
 
 type AuditScope = {
-  isSuperAdmin: boolean;
+  isOrgAdmin: boolean;
   teamIds: string[];
 };
 
 const emptyAuditScope = { id: { in: [] } };
 
-async function getAuditScope(userId: string | undefined | null): Promise<AuditScope> {
+async function getAuditScope(
+  userId: string | undefined | null,
+  organizationId: string,
+): Promise<AuditScope> {
   if (!userId) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
   }
 
-  const [user, memberships] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: { isSuperAdmin: true },
-    }),
+  const [orgAdmin, memberships] = await Promise.all([
+    isOrgWideAdmin(userId, organizationId),
     prisma.teamMember.findMany({
       where: { userId },
       select: { teamId: true },
@@ -44,16 +45,19 @@ async function getAuditScope(userId: string | undefined | null): Promise<AuditSc
   ]);
 
   return {
-    isSuperAdmin: user?.isSuperAdmin === true,
+    isOrgAdmin: orgAdmin,
     teamIds: (memberships ?? []).map((membership) => membership.teamId),
   };
 }
 
-function auditScopeCondition(scope: AuditScope) {
-  if (scope.isSuperAdmin) return null;
-  if (scope.teamIds.length === 0) return emptyAuditScope;
+// PR #380 P1: always scope by organizationId — org admin sees everything in
+// their org, never rows from other orgs.
+function auditScopeCondition(scope: AuditScope, organizationId: string) {
+  if (scope.isOrgAdmin) return { organizationId };
+  if (scope.teamIds.length === 0) return { organizationId, ...emptyAuditScope };
 
   return {
+    organizationId,
     OR: [
       { teamId: { in: scope.teamIds } },
       { environment: { teamId: { in: scope.teamIds } } },
@@ -61,11 +65,8 @@ function auditScopeCondition(scope: AuditScope) {
   };
 }
 
-function pushAuditScope(conditions: Record<string, unknown>[], scope: AuditScope) {
-  const scopeCondition = auditScopeCondition(scope);
-  if (scopeCondition) {
-    conditions.push(scopeCondition);
-  }
+function pushAuditScope(conditions: Record<string, unknown>[], scope: AuditScope, organizationId: string) {
+  conditions.push(auditScopeCondition(scope, organizationId));
 }
 
 export const auditRouter = router({
@@ -110,7 +111,7 @@ export const auditRouter = router({
     )
     .query(async ({ input, ctx }) => {
       const userIdFromSession = ctx.session?.user?.id;
-      const scope = await getAuditScope(userIdFromSession);
+      const scope = await getAuditScope(userIdFromSession, ctx.organizationId);
       const {
         action,
         userId,
@@ -124,7 +125,7 @@ export const auditRouter = router({
       const take = limit;
 
       const conditions: Record<string, unknown>[] = [];
-      pushAuditScope(conditions, scope);
+      pushAuditScope(conditions, scope, ctx.organizationId);
 
       if (action) {
         conditions.push({ action });
@@ -217,10 +218,10 @@ export const auditRouter = router({
   /** Distinct action values for filter dropdown */
   actions: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session?.user?.id;
-    const scope = await getAuditScope(userId);
-    const scopeCondition = auditScopeCondition(scope);
+    const scope = await getAuditScope(userId, ctx.organizationId);
+    const scopeCondition = auditScopeCondition(scope, ctx.organizationId);
     const results = await prisma.auditLog.findMany({
-      ...(scopeCondition ? { where: scopeCondition } : {}),
+      where: scopeCondition,
       select: { action: true },
       distinct: ["action"],
       orderBy: { action: "asc" },
@@ -231,10 +232,10 @@ export const auditRouter = router({
   /** Distinct entity type values for filter dropdown */
   entityTypes: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session?.user?.id;
-    const scope = await getAuditScope(userId);
-    const scopeCondition = auditScopeCondition(scope);
+    const scope = await getAuditScope(userId, ctx.organizationId);
+    const scopeCondition = auditScopeCondition(scope, ctx.organizationId);
     const results = await prisma.auditLog.findMany({
-      ...(scopeCondition ? { where: scopeCondition } : {}),
+      where: scopeCondition,
       select: { entityType: true },
       distinct: ["entityType"],
       orderBy: { entityType: "asc" },
@@ -245,12 +246,12 @@ export const auditRouter = router({
   /** Distinct users who have audit log entries */
   users: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session?.user?.id;
-    const scope = await getAuditScope(userId);
-    const scopeCondition = auditScopeCondition(scope);
+    const scope = await getAuditScope(userId, ctx.organizationId);
+    const scopeCondition = auditScopeCondition(scope, ctx.organizationId);
     const results = await prisma.auditLog.findMany({
       where: {
         AND: [
-          ...(scopeCondition ? [scopeCondition] : []),
+          scopeCondition,
           { userId: { not: null } },
         ],
       },
@@ -274,14 +275,14 @@ export const auditRouter = router({
     )
     .query(async ({ input, ctx }) => {
       const userId = ctx.session?.user?.id;
-      const scope = await getAuditScope(userId);
+      const scope = await getAuditScope(userId, ctx.organizationId);
       const { pipelineId, startDate, endDate, cursor } = input;
       const take = 50;
 
       const conditions: Record<string, unknown>[] = [
         { action: { in: [...DEPLOYMENT_ACTIONS] } },
       ];
-      pushAuditScope(conditions, scope);
+      pushAuditScope(conditions, scope, ctx.organizationId);
 
       if (startDate || endDate) {
         const createdAt: Record<string, Date> = {};
@@ -425,13 +426,13 @@ export const auditRouter = router({
   /** Distinct pipelines that have deployment audit entries, for filter dropdown */
   deploymentPipelines: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session?.user?.id;
-    const scope = await getAuditScope(userId);
-    const scopeCondition = auditScopeCondition(scope);
+    const scope = await getAuditScope(userId, ctx.organizationId);
+    const scopeCondition = auditScopeCondition(scope, ctx.organizationId);
     // Get distinct entityIds from deployment audit logs for Pipeline entity type
     const pipelineAudits = await prisma.auditLog.findMany({
       where: {
         AND: [
-          ...(scopeCondition ? [scopeCondition] : []),
+          scopeCondition,
           { action: { in: [...DEPLOYMENT_ACTIONS] } },
           { entityType: "Pipeline" },
         ],
@@ -443,12 +444,14 @@ export const auditRouter = router({
     const pipelineIds = pipelineAudits.map((a) => a.entityId);
     if (pipelineIds.length === 0) return [];
 
+    // PR #380 P1: scope pipeline fetch by org via environment relation.
     const pipelines = await prisma.pipeline.findMany({
       where: {
         id: { in: pipelineIds },
-        ...(scope.isSuperAdmin
-          ? {}
-          : { environment: { teamId: { in: scope.teamIds } } }),
+        environment: {
+          organizationId: ctx.organizationId,
+          ...(scope.isOrgAdmin ? {} : { teamId: { in: scope.teamIds } }),
+        },
       },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
@@ -460,14 +463,14 @@ export const auditRouter = router({
   /** Summary stats for deployment activity in the last 24 hours */
   deploymentSummary: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session?.user?.id;
-    const scope = await getAuditScope(userId);
-    const scopeCondition = auditScopeCondition(scope);
+    const scope = await getAuditScope(userId, ctx.organizationId);
+    const scopeCondition = auditScopeCondition(scope, ctx.organizationId);
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     const items = await prisma.auditLog.findMany({
       where: {
         AND: [
-          ...(scopeCondition ? [scopeCondition] : []),
+          scopeCondition,
           { action: { in: [...DEPLOYMENT_ACTIONS] } },
           { createdAt: { gte: twentyFourHoursAgo } },
         ],
@@ -516,14 +519,14 @@ export const auditRouter = router({
     )
     .query(async ({ input, ctx }) => {
       const userId = ctx.session?.user?.id;
-      const scope = await getAuditScope(userId);
+      const scope = await getAuditScope(userId, ctx.organizationId);
       const { pipelineId, startDate, endDate } = input;
       const maxExportRows = 10_000;
 
       const conditions: Record<string, unknown>[] = [
         { action: { in: [...DEPLOYMENT_ACTIONS] } },
       ];
-      pushAuditScope(conditions, scope);
+      pushAuditScope(conditions, scope, ctx.organizationId);
 
       if (startDate || endDate) {
         const createdAt: Record<string, Date> = {};
@@ -666,7 +669,7 @@ export const auditRouter = router({
     .use(withTeamAccess("ADMIN"))
     .query(async ({ input, ctx }) => {
       const userIdFromSession = ctx.session?.user?.id;
-      const scope = await getAuditScope(userIdFromSession);
+      const scope = await getAuditScope(userIdFromSession, ctx.organizationId);
       const {
         action,
         userId,
@@ -678,7 +681,7 @@ export const auditRouter = router({
       const maxExportRows = 10_000;
 
       const conditions: Record<string, unknown>[] = [];
-      pushAuditScope(conditions, scope);
+      pushAuditScope(conditions, scope, ctx.organizationId);
 
       if (action) {
         conditions.push({ action });
@@ -771,12 +774,12 @@ export const auditRouter = router({
       const { formatAuditJsonChain } = await import(
         "@/server/services/audit-export"
       );
-      const scope = await getAuditScope(ctx.session.user?.id);
+      const scope = await getAuditScope(ctx.session.user?.id, ctx.organizationId);
       const conditions: Record<string, unknown>[] = [
         { organizationId: ctx.organizationId },
         { hash: { not: null } },
       ];
-      pushAuditScope(conditions, scope);
+      pushAuditScope(conditions, scope, ctx.organizationId);
 
       // Cap at 50k rows per export. The chain verifier walks linearly;
       // a customer with >50k chained rows asks for paginated chunks
@@ -819,7 +822,7 @@ export const auditRouter = router({
       // 1. The caller is not a super-admin (scope-restricted export).
       // 2. We hit the 50k row cap — the export may be missing rows even
       //    for super-admin callers with very large orgs.
-      const scopePartial = !scope.isSuperAdmin;
+      const scopePartial = !scope.isOrgAdmin;
       const truncated = items.length >= 50_000;
       const partial = scopePartial || truncated;
       // Chain verification of a partial/truncated export will report

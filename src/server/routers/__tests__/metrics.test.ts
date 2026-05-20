@@ -59,6 +59,7 @@ import { metricsRouter } from "@/server/routers/metrics";
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const caller = t.createCallerFactory(metricsRouter)({
   session: { user: { id: "user-1" } },
+  organizationId: "default",
 });
 
 beforeEach(() => {
@@ -255,8 +256,8 @@ describe("metrics.getComponentLatencyHistory", () => {
 
 describe("metrics.getComponentMetrics", () => {
   beforeEach(() => {
-    // Super admin bypass for inline auth (membership not exercised here)
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+    // Org admin bypass for inline auth (membership not exercised here)
+    prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
   });
 
   it("returns empty components when pipeline does not exist", async () => {
@@ -268,9 +269,10 @@ describe("metrics.getComponentMetrics", () => {
   });
 
   it("forbids non-member access when pipeline belongs to another team", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.pipeline.findUnique.mockResolvedValue({
       id: "pipe-x",
+      organizationId: "default",
       nodes: [],
       environment: { teamId: "team-other", nodes: [] },
     } as never);
@@ -284,6 +286,7 @@ describe("metrics.getComponentMetrics", () => {
   it("returns components from metricStore for each vector node", async () => {
     const pipeline = {
       id: "pipe-1",
+      organizationId: "default",
       nodes: [
         {
           id: "pn-1",
@@ -327,6 +330,7 @@ describe("metrics.getComponentMetrics", () => {
   it("only includes components that have a matching pipeline node", async () => {
     const pipeline = {
       id: "pipe-1",
+      organizationId: "default",
       nodes: [
         {
           id: "pn-1",
@@ -360,8 +364,8 @@ describe("metrics.getComponentMetrics", () => {
 describe("metrics.getNodePipelineRates", () => {
   beforeEach(() => {
     prismaMock.vectorNode.findUnique.mockResolvedValue({ environmentId: "env-1" } as never);
-    // Super admin bypass for inline auth (membership not exercised in these tests)
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+    // Org admin bypass for inline auth (membership not exercised in these tests)
+    prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
   });
 
   it("returns empty rates when metricStore has no data for node", async () => {
@@ -382,7 +386,7 @@ describe("metrics.getNodePipelineRates", () => {
   });
 
   it("forbids non-member access when node belongs to another team", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.environment.findUnique.mockResolvedValue({ teamId: "team-other" } as never);
     prismaMock.teamMember.findUnique.mockResolvedValue(null);
 
@@ -707,12 +711,12 @@ describe("metrics.getLiveRates", () => {
 
     expect(prismaMock.pipeline.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { environmentId: "env-42" },
+        where: expect.objectContaining({ environmentId: "env-42" }),
       }),
     );
     expect(prismaMock.vectorNode.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { environmentId: "env-42" },
+        where: expect.objectContaining({ environmentId: "env-42" }),
       }),
     );
   });

@@ -61,6 +61,14 @@ vi.mock("@/server/services/push-registry", () => ({
   },
 }));
 
+vi.mock("@/server/services/active-taps", () => ({
+  getActiveTap: vi.fn(),
+  deleteActiveTap: vi.fn(),
+  expireStaleTaps: vi.fn(),
+  setActiveTap: vi.fn(),
+  TAP_TTL_MS: 30_000,
+}));
+
 import { prisma } from "@/lib/prisma";
 import { pipelineObservabilityRouter } from "@/server/routers/pipeline-observability";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
@@ -68,12 +76,14 @@ import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
 import { getPipelineCostSnapshot } from "@/server/services/cost-attribution";
 import { relayPush, tryLocalPush } from "@/server/services/push-broadcast";
 import { pushRegistry } from "@/server/services/push-registry";
+import { getActiveTap } from "@/server/services/active-taps";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const caller = t.createCallerFactory(pipelineObservabilityRouter)({
   session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
   userRole: "ADMIN",
   teamId: "team-1",
+  organizationId: "org-1",
 });
 
 describe("pipelineObservabilityRouter", () => {
@@ -558,7 +568,7 @@ describe("pipelineObservabilityRouter", () => {
         { id: "p-1", environment: { teamId: "team-1" } },
         { id: "p-2", environment: { teamId: "team-1" } },
       ] as never);
-      prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+      prismaMock.orgMember.findUnique.mockResolvedValue(null);
       prismaMock.teamMember.findUnique.mockResolvedValue({ role: "VIEWER" } as never);
       vi.mocked(batchEvaluatePipelineHealth).mockResolvedValue(batchResult as never);
 
@@ -759,6 +769,86 @@ describe("pipelineObservabilityRouter", () => {
 
       expect(result.recommendations).toHaveLength(1);
       expect(result.recommendedAction?.kind).toBe("apply_cost_recommendation");
+    });
+  });
+
+  // ── stopTap ───────────────────────────────────────────────────────────────
+
+  describe("stopTap", () => {
+    const TAP = {
+      nodeId: "node-1",
+      pipelineId: "p-1",
+      componentId: "c-1",
+      startedAt: Date.now(),
+    };
+
+    it("allows org-admin to stop a tap in their own org", async () => {
+      vi.mocked(getActiveTap).mockResolvedValue(TAP);
+      // PR #380 P1: pipeline lookup now includes organizationId so org scoping is enforced.
+      prismaMock.pipeline.findUnique.mockResolvedValue({
+        organizationId: "org-1",
+        environment: { teamId: "team-1" },
+      } as never);
+      // org-admin → bypass team-membership check
+      prismaMock.orgMember.findUnique.mockResolvedValue({ role: "ADMIN" } as never);
+
+      const result = await caller.stopTap({ requestId: "req-1" });
+
+      expect(result).toEqual({ ok: true });
+    });
+
+    it("throws NOT_FOUND when tap pipeline belongs to a different org", async () => {
+      vi.mocked(getActiveTap).mockResolvedValue({ ...TAP, pipelineId: "p-other" });
+      // PR #380 P1: pipeline from a different org — the cross-org check must fire.
+      prismaMock.pipeline.findUnique.mockResolvedValue({
+        organizationId: "org-other",
+        environment: { teamId: "team-other" },
+      } as never);
+
+      await expect(caller.stopTap({ requestId: "req-cross" })).rejects.toMatchObject({
+        code: "NOT_FOUND",
+      });
+    });
+
+    it("allows team member to stop their own tap", async () => {
+      vi.mocked(getActiveTap).mockResolvedValue(TAP);
+      prismaMock.pipeline.findUnique.mockResolvedValue({
+        organizationId: "org-1",
+        environment: { teamId: "team-1" },
+      } as never);
+      // not an org-admin
+      prismaMock.orgMember.findUnique.mockResolvedValue(null);
+      prismaMock.teamMember.findUnique.mockResolvedValue({ role: "EDITOR" } as never);
+
+      const result = await caller.stopTap({ requestId: "req-member" });
+
+      expect(result).toEqual({ ok: true });
+    });
+
+    it("throws FORBIDDEN when non-member tries to stop a tap", async () => {
+      vi.mocked(getActiveTap).mockResolvedValue(TAP);
+      prismaMock.pipeline.findUnique.mockResolvedValue({
+        organizationId: "org-1",
+        environment: { teamId: "team-1" },
+      } as never);
+      prismaMock.orgMember.findUnique.mockResolvedValue(null);
+      // no team membership
+      prismaMock.teamMember.findUnique.mockResolvedValue(null);
+
+      await expect(caller.stopTap({ requestId: "req-nomember" })).rejects.toMatchObject({
+        code: "FORBIDDEN",
+      });
+    });
+
+    it("succeeds when tap references a deleted pipeline (orphaned tap cleanup)", async () => {
+      vi.mocked(getActiveTap).mockResolvedValue(TAP);
+      // Pipeline deleted — findUnique returns null; orphan cleanup allowed.
+      prismaMock.pipeline.findUnique.mockResolvedValue(null);
+      prismaMock.orgMember.findUnique.mockResolvedValue(null);
+
+      const result = await caller.stopTap({ requestId: "req-orphan" });
+
+      expect(result).toEqual({ ok: true });
     });
   });
 });

@@ -71,6 +71,7 @@ import { queryNodeMetricsAggregated } from "@/server/services/metrics-query";
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const caller = t.createCallerFactory(dashboardRouter)({
   session: { user: { id: "user-1" } },
+  organizationId: "org-1",
 });
 
 beforeEach(() => {
@@ -162,7 +163,7 @@ describe("dashboard.stats", () => {
 
 describe("dashboard.recentPipelines", () => {
   it("returns up to 5 recently updated pipelines for a regular user", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
 
     const pipelines = Array.from({ length: 3 }, (_, i) => ({
       id: `pipe-${i}`,
@@ -179,14 +180,14 @@ describe("dashboard.recentPipelines", () => {
   });
 
   it("fetches with no teamFilter for super admin", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
     prismaMock.pipeline.findMany.mockResolvedValue([]);
 
     await caller.recentPipelines();
 
     expect(prismaMock.pipeline.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {},
+        where: { organizationId: "org-1" },
         take: 5,
         orderBy: { updatedAt: "desc" },
       }),
@@ -194,7 +195,7 @@ describe("dashboard.recentPipelines", () => {
   });
 
   it("applies team membership filter for non-super-admin", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.pipeline.findMany.mockResolvedValue([]);
 
     await caller.recentPipelines();
@@ -216,7 +217,7 @@ describe("dashboard.recentPipelines", () => {
 
 describe("dashboard.recentAudit", () => {
   it("returns up to 10 recent audit entries", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findMany.mockResolvedValue([{ teamId: "team-1" }] as never);
 
     const logs = Array.from({ length: 4 }, (_, i) => ({
@@ -233,14 +234,14 @@ describe("dashboard.recentAudit", () => {
   });
 
   it("applies no teamId filter for super admin", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
     prismaMock.auditLog.findMany.mockResolvedValue([]);
 
     await caller.recentAudit();
 
     expect(prismaMock.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {},
+        where: { organizationId: "org-1" },
         take: 10,
         orderBy: { createdAt: "desc" },
       }),
@@ -248,7 +249,7 @@ describe("dashboard.recentAudit", () => {
   });
 
   it("applies teamId filter for non-super-admin", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findMany.mockResolvedValue([
       { teamId: "team-1" },
       { teamId: "team-2" },
@@ -259,7 +260,7 @@ describe("dashboard.recentAudit", () => {
 
     expect(prismaMock.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { teamId: { in: ["team-1", "team-2"] } },
+        where: { organizationId: "org-1", teamId: { in: ["team-1", "team-2"] } },
       }),
     );
   });
@@ -464,11 +465,13 @@ describe("dashboard.fleetHotness", () => {
 
 describe("dashboard.pipelineCards", () => {
   beforeEach(() => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
   });
 
   it("returns an empty array when the environment is unknown (stale id)", async () => {
-    prismaMock.environment.findUnique.mockResolvedValue(null);
+    // pipelineCards now uses environment.findFirst with org-scoping
+    // (PR #380 P1) so cross-org reads also surface as null here.
+    prismaMock.environment.findFirst.mockResolvedValue(null);
 
     const result = await caller.pipelineCards({ environmentId: "env-missing" });
 
@@ -476,9 +479,13 @@ describe("dashboard.pipelineCards", () => {
     expect(prismaMock.pipeline.findMany).not.toHaveBeenCalled();
   });
 
-  it("forbids non-member access when the environment belongs to another team", async () => {
-    prismaMock.environment.findUnique.mockResolvedValue({ teamId: "team-other" } as never);
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+  it("forbids non-member access when the environment belongs to another team (same org)", async () => {
+    prismaMock.environment.findFirst.mockResolvedValue({
+      id: "env-1",
+      teamId: "team-other",
+      organizationId: "org-1",
+    } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findUnique.mockResolvedValue(null);
 
     await expect(

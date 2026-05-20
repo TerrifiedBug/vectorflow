@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { queryPipelineMetricsAggregated } from "@/server/services/metrics-query";
 import { sourceBytesRate, sourceEventsRate } from "@/lib/metrics/component-rates";
 import { isDemoMode } from "@/lib/is-demo-mode";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 
 
 interface PipelineMetricChartRow {
@@ -199,14 +200,15 @@ export const metricsRouter = router({
       });
 
       if (!pipeline) return { components: {} };
+      // codex PR #380 P1: org isolation — cross-org pipeline must not reveal its existence.
+      if (pipeline.organizationId !== ctx.organizationId) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
 
       // Inline auth: super admin bypasses; otherwise must be a member of the
       // pipeline's environment team.
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isSuperAdmin: true },
-      });
-      if (!user?.isSuperAdmin) {
+      const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
+      if (!orgAdmin) {
         const teamId = pipeline.environment.teamId;
         if (!teamId) {
           throw new TRPCError({ code: "FORBIDDEN" });
@@ -325,18 +327,16 @@ export const metricsRouter = router({
       // Soft-fail for stale/deleted nodes so polling clients get a tolerable
       // empty payload instead of an error.
       const node = await prisma.vectorNode.findUnique({
-        where: { id: input.nodeId },
+        // codex PR #380 P1: org isolation — scope to caller's org so cross-org nodes soft-fail like deleted nodes.
+        where: { id: input.nodeId, organizationId: ctx.organizationId },
         select: { environmentId: true },
       });
       if (!node) return { rates: {} };
 
       // Inline auth: super admin bypasses; otherwise must be a member of the
       // node's environment team.
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isSuperAdmin: true },
-      });
-      if (!user?.isSuperAdmin) {
+      const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
+      if (!orgAdmin) {
         const env = await prisma.environment.findUnique({
           where: { id: node.environmentId },
           select: { teamId: true },
@@ -420,18 +420,18 @@ export const metricsRouter = router({
   getLiveRates: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
     .use(withTeamAccess("VIEWER"))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       // Fetch pipelines and environment nodes in parallel (nodes are shared across all pipelines)
       const [pipelines, envNodes] = await Promise.all([
         prisma.pipeline.findMany({
-          where: { environmentId: input.environmentId },
+          where: { environmentId: input.environmentId, organizationId: ctx.organizationId }, // codex PR #380 P1
           select: {
             id: true,
             nodes: { select: { componentKey: true, kind: true } },
           },
         }),
         prisma.vectorNode.findMany({
-          where: { environmentId: input.environmentId },
+          where: { environmentId: input.environmentId, organizationId: ctx.organizationId }, // codex PR #380 P1
           select: { id: true },
         }),
       ]);

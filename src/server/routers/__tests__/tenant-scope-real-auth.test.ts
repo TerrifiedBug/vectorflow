@@ -151,11 +151,14 @@ describe("tenant scoping with real authorization middleware", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("blocks component metrics reads for pipelines outside the caller's teams", async () => {
+  it("blocks component metrics reads for pipelines outside the caller's teams (same org, other team)", async () => {
+    // PR #380 P1 — pipeline lookup now selects organizationId; same-org
+    // cross-team should fall through to the team-membership FORBIDDEN.
     prismaMock.pipeline.findUnique.mockResolvedValue({
+      organizationId: "default",
       environment: { teamId: "team-2" },
     } as never);
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findUnique.mockResolvedValue(null);
 
     await expect(
@@ -163,11 +166,12 @@ describe("tenant scoping with real authorization middleware", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("blocks node pipeline rate reads for nodes outside the caller's teams", async () => {
+  it("blocks node pipeline rate reads for nodes outside the caller's teams (same org, other team)", async () => {
     prismaMock.vectorNode.findUnique.mockResolvedValue({
+      organizationId: "default",
       environment: { teamId: "team-2" },
     } as never);
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findUnique.mockResolvedValue(null);
 
     await expect(
@@ -175,9 +179,16 @@ describe("tenant scoping with real authorization middleware", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("blocks dashboard pipeline cards for environments outside the caller's teams", async () => {
-    prismaMock.environment.findUnique.mockResolvedValue({ teamId: "team-2" } as never);
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+  it("blocks dashboard pipeline cards for environments outside the caller's teams (same org, other team)", async () => {
+    // pipelineCards now uses environment.findFirst with org filter;
+    // mock returns env in same org but different team — code falls
+    // through to teamMember check which returns FORBIDDEN.
+    prismaMock.environment.findFirst.mockResolvedValue({
+      id: "env-team-2",
+      teamId: "team-2",
+      organizationId: "default",
+    } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findUnique.mockResolvedValue(null);
 
     await expect(

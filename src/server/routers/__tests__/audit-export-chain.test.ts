@@ -43,13 +43,13 @@ const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const callerFactory = t.createCallerFactory(auditRouter);
 
 function caller(opts?: {
-  isSuperAdmin?: boolean;
+  isOrgAdmin?: boolean;
   teamIds?: string[];
   organizationId?: string;
 }) {
-  prismaMock.user.findUnique.mockResolvedValue({
-    isSuperAdmin: opts?.isSuperAdmin ?? true,
-  } as never);
+  prismaMock.orgMember.findUnique.mockResolvedValue(
+    opts?.isOrgAdmin !== false ? ({ role: "OWNER" } as never) : null,
+  );
   prismaMock.teamMember.findMany.mockResolvedValue(
     (opts?.teamIds ?? []).map((teamId) => ({ teamId })) as never,
   );
@@ -120,7 +120,7 @@ describe("audit.exportChain", () => {
   it("emits partial:true for a team-scoped (non-super-admin) caller", async () => {
     prismaMock.auditLog.findMany.mockResolvedValue([] as never);
     const result = await caller({
-      isSuperAdmin: false,
+      isOrgAdmin: false,
       teamIds: ["team-1"],
     }).exportChain();
     expect(result.partial).toBe(true);
@@ -128,7 +128,7 @@ describe("audit.exportChain", () => {
 
   it("emits partial:false when caller is super-admin (full org view)", async () => {
     prismaMock.auditLog.findMany.mockResolvedValue([] as never);
-    const result = await caller({ isSuperAdmin: true }).exportChain();
+    const result = await caller({ isOrgAdmin: true }).exportChain();
     expect(result.partial).toBe(false);
   });
 

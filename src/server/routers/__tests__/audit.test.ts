@@ -45,11 +45,12 @@ import { auditRouter } from "@/server/routers/audit";
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const caller = t.createCallerFactory(auditRouter)({
   session: { user: { id: "user-1" } },
+  organizationId: "org-default",
 });
 
 beforeEach(() => {
   mockReset(prismaMock);
-  prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+  prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
   prismaMock.teamMember.findMany.mockResolvedValue([]);
   vi.clearAllMocks();
 });
@@ -301,8 +302,9 @@ describe("audit.list", () => {
 
     expect(prismaMock.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {
-          AND: [
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            { organizationId: "org-default" },
             {
               NOT: {
                 AND: [
@@ -311,8 +313,8 @@ describe("audit.list", () => {
                 ],
               },
             },
-          ],
-        },
+          ]),
+        }),
       }),
     );
   });
@@ -484,7 +486,7 @@ describe("audit.users", () => {
 
     expect(prismaMock.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { AND: [{ userId: { not: null } }] },
+        where: { AND: [{ organizationId: "org-default" }, { userId: { not: null } }] },
         distinct: ["userId"],
       }),
     );
