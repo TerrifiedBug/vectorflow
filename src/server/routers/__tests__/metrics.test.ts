@@ -59,6 +59,7 @@ import { metricsRouter } from "@/server/routers/metrics";
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const caller = t.createCallerFactory(metricsRouter)({
   session: { user: { id: "user-1" } },
+  organizationId: "default",
 });
 
 beforeEach(() => {
@@ -271,6 +272,7 @@ describe("metrics.getComponentMetrics", () => {
     prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.pipeline.findUnique.mockResolvedValue({
       id: "pipe-x",
+      organizationId: "default",
       nodes: [],
       environment: { teamId: "team-other", nodes: [] },
     } as never);
@@ -284,6 +286,7 @@ describe("metrics.getComponentMetrics", () => {
   it("returns components from metricStore for each vector node", async () => {
     const pipeline = {
       id: "pipe-1",
+      organizationId: "default",
       nodes: [
         {
           id: "pn-1",
@@ -327,6 +330,7 @@ describe("metrics.getComponentMetrics", () => {
   it("only includes components that have a matching pipeline node", async () => {
     const pipeline = {
       id: "pipe-1",
+      organizationId: "default",
       nodes: [
         {
           id: "pn-1",
@@ -707,12 +711,12 @@ describe("metrics.getLiveRates", () => {
 
     expect(prismaMock.pipeline.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { environmentId: "env-42" },
+        where: expect.objectContaining({ environmentId: "env-42" }),
       }),
     );
     expect(prismaMock.vectorNode.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { environmentId: "env-42" },
+        where: expect.objectContaining({ environmentId: "env-42" }),
       }),
     );
   });

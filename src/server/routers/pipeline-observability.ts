@@ -787,20 +787,34 @@ export const pipelineObservabilityRouter = router({
       // Anyone with a valid session could stop another team's tap by
       // sending its requestId. Inline auth: load the active tap, resolve
       // it to a pipeline → environment.teamId, and enforce TeamMember
-      // (super-admins bypass).
+      // (org-wide admins bypass team-membership but NOT org scoping).
       const tap = await getActiveTap(input.requestId);
       if (tap) {
         const userId = ctx.session.user?.id;
         if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
+
+        // Codex PR #380 P1: always fetch the pipeline (even on the admin
+        // path) so we can enforce org scoping. Without this gate an
+        // org-wide admin can stop taps belonging to pipelines in any org.
+        const pipeline = await prisma.pipeline.findUnique({
+          where: { id: tap.pipelineId },
+          select: {
+            organizationId: true,
+            environment: { select: { teamId: true } },
+          },
+        });
+
+        // Pipeline exists but belongs to a different org — deny without
+        // leaking its existence to the caller.
+        if (pipeline && pipeline.organizationId !== ctx.organizationId) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+
         const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
         if (!orgAdmin) {
-          const pipeline = await prisma.pipeline.findUnique({
-            where: { id: tap.pipelineId },
-            select: { environment: { select: { teamId: true } } },
-          });
           // Pipeline may have been deleted between the tap being
           // created and the user trying to stop it. The tap is now
-          // orphaned \u2014 anyone (the caller included) can safely
+          // orphaned — anyone (the caller included) can safely
           // dismiss it. Falling through to `stopTapHandler` deletes
           // the orphan row; throwing FORBIDDEN here would strand the
           // tap in the DB and confuse the UI ("Stop" button errors

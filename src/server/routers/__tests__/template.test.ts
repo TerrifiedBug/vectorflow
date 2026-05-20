@@ -39,6 +39,7 @@ const caller = t.createCallerFactory(templateRouter)({
   session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
   userRole: "ADMIN",
   teamId: "team-1",
+  organizationId: "org-1",
 });
 
 const NOW = new Date("2026-03-01T12:00:00Z");
@@ -50,6 +51,7 @@ function makeTemplate(overrides: Record<string, unknown> = {}) {
     description: "A basic log pipeline template",
     category: "logging",
     teamId: "team-1",
+    team: { organizationId: "org-1" },
     nodes: [
       {
         id: "n1",

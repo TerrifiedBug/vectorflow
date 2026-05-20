@@ -71,6 +71,7 @@ import { queryNodeMetricsAggregated } from "@/server/services/metrics-query";
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const caller = t.createCallerFactory(dashboardRouter)({
   session: { user: { id: "user-1" } },
+  organizationId: "org-1",
 });
 
 beforeEach(() => {
@@ -186,7 +187,7 @@ describe("dashboard.recentPipelines", () => {
 
     expect(prismaMock.pipeline.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {},
+        where: { organizationId: "org-1" },
         take: 5,
         orderBy: { updatedAt: "desc" },
       }),
@@ -240,7 +241,7 @@ describe("dashboard.recentAudit", () => {
 
     expect(prismaMock.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {},
+        where: { organizationId: "org-1" },
         take: 10,
         orderBy: { createdAt: "desc" },
       }),
@@ -259,7 +260,7 @@ describe("dashboard.recentAudit", () => {
 
     expect(prismaMock.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { teamId: { in: ["team-1", "team-2"] } },
+        where: { organizationId: "org-1", teamId: { in: ["team-1", "team-2"] } },
       }),
     );
   });
@@ -468,7 +469,9 @@ describe("dashboard.pipelineCards", () => {
   });
 
   it("returns an empty array when the environment is unknown (stale id)", async () => {
-    prismaMock.environment.findUnique.mockResolvedValue(null);
+    // pipelineCards now uses environment.findFirst with org-scoping
+    // (PR #380 P1) so cross-org reads also surface as null here.
+    prismaMock.environment.findFirst.mockResolvedValue(null);
 
     const result = await caller.pipelineCards({ environmentId: "env-missing" });
 
@@ -476,8 +479,12 @@ describe("dashboard.pipelineCards", () => {
     expect(prismaMock.pipeline.findMany).not.toHaveBeenCalled();
   });
 
-  it("forbids non-member access when the environment belongs to another team", async () => {
-    prismaMock.environment.findUnique.mockResolvedValue({ teamId: "team-other" } as never);
+  it("forbids non-member access when the environment belongs to another team (same org)", async () => {
+    prismaMock.environment.findFirst.mockResolvedValue({
+      id: "env-1",
+      teamId: "team-other",
+      organizationId: "org-1",
+    } as never);
     prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findUnique.mockResolvedValue(null);
 

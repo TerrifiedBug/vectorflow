@@ -58,12 +58,28 @@ export const templateRouter = router({
     .query(async ({ input, ctx }) => {
       const template = await prisma.template.findUnique({
         where: { id: input.id },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          category: true,
+          nodes: true,
+          edges: true,
+          teamId: true,
+          team: { select: { organizationId: true } },
+        },
       });
       if (!template) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Template not found",
         });
+      }
+
+      // PR #380 P1: org-isolation — org admin sees only their own org's templates.
+      // An org admin on org-A must not be able to read a template owned by org-B's team.
+      if (template.teamId !== null && template.team?.organizationId !== ctx.organizationId) {
+        throw new TRPCError({ code: "NOT_FOUND" });
       }
 
       // Codex P1 round-9 finding (PR #336 audit harness): templates with
@@ -140,6 +156,7 @@ export const templateRouter = router({
     .mutation(async ({ input, ctx }) => {
       const existing = await prisma.template.findUnique({
         where: { id: input.id },
+        select: { id: true, teamId: true, team: { select: { organizationId: true } } },
       });
       if (!existing) {
         throw new TRPCError({
@@ -153,6 +170,11 @@ export const templateRouter = router({
           code: "FORBIDDEN",
           message: "System templates cannot be deleted",
         });
+      }
+
+      // PR #380 P1: org-isolation — org admin cannot delete a template from another org.
+      if (existing.team?.organizationId !== ctx.organizationId) {
+        throw new TRPCError({ code: "NOT_FOUND" });
       }
 
       // Codex P1 round-9 finding (PR #336 audit harness): deletion was

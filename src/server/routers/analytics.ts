@@ -112,7 +112,11 @@ export const analyticsRouter = router({
 
       let teamIds: string[];
       if (orgAdmin) {
-        const teams = await prisma.team.findMany({ select: { id: true } });
+        // PR #380 P1: scope admin path to caller's org
+        const teams = await prisma.team.findMany({
+          where: { organizationId: ctx.organizationId },
+          select: { id: true },
+        });
         teamIds = teams.map((t) => t.id);
       } else {
         const memberships = await prisma.teamMember.findMany({
@@ -148,8 +152,9 @@ export const analyticsRouter = router({
         envFilter = { teamId: { in: memberships.map((m) => m.teamId) } };
       }
 
+      // PR #380 P1: always bound to caller's org; admin bypasses team-membership but not org
       const environments = await prisma.environment.findMany({
-        where: { isSystem: false, ...envFilter },
+        where: { isSystem: false, organizationId: ctx.organizationId, ...envFilter },
         select: { id: true },
       });
 

@@ -200,6 +200,10 @@ export const metricsRouter = router({
       });
 
       if (!pipeline) return { components: {} };
+      // codex PR #380 P1: org isolation — cross-org pipeline must not reveal its existence.
+      if (pipeline.organizationId !== ctx.organizationId) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
 
       // Inline auth: super admin bypasses; otherwise must be a member of the
       // pipeline's environment team.
@@ -323,7 +327,8 @@ export const metricsRouter = router({
       // Soft-fail for stale/deleted nodes so polling clients get a tolerable
       // empty payload instead of an error.
       const node = await prisma.vectorNode.findUnique({
-        where: { id: input.nodeId },
+        // codex PR #380 P1: org isolation — scope to caller's org so cross-org nodes soft-fail like deleted nodes.
+        where: { id: input.nodeId, organizationId: ctx.organizationId },
         select: { environmentId: true },
       });
       if (!node) return { rates: {} };
@@ -415,18 +420,18 @@ export const metricsRouter = router({
   getLiveRates: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
     .use(withTeamAccess("VIEWER"))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       // Fetch pipelines and environment nodes in parallel (nodes are shared across all pipelines)
       const [pipelines, envNodes] = await Promise.all([
         prisma.pipeline.findMany({
-          where: { environmentId: input.environmentId },
+          where: { environmentId: input.environmentId, organizationId: ctx.organizationId }, // codex PR #380 P1
           select: {
             id: true,
             nodes: { select: { componentKey: true, kind: true } },
           },
         }),
         prisma.vectorNode.findMany({
-          where: { environmentId: input.environmentId },
+          where: { environmentId: input.environmentId, organizationId: ctx.organizationId }, // codex PR #380 P1
           select: { id: true },
         }),
       ]);

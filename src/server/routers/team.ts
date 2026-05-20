@@ -83,6 +83,8 @@ export const teamRouter = router({
 
     const teams = await prisma.team.findMany({
       where: {
+        // PR #380 P1: always scope to caller's org — org admin sees all teams in their org, not all orgs
+        organizationId: ctx.organizationId,
         name: { not: "__system__" },
         ...(orgAdmin ? {} : { members: { some: { userId } } }),
       },
