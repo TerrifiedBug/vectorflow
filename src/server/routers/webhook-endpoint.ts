@@ -69,7 +69,7 @@ export const webhookEndpointRouter = router({
       // to pre-generate the cuid, encrypt with it, then create the row
       // atomically — or use the create-then-update pattern inside a
       // transaction so partial failure leaves no orphan.
-      let plaintextSecret: string | null = input.secret ?? null;
+      const plaintextSecret: string | null = input.secret ?? null;
 
       if (input.secret) {
         const endpoint = await prisma.$transaction(async (tx) => {
