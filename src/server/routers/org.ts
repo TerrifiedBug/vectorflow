@@ -52,6 +52,48 @@ const userIdSchema = z
 
 export const orgRouter = router({
   /**
+   * Read-only roster of OrgMembers for the caller's organisation.
+   *
+   * Powers the "Transfer ownership" UI on the org-level settings
+   * surface. We deliberately scope by role: OWNER + ADMIN see the
+   * whole roster so the OWNER can pick a successor; plain MEMBERs
+   * cannot enumerate peers from this surface (the per-team listing
+   * is the right place for that and it already exists on the team
+   * router).
+   *
+   * Returns the minimum shape the transfer-ownership dialog needs to
+   * disambiguate candidates: id, name, email, role, joinedAt. Nothing
+   * encrypted or PII-heavy beyond what the team router already
+   * surfaces.
+   */
+  listMembers: protectedProcedure.query(async ({ ctx }) => {
+    const orgMemberRole = (ctx as { orgMemberRole?: string }).orgMemberRole;
+    if (orgMemberRole !== "OWNER" && orgMemberRole !== "ADMIN") {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Listing organisation members requires OWNER or ADMIN.",
+      });
+    }
+    const rows = await prisma.orgMember.findMany({
+      where: { organizationId: ctx.organizationId },
+      select: {
+        role: true,
+        createdAt: true,
+        userId: true,
+        user: { select: { name: true, email: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    return rows.map((r) => ({
+      userId: r.userId,
+      name: r.user.name,
+      email: r.user.email,
+      role: r.role,
+      joinedAt: r.createdAt,
+    }));
+  }),
+
+  /**
    * Atomically transfer OWNER from the caller to another existing
    * OrgMember of the same organisation.
    */

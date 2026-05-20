@@ -69,7 +69,7 @@ export default function TelemetrySettingsPage() {
             )}
 
             <a
-              href="https://vectorflow.sh/docs/operations/telemetry"
+              href="https://vectorflow.sh/trust/telemetry"
               target="_blank"
               rel="noreferrer"
               className="text-sm text-primary underline inline-block"
