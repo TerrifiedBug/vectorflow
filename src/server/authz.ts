@@ -43,7 +43,22 @@ export async function assertPipelineBatchAccess(
   }
 
   const teamId = [...teamIds][0]!;
+
+  // Codex PR #380 round-2 P1 — `withTeamAccess` (src/trpc/init.ts)
+  // still honours `User.isSuperAdmin` as a back-compat hatch until
+  // slice 7c drops the column. If we elevate ONLY via
+  // `isOrgWideAdmin` here, a legacy super-admin without an OrgMember
+  // row passes the upstream middleware but gets rejected here as
+  // FORBIDDEN. Keep the legacy fallback in lockstep with init.ts so
+  // mixed-state callers behave consistently across this slice.
   if (await isOrgWideAdmin(userId, organizationId)) {
+    return { teamId, userRole: "ADMIN" as Role };
+  }
+  const legacy = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isSuperAdmin: true },
+  });
+  if (legacy?.isSuperAdmin) {
     return { teamId, userRole: "ADMIN" as Role };
   }
 
