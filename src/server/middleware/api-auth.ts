@@ -9,6 +9,12 @@ export interface ServiceAccountContext {
   serviceAccountId: string;
   serviceAccountName: string;
   environmentId: string;
+  /**
+   * Org that owns the ServiceAccount. Threaded through so v3 envelope
+   * encryption can be loaded against the right DEK without re-fetching
+   * the row at every API callsite.
+   */
+  organizationId: string;
   permissions: string[];
   rateLimit: number | null;
 }
@@ -37,6 +43,7 @@ export async function authenticateApiKey(
     serviceAccountId: sa.id,
     serviceAccountName: sa.name,
     environmentId: sa.environmentId,
+    organizationId: sa.organizationId,
     permissions: sa.permissions as string[],
     rateLimit: sa.rateLimit ?? null,
   };

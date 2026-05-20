@@ -4,7 +4,11 @@ import { router, protectedProcedure, withTeamAccess, denyInDemo } from "@/trpc/i
 import { prisma } from "@/lib/prisma";
 import { AlertMetric } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
-import { encrypt } from "@/server/services/crypto";
+import { ENCRYPTION_DOMAINS } from "@/server/services/crypto";
+import {
+  encryptForOrgOrFallback,
+  loadOrgDataKeyCiphertext,
+} from "@/server/services/crypto-v3-callsite";
 import { validatePublicUrl } from "@/server/services/url-validation";
 import { deliverOutboundWebhook } from "@/server/services/outbound-webhook";
 
@@ -57,28 +61,62 @@ export const webhookEndpointRouter = router({
     .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("webhookEndpoint.created", "WebhookEndpoint"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       await validatePublicUrl(input.url);
 
-      const encryptedSecret = input.secret ? encrypt(input.secret) : null;
+      // We need the real endpoint.id for the v3 AAD rowId, but we can't
+      // have it before the row exists. Solution: use a Prisma transaction
+      // to pre-generate the cuid, encrypt with it, then create the row
+      // atomically — or use the create-then-update pattern inside a
+      // transaction so partial failure leaves no orphan.
+      const plaintextSecret: string | null = input.secret ?? null;
+
+      if (input.secret) {
+        const endpoint = await prisma.$transaction(async (tx) => {
+          const row = await tx.webhookEndpoint.create({
+            data: {
+              teamId: input.teamId,
+              organizationId: ctx.organizationId,
+              name: input.name,
+              url: input.url,
+              eventTypes: input.eventTypes,
+              encryptedSecret: null,
+            },
+            select: { id: true, name: true, url: true, eventTypes: true, enabled: true, createdAt: true, updatedAt: true },
+          });
+          // Encrypt inside the transaction. If KMS/encryption fails, the
+          // transaction rolls back and no orphan row is left.
+          const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+          const encryptedSecret = await encryptForOrgOrFallback(input.secret!, {
+            orgId: ctx.organizationId,
+            dataKeyCiphertext,
+            domain: ENCRYPTION_DOMAINS.GENERIC,
+            rowTable: "WebhookEndpoint",
+            rowId: row.id,
+          });
+          await tx.webhookEndpoint.update({
+            where: { id: row.id },
+            data: { encryptedSecret },
+          });
+          return row;
+        });
+        return { ...endpoint, secret: plaintextSecret };
+      }
 
       const endpoint = await prisma.webhookEndpoint.create({
         data: {
           teamId: input.teamId,
+          organizationId: ctx.organizationId,
           name: input.name,
           url: input.url,
           eventTypes: input.eventTypes,
-          encryptedSecret,
+          encryptedSecret: null,
         },
-        select: ENDPOINT_SELECT,
+        select: { id: true, name: true, url: true, eventTypes: true, enabled: true, createdAt: true, updatedAt: true },
       });
 
       // Return the plaintext secret once so the admin can copy it.
-      // After this response, the secret is never exposed again.
-      return {
-        ...endpoint,
-        secret: input.secret ?? null,
-      };
+      return { ...endpoint, secret: null };
     }),
 
   /**
@@ -99,11 +137,11 @@ export const webhookEndpointRouter = router({
     .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("webhookEndpoint.updated", "WebhookEndpoint"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       // Verify ownership
       const existing = await prisma.webhookEndpoint.findFirst({
         where: { id: input.id, teamId: input.teamId },
-        select: { id: true },
+        select: { id: true, organizationId: true },
       });
       if (!existing) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Webhook endpoint not found" });
@@ -117,7 +155,22 @@ export const webhookEndpointRouter = router({
       if (input.name !== undefined) updateData.name = input.name;
       if (input.url !== undefined) updateData.url = input.url;
       if (input.eventTypes !== undefined) updateData.eventTypes = input.eventTypes;
-      if (input.secret !== undefined) updateData.encryptedSecret = encrypt(input.secret);
+      if (input.secret !== undefined) {
+        // Use the row's persisted organizationId for the AAD, not ctx.organizationId.
+        // This keeps the AAD consistent between encrypt (here) and decrypt
+        // (outbound-webhook.ts, which reads endpoint.organizationId from the DB).
+        // For endpoints created before the organizationId column was populated,
+        // the persisted value is the source of truth because delivery uses it.
+        const rowOrgId = existing.organizationId;
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, rowOrgId);
+        updateData.encryptedSecret = await encryptForOrgOrFallback(input.secret, {
+          orgId: rowOrgId,
+          dataKeyCiphertext,
+          domain: ENCRYPTION_DOMAINS.GENERIC,
+          rowTable: "WebhookEndpoint",
+          rowId: existing.id,
+        });
+      }
 
       return prisma.webhookEndpoint.update({
         where: { id: input.id },
@@ -188,6 +241,7 @@ export const webhookEndpointRouter = router({
           id: true,
           url: true,
           encryptedSecret: true,
+          organizationId: true,
           // Phase 5aa: include confirmedAt so the delivery call below sees
           // an explicit confirmation status. Test delivery against an
           // unconfirmed endpoint must still fail closed.
@@ -212,6 +266,7 @@ export const webhookEndpointRouter = router({
           url: endpoint.url,
           encryptedSecret: endpoint.encryptedSecret,
           id: endpoint.id,
+          organizationId: endpoint.organizationId,
           confirmedAt: endpoint.confirmedAt,
         },
         testPayload,

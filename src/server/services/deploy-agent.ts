@@ -9,6 +9,7 @@ import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { startSystemVector, stopSystemVector } from "@/server/services/system-vector";
 import { gitSyncCommitPipeline, toFilenameSlug } from "@/server/services/git-sync";
 import { relayPush } from "@/server/services/push-broadcast";
+import { loadOrgDataKeyCiphertext } from "@/server/services/crypto-v3-callsite";
 import { collectVarRefs, resolveVarRefs } from "@/server/services/variable-resolver";
 
 
@@ -228,11 +229,15 @@ export async function deployAgent(
     // Service account IDs are prefixed with "sa:" — skip the User lookup for them
     const isServiceAccount = userId.startsWith("sa:");
     const user = isServiceAccount ? null : await prisma.user.findUnique({ where: { id: userId } });
+    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, environment.organizationId);
     const result = await gitSyncCommitPipeline(
       {
         repoUrl: environment.gitRepoUrl,
         branch: environment.gitBranch ?? "main",
         encryptedToken: environment.gitToken,
+        orgId: environment.organizationId,
+        environmentId: environment.id,
+        dataKeyCiphertext,
       },
       environment.name,
       pipeline.name,

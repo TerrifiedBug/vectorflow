@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
 import { apiRoute } from "../_lib/api-handler";
-import { encrypt } from "@/server/services/crypto";
+import { ENCRYPTION_DOMAINS } from "@/server/services/crypto";
+import {
+  encryptForOrgOrFallback,
+  loadOrgDataKeyCiphertext,
+} from "@/server/services/crypto-v3-callsite";
 
 export const GET = apiRoute("secrets.read", async (_req, ctx) => {
   const secrets = await prisma.secret.findMany({
@@ -60,10 +64,25 @@ export const POST = apiRoute(
       );
     }
 
+    // Use environment's organizationId for AAD consistency with runtime
+    // decrypt paths (secret-resolver, agent config).
+    const envRow = await prisma.environment.findUnique({
+      where: { id: ctx.environmentId },
+      select: { organizationId: true },
+    });
+    const envOrgId = envRow?.organizationId ?? ctx.environmentId;
+    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, envOrgId);
+    const encryptedValue = await encryptForOrgOrFallback(body.value, {
+      orgId: envOrgId,
+      dataKeyCiphertext,
+      domain: ENCRYPTION_DOMAINS.GENERIC,
+      rowTable: "Secret",
+      rowId: `${ctx.environmentId}:${body.name}`,
+    });
     const secret = await prisma.secret.create({
       data: {
         name: body.name,
-        encryptedValue: encrypt(body.value),
+        encryptedValue,
         environmentId: ctx.environmentId,
       },
       select: { id: true, name: true, createdAt: true, updatedAt: true },
@@ -135,9 +154,22 @@ export const PUT = apiRoute(
       );
     }
 
+    const envRow2 = await prisma.environment.findUnique({
+      where: { id: secret.environmentId },
+      select: { organizationId: true },
+    });
+    const envOrgId2 = envRow2?.organizationId ?? secret.environmentId;
+    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, envOrgId2);
+    const encryptedValue = await encryptForOrgOrFallback(body.value, {
+      orgId: envOrgId2,
+      dataKeyCiphertext,
+      domain: ENCRYPTION_DOMAINS.GENERIC,
+      rowTable: "Secret",
+      rowId: `${secret.environmentId}:${secret.name}`,
+    });
     const updated = await prisma.secret.update({
       where: { id: secret.id },
-      data: { encryptedValue: encrypt(body.value) },
+      data: { encryptedValue },
       select: { id: true, name: true, updatedAt: true },
     });
 

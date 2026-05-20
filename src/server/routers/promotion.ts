@@ -9,6 +9,7 @@ import {
   generateDiffPreview,
 } from "@/server/services/promotion-service";
 import { createPromotionPR } from "@/server/services/gitops-promotion";
+import { loadOrgDataKeyCiphertext } from "@/server/services/crypto-v3-callsite";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 
@@ -124,7 +125,9 @@ export const promotionRouter = router({
       const targetEnv = await prisma.environment.findUnique({
         where: { id: input.targetEnvironmentId },
         select: {
+          id: true,
           teamId: true,
+          organizationId: true,
           name: true,
           requireDeployApproval: true,
           gitOpsMode: true,
@@ -241,6 +244,7 @@ export const promotionRouter = router({
           null,
         );
 
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, targetEnv.organizationId);
         const pr = await createPromotionPR({
           encryptedToken: targetEnv.gitToken,
           repoUrl: targetEnv.gitRepoUrl,
@@ -252,6 +256,9 @@ export const promotionRouter = router({
           configYaml,
           gitProvider: targetEnv.gitProvider ?? null,
           gitPath: sourcePipeline.gitPath ?? null,
+          orgId: targetEnv.organizationId,
+          environmentId: targetEnv.id,
+          dataKeyCiphertext,
         });
 
         await prisma.promotionRequest.update({

@@ -12,8 +12,11 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 vi.mock("@/server/services/crypto", () => ({
+  ENCRYPTION_DOMAINS: { GENERIC: "generic" } as const,
   decrypt: vi.fn().mockReturnValue("test-secret"),
   encrypt: vi.fn(),
+  encryptForOrg: vi.fn(async () => "v3:test-secret"),
+  decryptForOrg: vi.fn(async () => "test-secret"),
 }));
 
 vi.mock("@/server/services/url-validation", () => ({

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { debugLog, infoLog, errorLog } from "@/lib/logger";
 import { gitSyncCommitPipeline, gitSyncDeletePipeline } from "@/server/services/git-sync";
 import { fireEventAlert } from "@/server/services/event-alerts";
+import { loadOrgDataKeyCiphertext } from "@/server/services/crypto-v3-callsite";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
 
 // --- Constants ---
@@ -112,6 +113,7 @@ export class GitSyncRetryService {
             select: {
               id: true,
               name: true,
+              organizationId: true,
               gitRepoUrl: true,
               gitBranch: true,
               gitToken: true,
@@ -151,10 +153,14 @@ export class GitSyncRetryService {
           continue;
         }
 
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, env.organizationId);
         const config = {
           repoUrl: env.gitRepoUrl,
           branch: env.gitBranch ?? "main",
           encryptedToken: env.gitToken,
+          orgId: env.organizationId,
+          environmentId: env.id,
+          dataKeyCiphertext,
         };
 
         // Use gitPath if available, otherwise derive from pipeline name

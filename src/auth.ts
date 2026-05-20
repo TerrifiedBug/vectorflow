@@ -106,8 +106,6 @@ async function getOidcSettings(orgIdOverride?: string) {
     if (settings?.oidcIssuer && settings?.oidcClientId && settings?.oidcClientSecret) {
       let clientSecret: string;
       try {
-        // Decrypt via the v3-or-v2 wrapper. settings.updateOidc writes v3:
-        // ciphertexts for DEK-provisioned orgs; v2 ciphertexts for OSS.
         const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, orgId);
         clientSecret = await decryptForOrgOrFallback(settings.oidcClientSecret, {
           orgId,

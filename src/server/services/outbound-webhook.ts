@@ -1,6 +1,10 @@
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-import { decrypt } from "@/server/services/crypto";
+import { ENCRYPTION_DOMAINS } from "@/server/services/crypto";
+import {
+  decryptForOrgOrFallback,
+  loadOrgDataKeyCiphertext,
+} from "@/server/services/crypto-v3-callsite";
 import { validateOutboundUrl } from "@/server/services/url-validation";
 import { getNextRetryAt } from "@/server/services/delivery-tracking";
 import type { AlertMetric } from "@/generated/prisma";
@@ -32,6 +36,12 @@ interface EndpointLike {
   id: string;
   url: string;
   encryptedSecret: string | null;
+  /**
+   * Org that owns the WebhookEndpoint row. Required to route the v3
+   * envelope-decrypt to the correct DEK. Callers MUST select
+   * `organizationId` on the WebhookEndpoint row they pass in.
+   */
+  organizationId: string;
   /**
    * Phase 5aa: timestamp of the most recent successful one-time
    * confirmation, or null/undefined when the endpoint has been created /
@@ -120,9 +130,18 @@ export async function deliverOutboundWebhook(
     "webhook-timestamp": String(timestamp),
   };
 
-  // HMAC-SHA256 signing per Standard-Webhooks spec
+  // HMAC-SHA256 signing per Standard-Webhooks spec. The endpoint
+  // ciphertext is routed through the v3-or-v2 wrapper so orgs with a
+  // provisioned DEK envelope-decrypt while OSS / self-hosted stays on v2.
   if (endpoint.encryptedSecret) {
-    const secret = decrypt(endpoint.encryptedSecret);
+    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, endpoint.organizationId);
+    const secret = await decryptForOrgOrFallback(endpoint.encryptedSecret, {
+      orgId: endpoint.organizationId,
+      dataKeyCiphertext,
+      domain: ENCRYPTION_DOMAINS.GENERIC,
+      rowTable: "WebhookEndpoint",
+      rowId: endpoint.id,
+    });
     const signingString = `${msgId}.${timestamp}.${body}`;
     const sig = crypto
       .createHmac("sha256", secret)

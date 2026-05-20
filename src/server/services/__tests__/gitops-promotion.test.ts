@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/server/services/crypto", () => ({
+  ENCRYPTION_DOMAINS: { GENERIC: "generic" } as const,
   decrypt: vi.fn((val: string) => `decrypted-${val}`),
+  encrypt: vi.fn((val: string) => `enc:${val}`),
+  decryptForOrg: vi.fn(async (val: string) => `v3-decrypted-${val}`),
+  encryptForOrg: vi.fn(async (val: string) => `v3:${val}`),
 }));
 
 const mockProvider = {
@@ -36,6 +40,9 @@ describe("createPromotionPR", () => {
       sourceEnvironmentName: "Staging",
       targetEnvironmentName: "Production",
       configYaml: "sources:\n  in:\n    type: demo_logs",
+      orgId: "default",
+      environmentId: "env-1",
+      dataKeyCiphertext: null,
     });
 
     expect(mockProvider.createBranch).toHaveBeenCalledWith(
@@ -70,6 +77,9 @@ describe("createPromotionPR", () => {
       targetEnvironmentName: "Production",
       configYaml: "test: yaml",
       gitPath: "custom/path/pipeline.yaml",
+      orgId: "default",
+      environmentId: "env-1",
+      dataKeyCiphertext: null,
     });
 
     expect(mockProvider.commitFile).toHaveBeenCalledWith(

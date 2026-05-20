@@ -15,6 +15,7 @@ import { getOrCreateSystemEnvironment } from "@/server/services/system-environme
 import { promotePipeline, detectConfigChanges, listPipelinesForEnvironment, saveGraphComponents } from "@/server/services/pipeline-graph";
 import { copyPipelineGraph } from "@/server/services/copy-pipeline-graph";
 import { gitSyncDeletePipeline } from "@/server/services/git-sync";
+import { loadOrgDataKeyCiphertext } from "@/server/services/crypto-v3-callsite";
 import { pipelineNameSchema } from "./pipeline-schemas";
 import { errorLog } from "@/lib/logger";
 import { generateId } from "@/lib/utils";
@@ -340,11 +341,15 @@ export const pipelineCrudRouter = router({
         const dbUser = user?.id
           ? await prisma.user.findUnique({ where: { id: user.id } })
           : null;
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, environment.organizationId);
         await gitSyncDeletePipeline(
           {
             repoUrl: environment.gitRepoUrl,
             branch: environment.gitBranch ?? "main",
             encryptedToken: environment.gitToken,
+            orgId: environment.organizationId,
+            environmentId: environment.id,
+            dataKeyCiphertext,
           },
           environment.name,
           existing.name,

@@ -34,8 +34,11 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 vi.mock("@/server/services/crypto", () => ({
+  ENCRYPTION_DOMAINS: { GENERIC: "generic" } as const,
   encrypt: vi.fn((val: string) => `encrypted:${val}`),
   decrypt: vi.fn((val: string) => val.replace("encrypted:", "")),
+  encryptForOrg: vi.fn(async (val: string) => `v3:${val}`),
+  decryptForOrg: vi.fn(async (val: string) => val.replace(/^v3:/, "")),
 }));
 
 vi.mock("@/server/services/config-crypto", () => ({
@@ -53,6 +56,7 @@ const caller = t.createCallerFactory(secretRouter)({
   session: { user: { id: "user-1", email: "test@test.com" } },
   userRole: "EDITOR",
   teamId: "team-1",
+  organizationId: "default",
 });
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -109,7 +113,7 @@ describe("secret router", () => {
       });
 
       expect(result.name).toBe("MY_SECRET");
-      expect(crypto.encrypt).toHaveBeenCalledWith("super-secret-value");
+      expect(crypto.encrypt).toHaveBeenCalledWith("super-secret-value", "generic");
       expect(prismaMock.secret.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -158,7 +162,7 @@ describe("secret router", () => {
       });
 
       expect(result.name).toBe("API_KEY");
-      expect(crypto.encrypt).toHaveBeenCalledWith("new-secret-value");
+      expect(crypto.encrypt).toHaveBeenCalledWith("new-secret-value", "generic");
     });
 
     it("throws NOT_FOUND when secret does not exist", async () => {
@@ -238,7 +242,7 @@ describe("secret router", () => {
       });
 
       expect(result.value).toBe("my-actual-secret");
-      expect(crypto.decrypt).toHaveBeenCalledWith("encrypted:my-actual-secret");
+      expect(crypto.decrypt).toHaveBeenCalledWith("encrypted:my-actual-secret", "generic");
     });
 
     it("throws NOT_FOUND when secret does not exist", async () => {

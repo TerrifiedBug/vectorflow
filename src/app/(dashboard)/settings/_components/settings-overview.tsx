@@ -18,10 +18,6 @@ import { PageHeader } from "@/components/ui/page-header";
 export function SettingsOverview() {
   const trpc = useTRPC();
   const meQuery = useQuery(trpc.user.me.queryOptions());
-  // Gate platform-operator-only queries on `isPlatformOperator`, not on
-  // `isOrgAdmin`. The settings procedures (productionReadiness, checkVersion,
-  // settings.get) are protected by `requirePlatformOperator()` — an org admin
-  // who is not an operator would get 403s on every render.
   const isPlatformOperator = meQuery.data?.isPlatformOperator === true;
 
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);

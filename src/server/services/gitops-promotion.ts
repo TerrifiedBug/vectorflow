@@ -1,4 +1,5 @@
-import { decrypt } from "@/server/services/crypto";
+import { ENCRYPTION_DOMAINS } from "@/server/services/crypto";
+import { decryptForOrgOrFallback } from "@/server/services/crypto-v3-callsite";
 import { getProvider } from "@/server/services/git-providers";
 import { toFilenameSlug } from "@/server/services/git-sync";
 import { isDemoMode } from "@/lib/is-demo-mode";
@@ -18,6 +19,12 @@ export interface CreatePromotionPROptions {
   gitProvider?: string | null;
   /** Stable git path for the pipeline. Falls back to slug-based derivation. */
   gitPath?: string | null;
+  /** Org that owns the Environment row carrying `gitToken`. */
+  orgId: string;
+  /** Environment row id; bound into v3 AAD. */
+  environmentId: string;
+  /** Org's `Organization.dataKeyCiphertext`. Null in OSS / self-hosted. */
+  dataKeyCiphertext: string | null;
 }
 
 export interface CreatePromotionPRResult {
@@ -65,7 +72,13 @@ export async function createPromotionPR(
     );
   }
 
-  const token = decrypt(opts.encryptedToken);
+  const token = await decryptForOrgOrFallback(opts.encryptedToken, {
+    orgId: opts.orgId,
+    dataKeyCiphertext: opts.dataKeyCiphertext,
+    domain: ENCRYPTION_DOMAINS.GENERIC,
+    rowTable: "Environment",
+    rowId: opts.environmentId,
+  });
 
   // Determine the file path: use gitPath if provided, otherwise derive from slugs
   const envSlug = toFilenameSlug(opts.targetEnvironmentName);

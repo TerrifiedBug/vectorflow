@@ -38,8 +38,11 @@ vi.mock("@/server/services/agent-token", () => ({
 }));
 
 vi.mock("@/server/services/crypto", () => ({
+  ENCRYPTION_DOMAINS: { GENERIC: "generic" } as const,
   encrypt: vi.fn((val: string) => `encrypted:${val}`),
   decrypt: vi.fn((val: string) => val.replace("encrypted:", "")),
+  encryptForOrg: vi.fn(async (val: string) => `v3:${val}`),
+  decryptForOrg: vi.fn(async (val: string) => val.replace(/^v3:/, "")),
 }));
 
 // ─── Import SUT + mocks ─────────────────────────────────────────────────────

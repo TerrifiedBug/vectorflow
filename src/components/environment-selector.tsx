@@ -47,11 +47,8 @@ export function EnvironmentSelector() {
 
   // Fetch current user info to check super admin status
   const { data: me } = useQuery(trpc.user.me.queryOptions());
-  // environment.getSystem is guarded by requirePlatformOperator(); gate the
-  // query on operator status to avoid 403s for org admins who are not operators.
   const isPlatformOperator = me?.isPlatformOperator ?? false;
 
-  // Fetch system environment for org-wide admins
   const systemEnvQuery = useQuery(
     trpc.environment.getSystem.queryOptions(undefined, {
       enabled: isPlatformOperator,

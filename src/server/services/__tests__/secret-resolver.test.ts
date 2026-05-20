@@ -7,7 +7,11 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 vi.mock("../crypto", () => ({
+  ENCRYPTION_DOMAINS: { GENERIC: "generic" } as const,
   decrypt: vi.fn((v: string) => `decrypted:${v}`),
+  encrypt: vi.fn((v: string) => `enc:${v}`),
+  decryptForOrg: vi.fn(async (v: string) => `v3-decrypted:${v}`),
+  encryptForOrg: vi.fn(async (v: string) => `v3:${v}`),
 }));
 
 import { prisma } from "@/lib/prisma";
@@ -26,6 +30,12 @@ describe("secret-resolver", () => {
   beforeEach(() => {
     mockReset(prismaMock);
     vi.clearAllMocks();
+    // Default mock for the environment lookup that resolveSecretRefs now
+    // performs to derive the per-org DEK context. Individual tests override
+    // when they need a specific shape.
+    prismaMock.environment.findUnique.mockResolvedValue({
+      organizationId: "default",
+    } as never);
   });
 
   describe("collectSecretRefs", () => {
