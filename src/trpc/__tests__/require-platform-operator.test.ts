@@ -1,9 +1,10 @@
 /**
  * Phase 5ee: `requirePlatformOperator(role)` middleware.
  *
- * Co-exists with `requireSuperAdmin` during the migration. Both compile;
- * follow-up PRs flip individual routers one at a time and the legacy
- * middleware is deleted once the callsite count hits zero.
+ * Phase 5ee migration is complete: every router callsite has been flipped
+ * from the legacy `requireSuperAdmin` to this gate, and the legacy
+ * middleware (along with the `User.isSuperAdmin` column) was removed in
+ * slice 7c.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";

@@ -1,0 +1,24 @@
+-- Slice 7c: drop User.isSuperAdmin.
+--
+-- The legacy global-admin boolean has been migrated to two semantics:
+--
+--   * Tenant org-wide admin → OrgMember.role IN (OWNER, ADMIN), exposed
+--     via the `isOrgWideAdmin(userId, orgId)` helper.
+--   * Platform operator → a row in PlatformOperator keyed on email.
+--
+-- Every reader in OSS has been flipped to one of those gates (PRs
+-- #380/#381 + slice 7c). The `admin.toggleSuperAdmin` mutation that
+-- formerly wrote this column has been replaced with
+-- `admin.togglePlatformOperator`, which mutates the PlatformOperator
+-- table directly (no User write at all).
+--
+-- Idempotent: rerunning over an already-dropped column would surface a
+-- 42704 (undefined_column) error. Use IF EXISTS so re-applies on dev
+-- DBs that may already have run the drop manually are no-ops.
+--
+-- Sync note: the cloud sync PR carries a paired edit to the cloud-side
+-- authz module to drop its legacy reader once the column is gone there.
+-- The OSS Prisma client is regenerated without the field as part of
+-- this migration.
+
+ALTER TABLE "User" DROP COLUMN IF EXISTS "isSuperAdmin";

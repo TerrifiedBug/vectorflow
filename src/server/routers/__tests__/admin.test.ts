@@ -69,19 +69,40 @@ describe("adminRouter", () => {
   // ─── listUsers ────────────────────────────────────────────────────────────
 
   describe("listUsers", () => {
-    it("returns all users with memberships ordered by createdAt", async () => {
+    it("returns users with memberships ordered by createdAt and projects isPlatformOperator from PlatformOperator emails", async () => {
       const users = [
         { id: "u1", email: "a@test.com", name: "A", memberships: [] },
         { id: "u2", email: "b@test.com", name: "B", memberships: [] },
       ];
       prismaMock.user.findMany.mockResolvedValue(users as never);
+      prismaMock.platformOperator.findMany.mockResolvedValue([
+        { email: "b@test.com" },
+      ] as never);
 
       const result = await caller.listUsers();
 
-      expect(result).toEqual(users);
+      expect(result).toEqual([
+        { id: "u1", email: "a@test.com", name: "A", memberships: [], isPlatformOperator: false },
+        { id: "u2", email: "b@test.com", name: "B", memberships: [], isPlatformOperator: true },
+      ]);
       expect(prismaMock.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ orderBy: { createdAt: "asc" } }),
       );
+      expect(prismaMock.platformOperator.findMany).toHaveBeenCalledWith({
+        where: { deletedAt: null },
+        select: { email: true },
+      });
+    });
+
+    it("never selects isSuperAdmin from the User row (the column was dropped in slice 7c)", async () => {
+      prismaMock.user.findMany.mockResolvedValue([] as never);
+      prismaMock.platformOperator.findMany.mockResolvedValue([] as never);
+
+      await caller.listUsers();
+
+      const selectArg = (prismaMock.user.findMany.mock.calls[0]?.[0] as { select?: Record<string, unknown> })?.select;
+      expect(selectArg).toBeDefined();
+      expect(selectArg).not.toHaveProperty("isSuperAdmin");
     });
   });
 
@@ -165,108 +186,112 @@ describe("adminRouter", () => {
     });
   });
 
-  // ─── toggleSuperAdmin ─────────────────────────────────────────────────────
+  // ─── togglePlatformOperator ──────────────────────────────────────────────
 
-  describe("toggleSuperAdmin", () => {
-    function mockTx(opts?: {
-      userRow?: { id: string; email: string; name: string | null; isSuperAdmin: boolean };
-      operatorUpsert?: ReturnType<typeof vi.fn>;
-      operatorUpdateMany?: ReturnType<typeof vi.fn>;
-      userUpdate?: ReturnType<typeof vi.fn>;
-    }) {
-      const userUpdate = opts?.userUpdate
-        ?? vi.fn().mockResolvedValue(opts?.userRow ?? { id: "u2", email: "u2@test.com", name: "User Two", isSuperAdmin: true });
-      const operatorUpsert = opts?.operatorUpsert ?? vi.fn().mockResolvedValue({});
-      const operatorUpdateMany = opts?.operatorUpdateMany ?? vi.fn().mockResolvedValue({ count: 1 });
-      prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
-        if (typeof fn !== "function") return;
-        return fn({
-          user: { update: userUpdate },
-          platformOperator: { upsert: operatorUpsert, updateMany: operatorUpdateMany },
-        });
-      });
-      return { userUpdate, operatorUpsert, operatorUpdateMany };
+  describe("togglePlatformOperator", () => {
+    function mockUser(opts?: { id?: string; email?: string; name?: string | null }) {
+      const row = {
+        id: opts?.id ?? "u2",
+        email: opts?.email ?? "u2@test.com",
+        name: opts?.name === undefined ? "User Two" : opts.name,
+      };
+      prismaMock.user.findUnique.mockResolvedValue(row as never);
+      return row;
     }
 
-    it("updates super admin status", async () => {
-      mockTx({ userRow: { id: "u2", email: "u2@test.com", name: "User Two", isSuperAdmin: true } });
+    it("returns the new operator status", async () => {
+      mockUser();
+      prismaMock.platformOperator.upsert.mockResolvedValue({} as never);
 
-      const result = await caller.toggleSuperAdmin({ userId: "u2", isSuperAdmin: true });
-
-      expect(result).toEqual({ id: "u2", isSuperAdmin: true });
-    });
-
-    it("throws BAD_REQUEST when removing own super admin", async () => {
-      await expect(
-        caller.toggleSuperAdmin({ userId: "user-1", isSuperAdmin: false }),
-      ).rejects.toThrow("Cannot remove your own super admin status");
-    });
-
-    it("allows granting super admin to self (no-op but allowed)", async () => {
-      mockTx({ userRow: { id: "user-1", email: "admin@test.com", name: "Admin", isSuperAdmin: true } });
-
-      const result = await caller.toggleSuperAdmin({ userId: "user-1", isSuperAdmin: true });
-
-      expect(result).toEqual({ id: "user-1", isSuperAdmin: true });
-    });
-
-    it("granting mirrors to PlatformOperator via upsert with INCIDENT + clears deletedAt (OSS)", async () => {
-      const { operatorUpsert, operatorUpdateMany } = mockTx({
-        userRow: { id: "u2", email: "u2@test.com", name: "User Two", isSuperAdmin: true },
+      const result = await caller.togglePlatformOperator({
+        userId: "u2",
+        isOperator: true,
       });
 
-      await caller.toggleSuperAdmin({ userId: "u2", isSuperAdmin: true });
+      expect(result).toEqual({ id: "u2", isPlatformOperator: true });
+    });
 
-      expect(operatorUpsert).toHaveBeenCalledWith({
+    it("throws BAD_REQUEST when revoking your own operator status", async () => {
+      await expect(
+        caller.togglePlatformOperator({ userId: "user-1", isOperator: false }),
+      ).rejects.toThrow("Cannot remove your own platform operator status");
+    });
+
+    it("allows granting operator to self (no-op but allowed)", async () => {
+      mockUser({ id: "user-1", email: "admin@test.com", name: "Admin" });
+      prismaMock.platformOperator.upsert.mockResolvedValue({} as never);
+
+      const result = await caller.togglePlatformOperator({
+        userId: "user-1",
+        isOperator: true,
+      });
+
+      expect(result).toEqual({ id: "user-1", isPlatformOperator: true });
+    });
+
+    it("granting upserts PlatformOperator with INCIDENT role and clears deletedAt", async () => {
+      mockUser();
+      const upsert = prismaMock.platformOperator.upsert.mockResolvedValue({} as never);
+
+      await caller.togglePlatformOperator({ userId: "u2", isOperator: true });
+
+      expect(upsert).toHaveBeenCalledWith({
         where: { email: "u2@test.com" },
         create: { email: "u2@test.com", name: "User Two", role: "INCIDENT" },
         update: { deletedAt: null },
       });
-      expect(operatorUpdateMany).not.toHaveBeenCalled();
+      expect(prismaMock.platformOperator.updateMany).not.toHaveBeenCalled();
     });
 
     it("granting uses email as the operator name when User.name is null", async () => {
-      const { operatorUpsert } = mockTx({
-        userRow: { id: "u3", email: "nameless@test.com", name: null, isSuperAdmin: true },
-      });
+      mockUser({ id: "u3", email: "nameless@test.com", name: null });
+      const upsert = prismaMock.platformOperator.upsert.mockResolvedValue({} as never);
 
-      await caller.toggleSuperAdmin({ userId: "u3", isSuperAdmin: true });
+      await caller.togglePlatformOperator({ userId: "u3", isOperator: true });
 
-      expect(operatorUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
         create: expect.objectContaining({ name: "nameless@test.com" }),
       }));
     });
 
-    it("revoking soft-deletes the PlatformOperator row instead of hard-deleting (OSS)", async () => {
-      const { operatorUpsert, operatorUpdateMany } = mockTx({
-        userRow: { id: "u2", email: "u2@test.com", name: "User Two", isSuperAdmin: false },
-      });
+    it("revoking soft-deletes the operator row (no hard-delete, no User write)", async () => {
+      mockUser();
+      const updateMany = prismaMock.platformOperator.updateMany.mockResolvedValue({ count: 1 } as never);
 
-      await caller.toggleSuperAdmin({ userId: "u2", isSuperAdmin: false });
+      await caller.togglePlatformOperator({ userId: "u2", isOperator: false });
 
-      expect(operatorUpdateMany).toHaveBeenCalledWith({
+      expect(updateMany).toHaveBeenCalledWith({
         where: { email: "u2@test.com", deletedAt: null },
         data: { deletedAt: expect.any(Date) },
       });
-      expect(operatorUpsert).not.toHaveBeenCalled();
+      expect(prismaMock.platformOperator.upsert).not.toHaveBeenCalled();
+      // Confirm we never touched the User row — operator status no longer
+      // lives on `User`.
+      expect(prismaMock.user.update).not.toHaveBeenCalled();
     });
 
-    it("skips PlatformOperator mirror under the strict multi-tenant mode", async () => {
+    it("refuses in strict multi-tenant mode (operators provisioned elsewhere)", async () => {
       const ORIG = process.env.VF_STRICT_MULTI_TENANT;
       process.env.VF_STRICT_MULTI_TENANT = "true";
       try {
-        const { operatorUpsert, operatorUpdateMany } = mockTx({
-          userRow: { id: "u2", email: "u2@test.com", name: "User Two", isSuperAdmin: true },
-        });
-
-        await caller.toggleSuperAdmin({ userId: "u2", isSuperAdmin: true });
-
-        expect(operatorUpsert).not.toHaveBeenCalled();
-        expect(operatorUpdateMany).not.toHaveBeenCalled();
+        await expect(
+          caller.togglePlatformOperator({ userId: "u2", isOperator: true }),
+        ).rejects.toThrow(/strict multi-tenant/i);
+        expect(prismaMock.platformOperator.upsert).not.toHaveBeenCalled();
+        expect(prismaMock.platformOperator.updateMany).not.toHaveBeenCalled();
       } finally {
         if (ORIG === undefined) delete process.env.VF_STRICT_MULTI_TENANT;
         else process.env.VF_STRICT_MULTI_TENANT = ORIG;
       }
+    });
+
+    it("returns NOT_FOUND when the user does not exist", async () => {
+      prismaMock.user.findUnique.mockResolvedValue(null as never);
+
+      await expect(
+        caller.togglePlatformOperator({ userId: "ghost", isOperator: true }),
+      ).rejects.toThrow("User not found");
+      expect(prismaMock.platformOperator.upsert).not.toHaveBeenCalled();
     });
   });
 

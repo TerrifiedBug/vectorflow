@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { isDemoMode } from "@/lib/is-demo-mode";
 import type { Role, OrgMemberRole, PlatformOperatorRole } from "@/generated/prisma";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 import { runWithLogContext } from "@/lib/log-context";
 
@@ -237,49 +238,12 @@ export const requireRole = (minRole: Role) =>
   });
 
 /**
- * @deprecated Use `requirePlatformOperator(role)` explicitly
- * drops `User.isSuperAdmin` ("operators are not users"). Every router-
- * level callsite was migrated (2026-05-17); this
- * middleware remains exported only as a deprecation cushion for
- * external consumers (community forks, custom routers in self-hosted
- * deployments). Slated for removal in the next major OSS release after
- * all known callsites have migrated.
- */
-export const requireSuperAdmin = () =>
-  t.middleware(async ({ ctx, next }) => {
-    if (!ctx.session?.user) {
-      throw new TRPCError({ code: "UNAUTHORIZED" });
-    }
-
-    const userId = ctx.session.user.id;
-    if (!userId) {
-      throw new TRPCError({ code: "UNAUTHORIZED" });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { isSuperAdmin: true },
-    });
-
-    if (!user?.isSuperAdmin) {
-      throw new TRPCError({
-        code: "FORBIDDEN",
-        message: "This action requires super admin access",
-      });
-    }
-
-    return next({
-      ctx: { session: ctx.session, userRole: "ADMIN" as Role },
-    });
-  });
-
-/**
  * Platform-operator authorization middleware.
  *
  * The platform-operator boundary is a hard line: operators are NEVER
- * tenant Users. `User.isSuperAdmin` (the legacy hatch) blurs that line
- * and is being phased out — `requirePlatformOperator(role)` is the
- * replacement.
+ * tenant Users. The legacy `User.isSuperAdmin` hatch blurred that line
+ * and was dropped (slice 7c). `requirePlatformOperator(role)` is the
+ * only operator gate.
  *
  * Resolution:
  *   1. The caller MUST have a session (UNAUTHORIZED otherwise).
@@ -294,10 +258,10 @@ export const requireSuperAdmin = () =>
  *      role-widening: an INCIDENT operator passes a SUPPORT gate, but
  *      not vice versa.
  *
- * Migration strategy (per the plan): introduce this alongside
- * `requireSuperAdmin`, flip individual routers in follow-up PRs, then
- * delete `requireSuperAdmin` once the call-site count is zero. Both
- * compile during the transition.
+ * History: introduced alongside the legacy `requireSuperAdmin` middleware
+ * during the platform-operator boundary migration; the legacy middleware
+ * and its `User.isSuperAdmin` reader were removed once every callsite had
+ * been flipped to this gate (slice 7c).
  *
  * Operator threading: the resolved `PlatformOperator` row is placed on
  * `ctx.operator` so downstream handlers can attribute writes to the
@@ -365,7 +329,8 @@ export const requirePlatformOperator = (minRole: PlatformOperatorRole = "SUPPORT
 /**
  * Team-scoped authorization middleware.
  * Resolves teamId from procedure input, validates membership, checks role.
- * Super admins bypass the membership check.
+ * Org-wide admins (OrgMember role OWNER or ADMIN) bypass the membership
+ * check — they're treated as ADMIN of every team in their org.
  */
 export const withTeamAccess = (minRole: Role) =>
   t.middleware(async ({ ctx, getRawInput, next }) => {
@@ -647,12 +612,12 @@ export const withTeamAccess = (minRole: Role) =>
       });
     }
 
-    // Resolve team org for boundary check; fetch in parallel with isSuperAdmin user lookup
-    const [user, teamOrg] = await Promise.all([
-      prisma.user.findUnique({
-        where: { id: userId },
-        select: { isSuperAdmin: true },
-      }),
+    // Resolve team org for boundary check; fetch in parallel with the
+    // org-wide admin check so the round-trips overlap. Org-wide admins
+    // (OrgMember role OWNER or ADMIN) bypass the membership lookup —
+    // they're admins of every team in their org.
+    const [isOrgAdmin, teamOrg] = await Promise.all([
+      isOrgWideAdmin(userId, ctx.organizationId),
       prisma.team.findUnique({
         where: { id: teamId },
         select: { organizationId: true },
@@ -667,7 +632,7 @@ export const withTeamAccess = (minRole: Role) =>
       throw new TRPCError({ code: "NOT_FOUND" });
     }
 
-    if (user?.isSuperAdmin) {
+    if (isOrgAdmin) {
       return next({
         ctx: { session: ctx.session, teamId, userRole: "ADMIN" as Role },
       });

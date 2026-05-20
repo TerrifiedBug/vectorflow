@@ -29,7 +29,6 @@ export async function createUserWithRole(role: Role): Promise<{ email: string; p
       passwordHash: await hash(password, 10),
       authMethod: "LOCAL",
       totpEnabled: false,
-      isSuperAdmin: false,
       mustChangePassword: false,
       memberships: {
         create: {

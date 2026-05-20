@@ -51,7 +51,7 @@ const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
 // Context passed to caller — middleware is passthrough so any shape works
 const caller = t.createCallerFactory(telemetryRouter)({
-  session: { user: { id: "u1", isSuperAdmin: true } },
+  session: { user: { id: "u1" } },
   organizationId: "default",
 });
 

@@ -364,12 +364,6 @@ model User {
   accounts                 Account[]
   lockedAt                 DateTime?
   lockedBy                 String?
-  /// @deprecated Use `OrgMember.role` (OWNER/ADMIN) plus the
-  ///   `isOrgWideAdmin(userId, orgId)` helper instead. Operators
-  ///   live in `PlatformOperator`, not on `User`. This boolean is
-  ///   retained as a back-compat read alias until every router
-  ///   callsite has migrated; do not introduce new readers.
-  isSuperAdmin             Boolean              @default(false)
   mustChangePassword       Boolean              @default(false)
   totpSecret               String?
   totpEnabled              Boolean              @default(false)

@@ -93,14 +93,14 @@ export function AppSidebar() {
     ),
   );
   const userRole = roleQuery.data?.role;
-  const isSuperAdmin = roleQuery.data?.isSuperAdmin ?? false;
+  const isOrgAdmin = roleQuery.data?.isOrgAdmin ?? false;
 
   const filterItem = (item: NavItem): boolean => {
     if (isSystemEnvironment && !SYSTEM_ENV_ALLOWED_HREFS.has(item.href)) {
       return false;
     }
     if (!item.requiredRole) return true;
-    if (isSuperAdmin) return true;
+    if (isOrgAdmin) return true;
     if (!userRole) return false;
     const roleLevel: Record<string, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2 };
     return (roleLevel[userRole] ?? 0) >= (roleLevel[item.requiredRole] ?? 0);
@@ -229,8 +229,8 @@ export function AppSidebar() {
             const visibleGroupItems = group.items.filter((item) => {
               if (item.designHidden) return false;
               if (demoMode && item.demoHidden) return false;
-              if (item.requiredSuperAdmin) return isSuperAdmin;
-              return isSuperAdmin || userRole === "ADMIN";
+              if (item.requiredSuperAdmin) return isOrgAdmin;
+              return isOrgAdmin || userRole === "ADMIN";
             });
             if (visibleGroupItems.length === 0) return null;
             return (

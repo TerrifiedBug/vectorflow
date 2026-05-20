@@ -27,7 +27,6 @@ export const userRouter = router({
           authMethod: true,
           mustChangePassword: true,
           totpEnabled: true,
-          isSuperAdmin: true,
           memberships: {
             select: { team: { select: { requireTwoFactor: true } } },
           },
@@ -35,6 +34,17 @@ export const userRouter = router({
       }),
       isOrgWideAdmin(userId, ctx.organizationId),
     ]);
+    // Check platform-operator status by email after user is resolved.
+    // Needed so client components can gate platform-operator-only endpoints
+    // (settings readiness, system environment selector) without triggering
+    // 403s for org admins who are not operators.
+    const platformOperatorRow = user?.email
+      ? await prisma.platformOperator.findUnique({
+          where: { email: user.email },
+          select: { deletedAt: true },
+        })
+      : null;
+    const isPlatformOperator = !!platformOperatorRow && !platformOperatorRow.deletedAt;
     // Check if any team requires 2FA
     const teamRequires2fa = user?.memberships.some(
       (m) => m.team.requireTwoFactor
@@ -45,13 +55,10 @@ export const userRouter = router({
       authMethod: user?.authMethod ?? "LOCAL",
       mustChangePassword: user?.mustChangePassword ?? false,
       totpEnabled: user?.totpEnabled ?? false,
-      /**
-       * @deprecated Read `isOrgAdmin` instead. This field is retained
-       *   for back-compat while UI callsites migrate.
-       */
-      isSuperAdmin: user?.isSuperAdmin ?? false,
       /** True when the caller is OWNER or ADMIN of their resolved org. */
       isOrgAdmin,
+      /** True when the caller has an active PlatformOperator row (no deletedAt). */
+      isPlatformOperator,
       twoFactorRequired: user?.authMethod !== "OIDC" && teamRequires2fa,
     };
   }),
@@ -416,7 +423,6 @@ export const userRouter = router({
             totpSecret: null,
             totpBackupCodes: null,
             scimExternalId: null,
-            isSuperAdmin: false,
             lockedAt: new Date(),
             lockedBy: "erasure",
           },
@@ -616,7 +622,6 @@ export const userRouter = router({
             totpSecret: null,
             totpBackupCodes: null,
             scimExternalId: null,
-            isSuperAdmin: false,
             lockedAt: new Date(),
             lockedBy: "erasure",
           },

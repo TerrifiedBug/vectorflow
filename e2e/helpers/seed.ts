@@ -24,7 +24,6 @@ export async function seed(prisma: PrismaClient): Promise<SeedResult> {
       passwordHash,
       authMethod: "LOCAL",
       totpEnabled: false,
-      isSuperAdmin: false,
       mustChangePassword: false,
     },
   });
