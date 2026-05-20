@@ -14,11 +14,11 @@ export async function GET() {
 
   // Resolve the user's org for the isOrgWideAdmin check + env scope.
   // OSS is single-tenant — every user lives in DEFAULT_ORG_ID — so
-  // taking the oldest OrgMember is unambiguous. In multi-org cloud
-  // surfaces the org SHOULD come from the request tenant (host
-  // header → organizationId); that resolver lives in vectorflow-cloud
-  // and the cloud-side route overrides this path. codex PR #381 P1
-  // flagged the multi-org case; see ADR-N for the cloud strategy.
+  // taking the oldest OrgMember is unambiguous. Multi-org callers
+  // should derive the org from the request tenant (host header →
+  // organizationId) before reaching this route; this OSS path is
+  // the single-tenant fallback. codex PR #381 P1 flagged the
+  // multi-org case.
   const userId = session.user.id;
 
   const primaryMembership = await prisma.orgMember.findFirst({
