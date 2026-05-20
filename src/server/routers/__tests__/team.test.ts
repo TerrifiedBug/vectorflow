@@ -34,8 +34,17 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 vi.mock("@/server/services/crypto", () => ({
+  ENCRYPTION_DOMAINS: { GENERIC: "generic" } as const,
   encrypt: vi.fn((val: string) => `enc:${val}`),
+  encryptForOrg: vi.fn(async (val: string) => `v3:${val}`),
 }));
+
+vi.mock("@/server/services/crypto-v3-callsite", async () => {
+  const actual = await vi.importActual<typeof import("@/server/services/crypto-v3-callsite")>(
+    "@/server/services/crypto-v3-callsite",
+  );
+  return actual;
+});
 
 vi.mock("@/server/services/ai", () => ({
   testAiConnection: vi.fn(),
@@ -647,7 +656,13 @@ describe("team router", () => {
   // ─── updateAiConfig ───────────────────────────────────────────────────────
 
   describe("updateAiConfig", () => {
-    it("encrypts AI API key when provided", async () => {
+    it("encrypts AI API key when provided (v2 — OSS / no DEK)", async () => {
+      prismaMock.team.findUnique.mockResolvedValue({
+        organizationId: "default",
+      } as never);
+      prismaMock.organization.findUnique.mockResolvedValue({
+        dataKeyCiphertext: null,
+      } as never);
       prismaMock.team.update.mockResolvedValue({
         id: "team-1",
         aiEnabled: true,
@@ -662,6 +677,9 @@ describe("team router", () => {
         aiApiKey: "sk-test-key",
       });
 
+      // crypto mock returns "enc:<value>"; production wraps with "enc:" prefix.
+      // OSS (no DEK) ⇒ wrapper falls through to v2 encrypt(value) ⇒ "enc:sk-test-key",
+      // then the column adds the "enc:" prefix ⇒ "enc:enc:sk-test-key".
       expect(prismaMock.team.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -669,6 +687,46 @@ describe("team router", () => {
           }),
         }),
       );
+    });
+
+    it("encrypts AI API key via v3 envelope when the org has a dataKeyCiphertext", async () => {
+      prismaMock.team.findUnique.mockResolvedValue({
+        organizationId: "default",
+      } as never);
+      prismaMock.organization.findUnique.mockResolvedValue({
+        dataKeyCiphertext: "wrapped-dek",
+      } as never);
+      prismaMock.team.update.mockResolvedValue({
+        id: "team-1",
+        aiEnabled: true,
+        aiProvider: "openai",
+        aiBaseUrl: null,
+        aiModel: "gpt-4",
+      } as never);
+
+      await adminCaller.updateAiConfig({
+        teamId: "team-1",
+        aiEnabled: true,
+        aiApiKey: "sk-test-key",
+      });
+
+      // With a DEK present the wrapper routes through `encryptForOrg`,
+      // which writes a `v3:` prefix. The on-disk column shape stays
+      // `enc:<ciphertext>`; we assert just on the `enc:v3:` prefix so the
+      // test does not pin to deeper crypto plumbing.
+      const updateCall = prismaMock.team.update.mock.calls[0]?.[0] as {
+        data: { aiApiKey: string };
+      } | undefined;
+      expect(updateCall?.data.aiApiKey?.startsWith("enc:v3:")).toBe(true);
+    });
+
+    it("returns NOT_FOUND when toggling the api key for a missing team", async () => {
+      prismaMock.team.findUnique.mockResolvedValue(null as never);
+
+      await expect(
+        adminCaller.updateAiConfig({ teamId: "ghost", aiApiKey: "sk-test-key" }),
+      ).rejects.toThrow("Team not found");
+      expect(prismaMock.team.update).not.toHaveBeenCalled();
     });
 
     it("clears AI API key when null is passed", async () => {
