@@ -41,6 +41,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { resolveOrgIdFromHost } from "@/lib/host-to-org";
+import { getRequestHostFromHeaders } from "@/lib/request-host";
 
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token");
@@ -48,11 +49,16 @@ export async function GET(req: NextRequest) {
     return new NextResponse("missing token", { status: 400 });
   }
 
-  // Codex P1: derive the host from `req.nextUrl` (Next.js's trusted
-  // request URL), NOT the raw `Host:` header. The latter is
-  // attacker-controlled and a spoofed Host could route a captured
-  // token's redeem onto the attacker's org context.
-  const host = req.nextUrl.host;
+  // Derive the host from the request's `Host:` header (optionally
+  // X-Forwarded-Host when the deployment trusts the upstream proxy
+  // via VF_TRUST_FORWARDED_HOST / VF_TRUST_PROXY_HEADERS).
+  // `req.nextUrl.host` returns the listen-socket authority on Next 16
+  // Node-runtime builds, which collapses every tenant to
+  // `DEFAULT_ORG_ID` and silently bypasses the redeem-host-binding
+  // check (both sides agree on "default"). The header-derived value
+  // matches what `/api/auth/magic-link/request` used when minting the
+  // token, so `expectedOrganizationId` compares like-for-like.
+  const host = getRequestHostFromHeaders(req.headers);
   const organizationId = await resolveOrgIdFromHost(host);
   const callbackUrl = req.nextUrl.searchParams.get("callbackUrl") ?? "/";
 

@@ -113,6 +113,21 @@ export async function registerNodeInstrumentation() {
     }
 
     try {
+      // Seed (upsert) the built-in DLP transform templates. Idempotent
+      // by design — upsert on a stable id — so it is safe to run on
+      // every leader-elected boot. We gate it behind leader election so
+      // a wide rolling deploy does not stampede the Template table with
+      // identical writes from every replica.
+      const { seedDlpTemplates } = await import(
+        "@/server/services/dlp-template-seed"
+      );
+      await seedDlpTemplates();
+      infoLog("instrumentation", "DLP templates seeded");
+    } catch (error) {
+      errorLog("instrumentation", "Failed to seed DLP templates", error);
+    }
+
+    try {
       const { importLegacyBackups } = await import("@/server/services/backup");
       const result = await importLegacyBackups();
       infoLog("instrumentation", `Legacy backup import: ${result.imported} imported, ${result.skipped} skipped`);

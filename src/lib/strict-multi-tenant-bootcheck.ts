@@ -81,26 +81,54 @@ export function assertStrictMultiTenantBoot(opts?: {
 }
 
 /**
- * Boot-time warning for `VF_TRUST_FORWARDED_HOST=true`.
+ * Boot-time warning when the deployment trusts upstream proxy headers
+ * for host derivation.
  *
- * When this flag is on the app trusts `X-Forwarded-Host` for org resolution,
- * OIDC issuer routing, and exchange-code redeem-org validation. If the
- * upstream proxy does NOT strip client-supplied `X-Forwarded-*` headers
- * before forwarding, a tenant can spoof the host and cause every
- * host-derived decision to resolve to a different org. This warning
- * surfaces the assumption loudly at boot so an operator who flipped
- * the flag without auditing their ingress is reminded to re-check.
+ * When `VF_TRUST_FORWARDED_HOST=true` OR `VF_TRUST_PROXY_HEADERS=true`
+ * (both env names are accepted to bridge historical configs) the app
+ * reads `X-Forwarded-Host` for org resolution, OIDC issuer routing,
+ * and exchange-code redeem-org validation. If the upstream proxy does
+ * NOT strip client-supplied `X-Forwarded-*` headers before forwarding,
+ * a tenant can spoof the host and cause every host-derived decision
+ * to resolve to a different org. This warning surfaces the assumption
+ * loudly at boot so an operator who flipped the flag without auditing
+ * their ingress is reminded to re-check.
+ *
+ * Also emits an explicit warning if only one of the two synonymous
+ * env vars is set, so operators do not silently rely on the side that
+ * happens to be checked while another module reads the other.
  */
 export function warnTrustForwardedHostIfOn(): void {
-  if (process.env.VF_TRUST_FORWARDED_HOST !== "true") return;
-  const message =
-    "VF_TRUST_FORWARDED_HOST=true — the application now reads " +
-    "X-Forwarded-Host for org resolution, OIDC routing, and exchange-code " +
-    "redeem-org checks. The upstream proxy MUST strip client-supplied " +
-    "X-Forwarded-* headers before forwarding; otherwise a tenant can " +
-    "spoof the host and force cross-org behaviour. " +
-    "See docs/internal/architecture.md for the ingress contract.";
-  warnLog("instrumentation", message);
+  const forwardedHost = process.env.VF_TRUST_FORWARDED_HOST === "true";
+  const proxyHeaders = process.env.VF_TRUST_PROXY_HEADERS === "true";
+  if (!forwardedHost && !proxyHeaders) return;
+
+  const enabledVia = [
+    forwardedHost ? "VF_TRUST_FORWARDED_HOST=true" : null,
+    proxyHeaders ? "VF_TRUST_PROXY_HEADERS=true" : null,
+  ]
+    .filter((s): s is string => Boolean(s))
+    .join(", ");
+
+  warnLog(
+    "instrumentation",
+    "proxy-header trust is enabled (" +
+      enabledVia +
+      ") — the application now reads X-Forwarded-Host for org resolution, " +
+      "OIDC routing, and exchange-code redeem-org checks. The upstream proxy " +
+      "MUST strip client-supplied X-Forwarded-* headers before forwarding; " +
+      "otherwise a tenant can spoof the host and force cross-org behaviour. " +
+      "See docs/internal/architecture.md for the ingress contract.",
+  );
+
+  if (forwardedHost !== proxyHeaders) {
+    warnLog(
+      "instrumentation",
+      "VF_TRUST_FORWARDED_HOST and VF_TRUST_PROXY_HEADERS are synonymous; " +
+        "only one is set. Set both (or neither) to make the deployment " +
+        "config obvious to the next operator who reads the env file.",
+    );
+  }
 }
 
 /**

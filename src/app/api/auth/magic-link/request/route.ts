@@ -29,6 +29,8 @@ import { mintMagicLink, MagicLinkSsoOnlyError } from "@/server/services/auth/mag
 import { resolveOrgIdFromHost } from "@/lib/host-to-org";
 import { warnLog, infoLog } from "@/lib/logger";
 import { checkIpRateLimit } from "@/app/api/_lib/ip-rate-limit";
+import { getRequestHostFromHeaders } from "@/lib/request-host";
+import { sendMagicLinkEmail } from "@/server/services/auth/magic-link-mailer";
 
 interface RequestBody {
   email?: string;
@@ -53,11 +55,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true }); // anti-enumeration; same response shape
   }
 
-  // Codex P1 (PR #352): use `req.nextUrl.host` (Next.js's trusted
-  // request URL) rather than the raw `Host:` header. Raw Host is
-  // attacker-controlled; a spoofed value could mint a token bound to
-  // the attacker's org with a victim's email.
-  const host = req.nextUrl.host;
+  // Derive the host from the request's `Host:` header (optionally
+  // X-Forwarded-Host when the deployment trusts the upstream proxy
+  // via VF_TRUST_FORWARDED_HOST / VF_TRUST_PROXY_HEADERS).
+  // `req.nextUrl.host` is unsuitable here: on Next 16 Node-runtime
+  // builds it returns the listening socket's authority
+  // (`0.0.0.0:3000` inside a container) instead of the proxied host,
+  // collapsing every tenant subdomain to `DEFAULT_ORG_ID`.
+  const host = getRequestHostFromHeaders(req.headers);
   const organizationId = await resolveOrgIdFromHost(host);
 
   try {
@@ -67,9 +72,14 @@ export async function POST(req: NextRequest) {
       requestIp: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
     });
 
-    // Use server-derived origin (req.nextUrl) rather than the client-controlled
-    // `Origin` header, which could be spoofed to embed an attacker's URL.
-    const baseUrl = req.nextUrl.origin;
+    // Build the redeem URL from the resolved host so the link the
+    // user clicks lands on the tenant subdomain that minted it. The
+    // scheme comes from `req.url` (built by Next.js from the trusted
+    // request URL) so we honour http vs https without trusting the
+    // header alone.
+    const requestUrl = new URL(req.url);
+    const scheme = requestUrl.protocol; // "https:" / "http:"
+    const baseUrl = host ? `${scheme}//${host}` : requestUrl.origin;
     const redeemUrl = `${baseUrl}/api/auth/magic-link/redeem?token=${encodeURIComponent(token)}`;
 
     await sendMagicLinkEmail({
@@ -106,33 +116,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/**
- * Send a magic-link email. OSS default: log the redeem URL to the
- * server console (so a self-hosted operator can wire any mail relay
- * they want).
- */
-async function sendMagicLinkEmail(args: {
-  email: string;
-  redeemUrl: string;
-  expiresAt: Date;
-}): Promise<void> {
-  // OSS default: no real send. Operators wiring magic-link locally are
-  // expected to provide their own transport and send the redeem URL.
-  if (IS_DEV) {
-    infoLog(
-      "magic-link-email",
-      `[DEV] magic-link URL for ${maskEmail(args.email)}: ${args.redeemUrl} (expires ${args.expiresAt.toISOString()})`,
-    );
-    return;
-  }
-  // Production: caller wires a transport. If none is configured we no-op
-  // so the request still returns 200 (the user will retry; operators see
-  // the warning).
-  warnLog(
-    "magic-link-email",
-    "no email transport configured in production — magic link not delivered",
-  );
-}
 
 function isPlausibleEmail(s: string): boolean {
   // Cheap surface check — RFC 5322 is overkill for the rate-limit /
