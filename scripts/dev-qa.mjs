@@ -18,9 +18,9 @@ const QA_DEV_USER = {
   name: "QA Dev User",
 };
 
-// Internal QA runner: starts the e2e PostgreSQL Compose service, applies Prisma
-// migrations, seeds deterministic QA data, then launches Next.js with the local
-// dev auth bypass. Keep setup notes in PR context rather than public docs.
+// Local QA runner: starts the e2e PostgreSQL Compose service, applies Prisma
+// migrations, seeds deterministic QA data, then launches Next.js with the
+// local dev auth bypass. Exposed publicly as `pnpm dev:qa`.
 const mode = getQaDatabaseMode();
 const DATABASE_URL = getQaDatabaseUrl();
 
