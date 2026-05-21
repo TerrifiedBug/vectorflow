@@ -81,74 +81,56 @@ export function assertStrictMultiTenantBoot(opts?: {
 }
 
 /**
- * Boot-time warning for `VF_TRUST_FORWARDED_HOST=true`.
+ * Boot-time warning when the deployment trusts upstream proxy headers
+ * for host derivation.
  *
- * When this flag is on the app trusts `X-Forwarded-Host` for org resolution,
- * OIDC issuer routing, and exchange-code redeem-org validation. If the
- * upstream proxy does NOT strip client-supplied `X-Forwarded-*` headers
- * before forwarding, a tenant can spoof the host and cause every
- * host-derived decision to resolve to a different org. This warning
- * surfaces the assumption loudly at boot so an operator who flipped
- * the flag without auditing their ingress is reminded to re-check.
+ * When `VF_TRUST_FORWARDED_HOST=true` the app reads `X-Forwarded-Host`
+ * for org resolution, OIDC issuer routing, and exchange-code redeem-org
+ * validation. If the upstream proxy does NOT strip client-supplied
+ * `X-Forwarded-*` headers before forwarding, a tenant can spoof the
+ * host and cause every host-derived decision to resolve to a different
+ * org. This warning surfaces the assumption loudly at boot so an
+ * operator who flipped the flag without auditing their ingress is
+ * reminded to re-check.
+ *
+ * `VF_TRUST_PROXY_HEADERS` is INTENTIONALLY not accepted as an alias
+ * for host trust — it governs forwarded-client-IP trust (rate-limit
+ * keying, dev bypass) only. If an operator has set the IP-trust flag
+ * without the host-trust flag, we also warn so the gap is visible —
+ * either they want host trust too (set both) or they explicitly do not
+ * (silence by setting `VF_TRUST_FORWARDED_HOST=false` once).
  */
 export function warnTrustForwardedHostIfOn(): void {
-  if (process.env.VF_TRUST_FORWARDED_HOST !== "true") return;
-  const message =
-    "VF_TRUST_FORWARDED_HOST=true — the application now reads " +
-    "X-Forwarded-Host for org resolution, OIDC routing, and exchange-code " +
-    "redeem-org checks. The upstream proxy MUST strip client-supplied " +
-    "X-Forwarded-* headers before forwarding; otherwise a tenant can " +
-    "spoof the host and force cross-org behaviour. " +
-    "See docs/internal/architecture.md for the ingress contract.";
-  warnLog("instrumentation", message);
+  const forwardedHost = process.env.VF_TRUST_FORWARDED_HOST === "true";
+  const proxyHeaders = process.env.VF_TRUST_PROXY_HEADERS === "true";
+
+  if (forwardedHost) {
+    warnLog(
+      "instrumentation",
+      "VF_TRUST_FORWARDED_HOST=true — the application now reads " +
+        "X-Forwarded-Host for org resolution, OIDC routing, and " +
+        "exchange-code redeem-org checks. The upstream proxy MUST strip " +
+        "client-supplied X-Forwarded-* headers before forwarding; " +
+        "otherwise a tenant can spoof the host and force cross-org " +
+        "behaviour. See docs/internal/architecture.md for the ingress " +
+        "contract.",
+    );
+  }
+
+  if (proxyHeaders && !forwardedHost) {
+    // The two env vars are NOT synonymous (Codex P1 on PR #390). This
+    // warning surfaces the asymmetry to the operator so they don't
+    // silently rely on the IP-trust flag for host trust too.
+    warnLog(
+      "instrumentation",
+      "VF_TRUST_PROXY_HEADERS=true is set but VF_TRUST_FORWARDED_HOST " +
+        "is not. The two flags control different surfaces: the former " +
+        "governs forwarded-client-IP trust only (rate-limit keying, " +
+        "dev bypass), while the latter is required to honour " +
+        "X-Forwarded-Host for org / auth routing. If the deployment " +
+        "runs behind a reverse proxy that sets X-Forwarded-Host, also " +
+        "set VF_TRUST_FORWARDED_HOST=true.",
+    );
+  }
 }
 
-/**
- * Boot-time warning when the deployment is in strict multi-tenant mode
- * but no recognised mail transport is configured.
- *
- * The magic-link request endpoint logs a per-request warning when no
- * transport is wired in production — but by then the user has already
- * been told "ok" (anti-enumeration) and their signup has silently
- * failed. Surfacing the same gap at boot lets an operator catch the
- * misconfiguration during deploy rather than after a user complains.
- *
- * Recognised transports (any one is enough):
- *
- *   - `RESEND_API_KEY` — Resend.
- *   - `POSTMARK_API_KEY` — Postmark.
- *   - `SENDGRID_API_KEY` — SendGrid.
- *   - `SMTP_HOST` — generic SMTP relay; matches what the docker compose
- *     env example documents for self-hosted operators.
- *   - `VF_MAGIC_LINK_TRANSPORT` — explicit operator opt-out: set to any
- *     non-empty value when the transport is wired through a mechanism
- *     this check can't see (e.g. a sidecar that intercepts the warn-log
- *     line and delivers the link). The presence of the env var is the
- *     "I know what I'm doing" signal.
- *
- * Only fires when `VF_STRICT_MULTI_TENANT === "true"`. OSS self-hosted
- * stays quiet because most self-hosters don't use magic-link at all.
- */
-const MAGIC_LINK_TRANSPORT_ENVS = [
-  "RESEND_API_KEY",
-  "POSTMARK_API_KEY",
-  "SENDGRID_API_KEY",
-  "SMTP_HOST",
-  "VF_MAGIC_LINK_TRANSPORT",
-] as const;
-
-export function warnMissingMagicLinkTransport(): void {
-  if (process.env.VF_STRICT_MULTI_TENANT !== "true") return;
-  const hasTransport = MAGIC_LINK_TRANSPORT_ENVS.some(
-    (k) => process.env[k] && process.env[k] !== "",
-  );
-  if (hasTransport) return;
-  warnLog(
-    "instrumentation",
-    "strict multi-tenant mode is on but no magic-link mail transport is " +
-      `configured. Set one of ${MAGIC_LINK_TRANSPORT_ENVS.join(", ")}; ` +
-      "without it, every magic-link request returns 200 (anti-enumeration) " +
-      "while the mail is silently dropped in " +
-      "",
-  );
-}

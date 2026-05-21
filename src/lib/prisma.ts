@@ -49,10 +49,3 @@ if (typeof globalThis !== "undefined" && !globalForPrisma._tsdbDetected) {
   });
 }
 
-// Seed DLP templates on startup (idempotent via upsert)
-import { seedDlpTemplates } from "@/server/services/dlp-template-seed";
-import { debugLog, errorLog } from "@/lib/logger";
-
-seedDlpTemplates()
-  .then(() => debugLog("startup", "DLP templates seeded"))
-  .catch((err) => errorLog("startup", "Failed to seed DLP templates", err));

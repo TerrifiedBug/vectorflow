@@ -1,6 +1,8 @@
-import NextAuth from "next-auth";
-import { authConfig } from "@/auth.config";
 import { NextResponse, type NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
+
+import { authConfig } from "@/auth.config";
+import { isDevAuthBypassRequestAllowed } from "@/lib/dev-auth-bypass";
 import { expireLegacyAuthCookies } from "@/lib/strict-cookies";
 import {
   contentSecurityPolicy,
@@ -10,19 +12,27 @@ import {
 /**
  * Next.js proxy (auth gate + strict-multi-tenant CSP nonce).
  *
- * Uses the lightweight auth.config.ts which does NOT import Prisma or any
- * Node.js-only modules, so it runs safely in the Edge runtime.
+ * Why not `auth()` from NextAuth as a higher-order wrapper?
  *
- * When VF_STRICT_MULTI_TENANT=true, also injects a per-request CSP nonce so that
- * Server Components can use it via `headers().get("x-vf-csp-nonce")`.
- * OSS builds short-circuit before touching any headers.
+ *   NextAuth v5's middleware helper (`auth(handler)`) used to wrap
+ *   this file. On Next 16 Node-runtime builds the wrapper post-
+ *   processes the inner response in a way that drops the
+ *   `NextResponse.next({ request: { headers } })` directive — so the
+ *   per-request `Content-Security-Policy` header we set on the
+ *   request never reaches the RSC renderer, the framework's own
+ *   inline boot scripts get rendered WITHOUT the `nonce` attribute,
+ *   and `strict-dynamic` blocks them. Every customer-facing page
+ *   renders blank. The fix is to call the nonce/CSP setup OURSELVES
+ *   as the outermost response, do the session check directly via
+ *   `getToken()`, and skip the `auth()` wrapper entirely. The
+ *   `authorized` callback's logic is short and is replicated inline
+ *   below.
  *
- * Route-specific CSP note: this only sets CSP when none is already present
- * on the response; route handlers that need a more-permissive policy (e.g.
- * Swagger UI) can set their own `Content-Security-Policy` response header
- * and this middleware will leave it in place.
+ * Route-specific CSP note: this only sets CSP when none is already
+ * present on the response; route handlers that need a more-permissive
+ * policy (e.g. Swagger UI) can set their own `Content-Security-Policy`
+ * response header and this middleware will leave it in place.
  */
-const { auth } = NextAuth(authConfig);
 
 const NONCE_HEADER = "x-vf-csp-nonce";
 
@@ -36,21 +46,98 @@ function generateNonce(): string {
   return btoa(bin);
 }
 
-export const proxy = auth(function middleware(req: NextRequest) {
+/**
+ * Replicates the `authConfig.authorized` callback's path checks. Kept
+ * in sync with `src/auth.config.ts`: every prefix that returns `true`
+ * there MUST also return `true` here, otherwise an exempt route would
+ * 302 to `/login` under strict mode where the middleware bypass for
+ * unauthenticated requests no longer flows through `auth()`.
+ */
+function isExemptPath(pathname: string): boolean {
+  if (pathname.startsWith("/login")) return true;
+  if (pathname.startsWith("/setup")) return true;
+  if (pathname.startsWith("/api/auth")) return true;
+  if (pathname.startsWith("/api/health")) return true;
+  if (pathname.startsWith("/api/setup")) return true;
+  if (pathname.startsWith("/api/v1")) return true;
+  if (pathname.startsWith("/api/agent")) return true;
+  if (pathname.startsWith("/api/scim")) return true;
+  return false;
+}
+
+/**
+ * Session-cookie name resolution mirrors `authConfig.cookies` from
+ * `src/auth.config.ts`. When strict-multi-tenant mode is on we use
+ * the `__Host-vf-session` override; otherwise NextAuth's defaults
+ * apply and `getToken()` will pick the right one (`__Secure-`
+ * prefixed under HTTPS, bare otherwise).
+ */
+function sessionCookieName(): string | undefined {
+  return authConfig.cookies?.sessionToken?.name;
+}
+
+async function hasValidSession(req: NextRequest): Promise<boolean> {
+  // Empty AUTH_SECRET would cause getToken to throw at runtime; we
+  // treat the absence as "not authenticated" rather than crashing,
+  // and let the request flow to the login redirect.
+  const secret =
+    process.env.AUTH_SECRET ??
+    process.env.NEXTAUTH_SECRET ??
+    "";
+  if (!secret) return false;
+
+  const cookieName = sessionCookieName();
+  try {
+    const token = await getToken({
+      // next-auth/jwt's getToken expects a NextApiRequest-like shape;
+      // NextRequest exposes `cookies` differently, so the helper also
+      // accepts NextRequest via the `req` field by inspecting headers.
+      // Both shapes are valid in v5; we pass the NextRequest as-is.
+      req,
+      secret,
+      ...(cookieName ? { cookieName } : {}),
+    });
+    return !!token;
+  } catch {
+    // A malformed cookie or rotated secret throws — treat as
+    // unauthenticated so the user is sent through the normal login
+    // flow rather than seeing a 500.
+    return false;
+  }
+}
+
+export async function proxy(req: NextRequest): Promise<NextResponse> {
+  // (1) Auth gate — replicates authConfig.authorized.
+  // Dev-auth bypass takes precedence over the session check so a
+  // bypass-enabled local environment does not require a real cookie.
+  const exempt = isExemptPath(req.nextUrl.pathname);
+  const bypass = isDevAuthBypassRequestAllowed(req);
+  if (!exempt && !bypass && !(await hasValidSession(req))) {
+    const loginUrl = new URL("/login", req.url);
+    // Preserve the originally requested path so the post-login
+    // bouncer can return the user where they were aiming.
+    const target = `${req.nextUrl.pathname}${req.nextUrl.search}`;
+    if (target !== "/") loginUrl.searchParams.set("callbackUrl", target);
+    const redirect = NextResponse.redirect(loginUrl);
+    expireLegacyAuthCookies(req, redirect);
+    return redirect;
+  }
+
+  // (2) OSS / non-strict profile — no nonce work, leave the static
+  // CSP from next.config.ts in place. `expireLegacyAuthCookies` is a
+  // no-op when VF_STRICT_MULTI_TENANT is off, so the call is free.
   if (!isStrictMultiTenantMode()) {
-    // OSS profile — leave the static CSP from next.config.ts in place.
-    // expireLegacyAuthCookies is a no-op when VF_STRICT_MULTI_TENANT is
-    // off, so this call is free in OSS / dev.
     const response = NextResponse.next();
     expireLegacyAuthCookies(req, response);
     return response;
   }
 
+  // (3) Strict-multi-tenant profile — generate a per-request nonce,
+  // attach it to both the request (so RSC `headers()` reads pick it
+  // up and Next's renderer applies it to framework inline scripts)
+  // and the response (so the browser enforces it under
+  // `script-src 'self' 'nonce-…' 'strict-dynamic'`).
   const nonce = generateNonce();
-
-  // Forward the nonce on the request so Server Components can read it, and
-  // set the nonce-bearing CSP on the request so Next.js applies the nonce
-  // attribute to its own rendered scripts during SSR.
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set(NONCE_HEADER, nonce);
   requestHeaders.set("Content-Security-Policy", contentSecurityPolicy(nonce));
@@ -59,22 +146,24 @@ export const proxy = auth(function middleware(req: NextRequest) {
     request: { headers: requestHeaders },
   });
 
-  // Set the nonce-bearing CSP only when no route-specific policy exists.
-  // This preserves tighter policies set by individual route handlers.
   if (!response.headers.get("Content-Security-Policy")) {
-    response.headers.set("Content-Security-Policy", contentSecurityPolicy(nonce));
+    response.headers.set(
+      "Content-Security-Policy",
+      contentSecurityPolicy(nonce),
+    );
   }
-  // Mirror the nonce on the response so downstream proxies / tracing can
-  // correlate without parsing the CSP value.
+  // Mirror the nonce on the response so downstream proxies / tracing
+  // can correlate without parsing the CSP value.
   response.headers.set(NONCE_HEADER, nonce);
 
-  // Evict any pre-migration NextAuth / Auth.js cookies the browser still
-  // carries. The session-token rename to `__Host-vf-session` is otherwise
-  // a soft cutover that leaves orphan cookies in place indefinitely.
+  // Evict any pre-migration NextAuth / Auth.js cookies the browser
+  // still carries. The session-token rename to `__Host-vf-session`
+  // is otherwise a soft cutover that leaves orphan cookies in place
+  // indefinitely.
   expireLegacyAuthCookies(req, response);
 
   return response;
-});
+}
 
 export const config = {
   matcher: [

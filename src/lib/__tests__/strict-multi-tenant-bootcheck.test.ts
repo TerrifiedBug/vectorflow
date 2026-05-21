@@ -10,7 +10,6 @@ vi.mock("@/lib/logger", () => ({
 import {
   assertStrictMultiTenantBoot,
   warnTrustForwardedHostIfOn,
-  warnMissingMagicLinkTransport,
 } from "../strict-multi-tenant-bootcheck";
 import { errorLog, infoLog, warnLog } from "@/lib/logger";
 
@@ -19,11 +18,7 @@ const ENV_KEYS = [
   "NEXTAUTH_SECRET_OPERATOR",
   "VF_REQUIRE_STRICT_MULTI_TENANT",
   "VF_TRUST_FORWARDED_HOST",
-  "RESEND_API_KEY",
-  "POSTMARK_API_KEY",
-  "SENDGRID_API_KEY",
-  "SMTP_HOST",
-  "VF_MAGIC_LINK_TRANSPORT",
+  "VF_TRUST_PROXY_HEADERS",
 ] as const;
 const ORIGINAL: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
 
@@ -105,16 +100,16 @@ describe("assertStrictMultiTenantBoot", () => {
 });
 
 describe("warnTrustForwardedHostIfOn", () => {
-  it("is silent when the flag is unset", () => {
+  it("is silent when neither flag is set", () => {
     warnTrustForwardedHostIfOn();
     expect(warnLog).not.toHaveBeenCalled();
   });
-  it("is silent when the flag is any value other than \"true\"", () => {
+  it('is silent when VF_TRUST_FORWARDED_HOST is any value other than "true"', () => {
     process.env.VF_TRUST_FORWARDED_HOST = "1";
     warnTrustForwardedHostIfOn();
     expect(warnLog).not.toHaveBeenCalled();
   });
-  it("warns loudly when the flag is exactly \"true\"", () => {
+  it("warns loudly when VF_TRUST_FORWARDED_HOST=true", () => {
     process.env.VF_TRUST_FORWARDED_HOST = "true";
     warnTrustForwardedHostIfOn();
     expect(warnLog).toHaveBeenCalledWith(
@@ -122,28 +117,24 @@ describe("warnTrustForwardedHostIfOn", () => {
       expect.stringContaining("VF_TRUST_FORWARDED_HOST=true"),
     );
   });
-});
-
-describe("warnMissingMagicLinkTransport", () => {
-  it("is silent when strict multi-tenant mode is off", () => {
-    warnMissingMagicLinkTransport();
-    expect(warnLog).not.toHaveBeenCalled();
-  });
-  it("warns when strict mode is on and no transport env var is set", () => {
-    process.env.VF_STRICT_MULTI_TENANT = "true";
-    warnMissingMagicLinkTransport();
+  it("warns about the asymmetry when only VF_TRUST_PROXY_HEADERS is set", () => {
+    // Codex P1: the two flags are NOT synonymous. The IP-trust flag
+    // alone must NOT silently widen host trust; surface the gap.
+    process.env.VF_TRUST_PROXY_HEADERS = "true";
+    warnTrustForwardedHostIfOn();
     expect(warnLog).toHaveBeenCalledWith(
       "instrumentation",
-      expect.stringContaining("no magic-link mail transport"),
+      expect.stringContaining("VF_TRUST_PROXY_HEADERS=true is set but"),
     );
   });
-  it.each(["RESEND_API_KEY", "POSTMARK_API_KEY", "SENDGRID_API_KEY", "SMTP_HOST", "VF_MAGIC_LINK_TRANSPORT"])(
-    "is silent when %s is set",
-    (envName) => {
-      process.env.VF_STRICT_MULTI_TENANT = "true";
-      process.env[envName] = "configured";
-      warnMissingMagicLinkTransport();
-      expect(warnLog).not.toHaveBeenCalled();
-    },
-  );
+  it("does NOT emit the asymmetry warning when both flags are set", () => {
+    process.env.VF_TRUST_FORWARDED_HOST = "true";
+    process.env.VF_TRUST_PROXY_HEADERS = "true";
+    warnTrustForwardedHostIfOn();
+    // Only the primary warning, not the asymmetry one.
+    const asymmetryCalls = (warnLog as unknown as { mock: { calls: unknown[][] } }).mock.calls.filter(
+      (call) => typeof call[1] === "string" && (call[1] as string).includes("VF_TRUST_PROXY_HEADERS=true is set but"),
+    );
+    expect(asymmetryCalls.length).toBe(0);
+  });
 });

@@ -1,6 +1,6 @@
 import "@/lib/env";
 import { infoLog, errorLog } from "@/lib/logger";
-import { assertStrictMultiTenantBoot, warnTrustForwardedHostIfOn, warnMissingMagicLinkTransport } from "@/lib/strict-multi-tenant-bootcheck";
+import { assertStrictMultiTenantBoot, warnTrustForwardedHostIfOn } from "@/lib/strict-multi-tenant-bootcheck";
 
 export async function registerNodeInstrumentation() {
   // refuse to boot if env signals say this is a strict
@@ -9,7 +9,6 @@ export async function registerNodeInstrumentation() {
   // serving traffic.
   assertStrictMultiTenantBoot();
   warnTrustForwardedHostIfOn();
-  warnMissingMagicLinkTransport();
 
   // Initialize leader election FIRST — determines which services this instance runs.
   let leaderIsLeader: () => boolean;
@@ -110,6 +109,21 @@ export async function registerNodeInstrumentation() {
       await bootstrapDemoDeployments();
     } catch (error) {
       errorLog("instrumentation", "Demo deployment bootstrap failed", error);
+    }
+
+    try {
+      // Seed (upsert) the built-in DLP transform templates. Idempotent
+      // by design — upsert on a stable id — so it is safe to run on
+      // every leader-elected boot. We gate it behind leader election so
+      // a wide rolling deploy does not stampede the Template table with
+      // identical writes from every replica.
+      const { seedDlpTemplates } = await import(
+        "@/server/services/dlp-template-seed"
+      );
+      await seedDlpTemplates();
+      infoLog("instrumentation", "DLP templates seeded");
+    } catch (error) {
+      errorLog("instrumentation", "Failed to seed DLP templates", error);
     }
 
     try {
