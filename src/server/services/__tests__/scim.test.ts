@@ -104,7 +104,7 @@ describe("SCIM audit status logging", () => {
     );
   });
 
-  it("preserves the adoption action when a SCIM user adoption transaction fails", async () => {
+  it("preserves the adoption action when the SCIM user.update fails after the cross-org guard passes", async () => {
     prismaMock.user.findUnique.mockResolvedValue({
       id: "user-1",
       email: "ada@example.com",
@@ -113,9 +113,11 @@ describe("SCIM audit status logging", () => {
       lockedAt: null,
       authMethod: "OIDC",
     } as never);
-    // Adoption now upserts OrgMember alongside the User update inside a
-    // single $transaction([update, upsert]). Mock the array form failing.
-    prismaMock.$transaction.mockRejectedValue(new Error("adoption failed") as never);
+    // Cross-org guard expects the existing User to already be a
+    // member of this org. With the OrgMember row present, the guard
+    // passes and the user.update path runs — which we make throw.
+    prismaMock.orgMember.findUnique.mockResolvedValue({ userId: "user-1" } as never);
+    prismaMock.user.update.mockRejectedValue(new Error("adoption failed") as never);
 
     await expect(
       scimCreateUser("org-1", {
@@ -140,6 +142,31 @@ describe("SCIM audit status logging", () => {
         }),
       }),
     );
+  });
+
+  it("refuses cross-org adoption when the existing user is not yet a member of this org", async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: "user-from-other-org",
+      email: "ada@example.com",
+      name: "Ada Lovelace",
+      scimExternalId: null,
+      lockedAt: null,
+      authMethod: "OIDC",
+    } as never);
+    // No membership in the target org → cross-org guard refuses.
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
+
+    await expect(
+      scimCreateUser("org-attacker", {
+        schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"],
+        userName: "ada@example.com",
+        emails: [{ value: "ada@example.com", primary: true, type: "work" }],
+      }),
+    ).rejects.toThrow("already exists in another organisation");
+
+    // user.update / orgMember.upsert MUST NOT be called — the guard
+    // bailed before any write.
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 });
 

@@ -176,27 +176,40 @@ export async function scimCreateUser(
         throw err;
       }
 
-      // Adopt: link the SCIM externalId to the existing SSO user and
-      // ensure they have an OrgMember in THIS organisation (idempotent).
-      const [updated] = await prisma.$transaction([
-        prisma.user.update({
-          where: { id: existing.id },
-          data: {
-            scimExternalId: scimUser.externalId ?? existing.scimExternalId,
-          },
-          select: USER_SELECT,
-        }),
-        prisma.orgMember.upsert({
-          where: {
-            userId_organizationId: {
-              userId: existing.id,
-              organizationId,
-            },
-          },
-          create: { userId: existing.id, organizationId, role: "MEMBER" },
-          update: {},
-        }),
-      ]);
+      // Cross-tenant adoption guard: the existing User has been linked
+      // to an OrgMember somewhere — if NONE of those memberships is in
+      // THIS organisation, refusing the adoption is the safe default.
+      // An auto-upsert would let a SCIM admin in org B attach their
+      // org to an account belonging to org A purely on email collision,
+      // and SCIM PATCH/PUT can then mutate the shared User row
+      // (email, lock state) — creating a cross-tenant control path
+      // over identity state. Require an explicit cross-org link flow
+      // (or pre-existing membership) instead.
+      const memberOfThisOrg = await prisma.orgMember.findUnique({
+        where: {
+          userId_organizationId: { userId: existing.id, organizationId },
+        },
+        select: { userId: true },
+      });
+      if (!memberOfThisOrg) {
+        const err = new Error(
+          `User ${email} already exists in another organisation and cannot be auto-adopted by SCIM. ` +
+          "An administrator must add the user to this organisation through the org-management surface first.",
+        );
+        (err as Error & { scimConflict: boolean }).scimConflict = true;
+        throw err;
+      }
+
+      // Adopt: link the SCIM externalId to the existing SSO user. The
+      // OrgMember row in this org already exists (we just verified it);
+      // no upsert needed.
+      const updated = await prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          scimExternalId: scimUser.externalId ?? existing.scimExternalId,
+        },
+        select: USER_SELECT,
+      });
 
       await writeScimAuditLog({
         action: "scim.user_adopted",
@@ -468,15 +481,26 @@ export async function scimDeleteUser(organizationId: string, id: string) {
   if (!(await requireOrgMember(organizationId, id))) return null;
   try {
     await prisma.$transaction(async (tx) => {
-      // Step 1: remove the OrgMember for this org. Cascades to TeamMember
-      // rows that hang off OrgMember-scoped relations (where applicable).
+      // Step 1: clear EVERY team membership for this user on teams owned
+      // by the deprovisioning org. `OrgMember.delete` alone is not enough
+      // — `withTeamAccess` and the team-based authorisation paths read
+      // from `TeamMember`, so leaving stale rows behind keeps the user
+      // authorised on this org's teams (especially for active sessions).
+      await tx.teamMember.deleteMany({
+        where: {
+          userId: id,
+          team: { organizationId },
+        },
+      });
+
+      // Step 2: remove the OrgMember for this org.
       await tx.orgMember.delete({
         where: {
           userId_organizationId: { userId: id, organizationId },
         },
       });
 
-      // Step 2: if the user has no remaining org memberships, lock the
+      // Step 3: if the user has no remaining org memberships, lock the
       // global User. SCIM ownership of the lock is only claimed when
       // no other source already owns it (admin-locked rows survive).
       const remaining = await tx.orgMember.count({ where: { userId: id } });
