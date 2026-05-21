@@ -1,6 +1,6 @@
 import "@/lib/env";
 import { infoLog, errorLog } from "@/lib/logger";
-import { assertStrictMultiTenantBoot, warnTrustForwardedHostIfOn, warnMissingMagicLinkTransport } from "@/lib/strict-multi-tenant-bootcheck";
+import { assertStrictMultiTenantBoot, warnTrustForwardedHostIfOn } from "@/lib/strict-multi-tenant-bootcheck";
 
 export async function registerNodeInstrumentation() {
   // refuse to boot if env signals say this is a strict
@@ -9,7 +9,6 @@ export async function registerNodeInstrumentation() {
   // serving traffic.
   assertStrictMultiTenantBoot();
   warnTrustForwardedHostIfOn();
-  warnMissingMagicLinkTransport();
 
   // Initialize leader election FIRST — determines which services this instance runs.
   let leaderIsLeader: () => boolean;

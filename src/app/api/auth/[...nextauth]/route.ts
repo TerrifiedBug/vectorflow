@@ -12,7 +12,6 @@ export const GET = handlers.GET;
  *  - /api/auth/callback/credentials — 5 attempts/min per IP
  *  - /api/auth/callback/oidc        — 20 requests/min per IP (redirect abuse)
  *  - /api/auth/callback/webauthn    — 20 requests/min per IP (assertion spam)
- *  - /api/auth/callback/magic-link  — 10 attempts/min per IP (DB lookup per attempt)
  */
 export async function POST(request: Request, context: unknown) {
   const { pathname } = new URL(request.url);
@@ -25,9 +24,6 @@ export async function POST(request: Request, context: unknown) {
     if (limited) return limited;
   } else if (pathname.endsWith("/callback/webauthn")) {
     const limited = await checkIpRateLimit(request, "auth:webauthn", 20);
-    if (limited) return limited;
-  } else if (pathname.endsWith("/callback/magic-link")) {
-    const limited = await checkIpRateLimit(request, "auth:magic-link", 10);
     if (limited) return limited;
   }
 

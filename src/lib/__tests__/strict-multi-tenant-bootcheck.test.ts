@@ -10,7 +10,6 @@ vi.mock("@/lib/logger", () => ({
 import {
   assertStrictMultiTenantBoot,
   warnTrustForwardedHostIfOn,
-  warnMissingMagicLinkTransport,
 } from "../strict-multi-tenant-bootcheck";
 import { errorLog, infoLog, warnLog } from "@/lib/logger";
 
@@ -19,11 +18,6 @@ const ENV_KEYS = [
   "NEXTAUTH_SECRET_OPERATOR",
   "VF_REQUIRE_STRICT_MULTI_TENANT",
   "VF_TRUST_FORWARDED_HOST",
-  "RESEND_API_KEY",
-  "POSTMARK_API_KEY",
-  "SENDGRID_API_KEY",
-  "SMTP_HOST",
-  "VF_MAGIC_LINK_TRANSPORT",
 ] as const;
 const ORIGINAL: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
 
@@ -122,28 +116,4 @@ describe("warnTrustForwardedHostIfOn", () => {
       expect.stringContaining("VF_TRUST_FORWARDED_HOST=true"),
     );
   });
-});
-
-describe("warnMissingMagicLinkTransport", () => {
-  it("is silent when strict multi-tenant mode is off", () => {
-    warnMissingMagicLinkTransport();
-    expect(warnLog).not.toHaveBeenCalled();
-  });
-  it("warns when strict mode is on and no transport env var is set", () => {
-    process.env.VF_STRICT_MULTI_TENANT = "true";
-    warnMissingMagicLinkTransport();
-    expect(warnLog).toHaveBeenCalledWith(
-      "instrumentation",
-      expect.stringContaining("no magic-link mail transport"),
-    );
-  });
-  it.each(["RESEND_API_KEY", "POSTMARK_API_KEY", "SENDGRID_API_KEY", "SMTP_HOST", "VF_MAGIC_LINK_TRANSPORT"])(
-    "is silent when %s is set",
-    (envName) => {
-      process.env.VF_STRICT_MULTI_TENANT = "true";
-      process.env[envName] = "configured";
-      warnMissingMagicLinkTransport();
-      expect(warnLog).not.toHaveBeenCalled();
-    },
-  );
 });
