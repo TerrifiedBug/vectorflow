@@ -84,49 +84,52 @@ export function assertStrictMultiTenantBoot(opts?: {
  * Boot-time warning when the deployment trusts upstream proxy headers
  * for host derivation.
  *
- * When `VF_TRUST_FORWARDED_HOST=true` OR `VF_TRUST_PROXY_HEADERS=true`
- * (both env names are accepted to bridge historical configs) the app
- * reads `X-Forwarded-Host` for org resolution, OIDC issuer routing,
- * and exchange-code redeem-org validation. If the upstream proxy does
- * NOT strip client-supplied `X-Forwarded-*` headers before forwarding,
- * a tenant can spoof the host and cause every host-derived decision
- * to resolve to a different org. This warning surfaces the assumption
- * loudly at boot so an operator who flipped the flag without auditing
- * their ingress is reminded to re-check.
+ * When `VF_TRUST_FORWARDED_HOST=true` the app reads `X-Forwarded-Host`
+ * for org resolution, OIDC issuer routing, and exchange-code redeem-org
+ * validation. If the upstream proxy does NOT strip client-supplied
+ * `X-Forwarded-*` headers before forwarding, a tenant can spoof the
+ * host and cause every host-derived decision to resolve to a different
+ * org. This warning surfaces the assumption loudly at boot so an
+ * operator who flipped the flag without auditing their ingress is
+ * reminded to re-check.
  *
- * Also emits an explicit warning if only one of the two synonymous
- * env vars is set, so operators do not silently rely on the side that
- * happens to be checked while another module reads the other.
+ * `VF_TRUST_PROXY_HEADERS` is INTENTIONALLY not accepted as an alias
+ * for host trust — it governs forwarded-client-IP trust (rate-limit
+ * keying, dev bypass) only. If an operator has set the IP-trust flag
+ * without the host-trust flag, we also warn so the gap is visible —
+ * either they want host trust too (set both) or they explicitly do not
+ * (silence by setting `VF_TRUST_FORWARDED_HOST=false` once).
  */
 export function warnTrustForwardedHostIfOn(): void {
   const forwardedHost = process.env.VF_TRUST_FORWARDED_HOST === "true";
   const proxyHeaders = process.env.VF_TRUST_PROXY_HEADERS === "true";
-  if (!forwardedHost && !proxyHeaders) return;
 
-  const enabledVia = [
-    forwardedHost ? "VF_TRUST_FORWARDED_HOST=true" : null,
-    proxyHeaders ? "VF_TRUST_PROXY_HEADERS=true" : null,
-  ]
-    .filter((s): s is string => Boolean(s))
-    .join(", ");
-
-  warnLog(
-    "instrumentation",
-    "proxy-header trust is enabled (" +
-      enabledVia +
-      ") — the application now reads X-Forwarded-Host for org resolution, " +
-      "OIDC routing, and exchange-code redeem-org checks. The upstream proxy " +
-      "MUST strip client-supplied X-Forwarded-* headers before forwarding; " +
-      "otherwise a tenant can spoof the host and force cross-org behaviour. " +
-      "See docs/internal/architecture.md for the ingress contract.",
-  );
-
-  if (forwardedHost !== proxyHeaders) {
+  if (forwardedHost) {
     warnLog(
       "instrumentation",
-      "VF_TRUST_FORWARDED_HOST and VF_TRUST_PROXY_HEADERS are synonymous; " +
-        "only one is set. Set both (or neither) to make the deployment " +
-        "config obvious to the next operator who reads the env file.",
+      "VF_TRUST_FORWARDED_HOST=true — the application now reads " +
+        "X-Forwarded-Host for org resolution, OIDC routing, and " +
+        "exchange-code redeem-org checks. The upstream proxy MUST strip " +
+        "client-supplied X-Forwarded-* headers before forwarding; " +
+        "otherwise a tenant can spoof the host and force cross-org " +
+        "behaviour. See docs/internal/architecture.md for the ingress " +
+        "contract.",
+    );
+  }
+
+  if (proxyHeaders && !forwardedHost) {
+    // The two env vars are NOT synonymous (Codex P1 on PR #390). This
+    // warning surfaces the asymmetry to the operator so they don't
+    // silently rely on the IP-trust flag for host trust too.
+    warnLog(
+      "instrumentation",
+      "VF_TRUST_PROXY_HEADERS=true is set but VF_TRUST_FORWARDED_HOST " +
+        "is not. The two flags control different surfaces: the former " +
+        "governs forwarded-client-IP trust only (rate-limit keying, " +
+        "dev bypass), while the latter is required to honour " +
+        "X-Forwarded-Host for org / auth routing. If the deployment " +
+        "runs behind a reverse proxy that sets X-Forwarded-Host, also " +
+        "set VF_TRUST_FORWARDED_HOST=true.",
     );
   }
 }

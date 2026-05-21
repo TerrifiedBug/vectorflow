@@ -12,11 +12,16 @@ function makeHeaders(init: Record<string, string>): Headers {
 }
 
 describe("trustsForwardedHost", () => {
-  it("returns false when neither env var is true", () => {
+  it("returns false when VF_TRUST_FORWARDED_HOST is unset / not 'true'", () => {
+    expect(
+      trustsForwardedHost({
+        VF_TRUST_FORWARDED_HOST: undefined,
+        VF_TRUST_PROXY_HEADERS: undefined,
+      }),
+    ).toBe(false);
     expect(
       trustsForwardedHost({
         VF_TRUST_FORWARDED_HOST: "false",
-        VF_TRUST_PROXY_HEADERS: undefined,
       }),
     ).toBe(false);
   });
@@ -25,25 +30,32 @@ describe("trustsForwardedHost", () => {
     expect(
       trustsForwardedHost({
         VF_TRUST_FORWARDED_HOST: "true",
-        VF_TRUST_PROXY_HEADERS: undefined,
       }),
     ).toBe(true);
   });
 
-  it("returns true when VF_TRUST_PROXY_HEADERS=true (legacy alias)", () => {
+  it("does NOT honour VF_TRUST_PROXY_HEADERS for host trust (Codex P1)", () => {
+    // VF_TRUST_PROXY_HEADERS governs forwarded-client-IP trust only.
+    // Conflating it with host trust silently widened the attack surface
+    // for any deployment that had set it for client-IP attribution
+    // without auditing host handling.
     expect(
       trustsForwardedHost({
         VF_TRUST_FORWARDED_HOST: undefined,
         VF_TRUST_PROXY_HEADERS: "true",
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it("only treats the literal string \"true\" as truthy", () => {
+  it('only treats the literal string "true" as truthy', () => {
     expect(
       trustsForwardedHost({
         VF_TRUST_FORWARDED_HOST: "1",
-        VF_TRUST_PROXY_HEADERS: "yes",
+      }),
+    ).toBe(false);
+    expect(
+      trustsForwardedHost({
+        VF_TRUST_FORWARDED_HOST: "yes",
       }),
     ).toBe(false);
   });
@@ -58,7 +70,6 @@ describe("getRequestHostFromHeaders", () => {
     expect(
       getRequestHostFromHeaders(headers, {
         VF_TRUST_FORWARDED_HOST: undefined,
-        VF_TRUST_PROXY_HEADERS: undefined,
       }),
     ).toBe("cloud.localtest.me:3000");
   });
@@ -71,20 +82,47 @@ describe("getRequestHostFromHeaders", () => {
     expect(
       getRequestHostFromHeaders(headers, {
         VF_TRUST_FORWARDED_HOST: "true",
-        VF_TRUST_PROXY_HEADERS: undefined,
       }),
     ).toBe("acme.vectorflow.sh");
   });
 
-  it("returns X-Forwarded-Host when VF_TRUST_PROXY_HEADERS=true", () => {
+  it("ignores X-Forwarded-Host when only VF_TRUST_PROXY_HEADERS=true (Codex P1)", () => {
     const headers = makeHeaders({
       host: "internal.cluster.local:3000",
-      "x-forwarded-host": "acme.vectorflow.sh",
+      "x-forwarded-host": "spoof.attacker.com",
     });
     expect(
       getRequestHostFromHeaders(headers, {
         VF_TRUST_FORWARDED_HOST: undefined,
         VF_TRUST_PROXY_HEADERS: "true",
+      }),
+    ).toBe("internal.cluster.local:3000");
+  });
+
+  it("takes only the FIRST hop of multi-value X-Forwarded-Host (Codex P1)", () => {
+    // RFC 7239: proxies append left-to-right, so the client-facing
+    // host is the leftmost entry. Without splitting, downstream
+    // callers build URLs with the raw `"tenant.example.com, edge.internal"`
+    // value and the link is malformed.
+    const headers = makeHeaders({
+      host: "internal.cluster.local",
+      "x-forwarded-host": "acme.vectorflow.sh, edge.internal",
+    });
+    expect(
+      getRequestHostFromHeaders(headers, {
+        VF_TRUST_FORWARDED_HOST: "true",
+      }),
+    ).toBe("acme.vectorflow.sh");
+  });
+
+  it("trims whitespace between hops in X-Forwarded-Host", () => {
+    const headers = makeHeaders({
+      host: "internal.cluster.local",
+      "x-forwarded-host": "  acme.vectorflow.sh  ,  edge.internal  ",
+    });
+    expect(
+      getRequestHostFromHeaders(headers, {
+        VF_TRUST_FORWARDED_HOST: "true",
       }),
     ).toBe("acme.vectorflow.sh");
   });
@@ -94,7 +132,18 @@ describe("getRequestHostFromHeaders", () => {
     expect(
       getRequestHostFromHeaders(headers, {
         VF_TRUST_FORWARDED_HOST: "true",
-        VF_TRUST_PROXY_HEADERS: undefined,
+      }),
+    ).toBe("cloud.localtest.me:3000");
+  });
+
+  it("falls back to Host when X-Forwarded-Host is set but the first hop is empty", () => {
+    const headers = makeHeaders({
+      host: "cloud.localtest.me:3000",
+      "x-forwarded-host": "  ",
+    });
+    expect(
+      getRequestHostFromHeaders(headers, {
+        VF_TRUST_FORWARDED_HOST: "true",
       }),
     ).toBe("cloud.localtest.me:3000");
   });
@@ -103,7 +152,6 @@ describe("getRequestHostFromHeaders", () => {
     expect(
       getRequestHostFromHeaders(makeHeaders({}), {
         VF_TRUST_FORWARDED_HOST: "true",
-        VF_TRUST_PROXY_HEADERS: undefined,
       }),
     ).toBeNull();
   });
