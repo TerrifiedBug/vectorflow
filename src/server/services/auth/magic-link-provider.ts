@@ -35,6 +35,7 @@ import { prisma } from "@/lib/prisma";
 import { consumeMagicLink } from "@/server/services/auth/magic-link";
 import { writeAuditLog } from "@/server/services/audit";
 import { infoLog, warnLog } from "@/lib/logger";
+import { resolveOrgIdFromHost } from "@/lib/host-to-org";
 
 /**
  * Pure authorize function, exported so unit tests can exercise it
@@ -42,6 +43,7 @@ import { infoLog, warnLog } from "@/lib/logger";
  */
 export async function authorizeMagicLink(
   credentials: Record<string, unknown> | undefined,
+  expectedOrganizationIdOverride?: string,
 ): Promise<{
   id: string;
   email: string | null;
@@ -56,18 +58,27 @@ export async function authorizeMagicLink(
     return null;
   }
 
-  // Audit P2-4 / docs/plans/2026-05-20-go-live-readiness-audit.md:
-  // do NOT trust `credentials.organizationId`. The token row IS the
-  // org binding — `consumeMagicLink` reads `organizationId` from the
-  // persisted row and returns it on success. The redeem ROUTE (not
-  // the provider) already validated that the request host matches
-  // the token's org BEFORE invoking signIn("magic-link"); the provider
-  // just trusts the token's own state and never reads
-  // `credentials.organizationId`.
+  // The expected-org binding is the caller's responsibility. NextAuth-
+  // wired callers go through `authorizeMagicLinkFromRequest` (defined
+  // below) which derives the org from the request host before calling
+  // this helper. Unit tests pass an explicit override. Either way the
+  // value is NEVER read from client-supplied credentials, so a token
+  // captured for org A cannot be redeemed by POSTing directly to
+  // `/api/auth/callback/magic-link` from org B.
+  if (!expectedOrganizationIdOverride) {
+    warnLog(
+      "magic-link-provider",
+      "magic-link authorize called without an expected organisation id; refusing redeem",
+    );
+    return null;
+  }
+  const expectedOrganizationId = expectedOrganizationIdOverride;
+
   let result: Awaited<ReturnType<typeof consumeMagicLink>>;
   try {
     result = await consumeMagicLink({
       token: credentials.token,
+      expectedOrganizationId,
     });
   } catch (err) {
     warnLog("magic-link-provider", "consumeMagicLink threw", err);
@@ -163,11 +174,34 @@ export async function authorizeMagicLink(
   };
 }
 
+/**
+ * NextAuth-bound wrapper. Extracts the request host server-side and
+ * forwards it as the expected-org override so the pure helper does NOT
+ * have to call `next/headers()` (which only resolves inside a server
+ * component / route handler with bound request context).
+ */
+async function authorizeMagicLinkFromRequest(
+  credentials: Partial<Record<"token", unknown>>,
+  request: Request,
+) {
+  const url = new URL(request.url);
+  const trustForwarded = process.env.VF_TRUST_FORWARDED_HOST === "true";
+  const host =
+    (trustForwarded ? request.headers.get("x-forwarded-host") : null) ??
+    request.headers.get("host") ??
+    url.host;
+  const expectedOrganizationId = await resolveOrgIdFromHost(host);
+  return authorizeMagicLink(
+    credentials as Record<string, unknown> | undefined,
+    expectedOrganizationId,
+  );
+}
+
 export const magicLinkProvider = Credentials({
   id: "magic-link",
   name: "Magic Link",
   credentials: {
     token: { label: "Token", type: "text" },
   },
-  authorize: authorizeMagicLink,
+  authorize: authorizeMagicLinkFromRequest,
 });

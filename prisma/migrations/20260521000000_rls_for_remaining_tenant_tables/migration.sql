@@ -4,10 +4,10 @@
 --
 -- Each table already carries an `organizationId` column; the application
 -- layer was the only barrier. RLS adds the database-level fence that the
--- rest of phase5a installs so a direct query or backup-restore code path
+-- rest of the strict RLS policies installs so a direct query or backup-restore code path
 -- cannot read across tenants.
 --
--- Same strict policy shape as phase5a / 20260516000001: the GUC must
+-- Same strict policy shape as the strict RLS policies / 20260516000001: the GUC must
 -- match the row, and the sentinel-coerced unset GUC denies access.
 
 DO $$
@@ -30,14 +30,8 @@ BEGIN
             tbl || '_org_isolation', tbl);
         EXECUTE format($p$
             CREATE POLICY %I ON %I
-            USING (
-                "organizationId" = COALESCE(NULLIF(current_setting('app.org_id', true), ''), 'app_org_id_unset_sentinel')
-                OR COALESCE(NULLIF(current_setting('app.org_id', true), ''), '') = ''
-            )
-            WITH CHECK (
-                "organizationId" = COALESCE(NULLIF(current_setting('app.org_id', true), ''), 'app_org_id_unset_sentinel')
-                OR COALESCE(NULLIF(current_setting('app.org_id', true), ''), '') = ''
-            );
+            USING ("organizationId" = current_setting('app.org_id', true))
+            WITH CHECK ("organizationId" = current_setting('app.org_id', true));
         $p$, tbl || '_org_isolation', tbl);
     END LOOP;
 END $$;

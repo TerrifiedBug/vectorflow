@@ -129,7 +129,7 @@ export async function reconcileUserTeamMemberships(
  * Get the group names a user belongs to via ScimGroupMember records,
  * scoped to a single organisation. Cross-tenant ScimGroup names cannot
  * influence team reconciliation because the join is org-bound
- * (audit P0-2 / docs/plans/2026-05-20-go-live-readiness-audit.md).
+ *
  */
 export async function getScimGroupNamesForUser(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],

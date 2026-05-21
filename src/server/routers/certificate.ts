@@ -181,7 +181,7 @@ export const certificateRouter = router({
       await validateBundleCertificates(input.environmentId, input);
 
       // Resolve the parent environment's organisation so the bundle's
-      // tenant column mirrors the environment join (audit P1-2 / RLS).
+      // tenant column mirrors the environment join.
       const envForOrg = await prisma.environment.findUnique({
         where: { id: input.environmentId },
         select: { organizationId: true },

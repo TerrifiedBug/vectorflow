@@ -173,7 +173,7 @@ const roleLevel: Record<Role, number> = {
 
 /**
  * Resolve the team that owns `pipelineIds` and require the batch to be
- * single-team. Audit P2-7 scopes the lookup by `organizationId` so a
+ * single-team. scopes the lookup by `organizationId` so a
  * Prisma bug (or future refactor) cannot accidentally return a
  * cross-org pipeline whose teamId the batch would then validate against.
  */
@@ -251,8 +251,7 @@ export const requireRole = (minRole: Role) =>
  * counterpart to `requirePlatformOperator`: an OrgMember whose role is
  * OWNER or ADMIN of the caller's resolved organisation passes.
  *
- * Audit P1-3 / docs/plans/2026-05-20-go-live-readiness-audit.md: per-org
- * settings (OIDC, sub-processor notice email, etc.) were gated behind
+ * Per-org settings (OIDC, sub-processor notice email, etc.) were previously gated behind
  * `requirePlatformOperator()` which forced VectorFlow staff to mutate
  * customer-owned settings on the customer's behalf — violating the
  * "operators are NEVER tenant Users" boundary and breaking self-service

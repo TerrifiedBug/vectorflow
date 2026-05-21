@@ -8,8 +8,7 @@ import { resolveOrgIdFromHost } from "@/lib/host-to-org";
  * Authenticate a SCIM request using the bearer token and return the
  * organisation that token is valid for, or `null` on failure.
  *
- * Audit P0-2 / docs/plans/2026-05-20-go-live-readiness-audit.md: the
- * previous implementation hard-coded `DEFAULT_ORG_ID`, which made SCIM
+ * The previous implementation hard-coded `DEFAULT_ORG_ID`, which made SCIM
  * single-tenant. In a multi-tenant deployment that either silently
  * broke SCIM (no DEFAULT_ORG_ID row in prod) or — worse — let any token
  * with that DSN write into the default org regardless of the request

@@ -3,7 +3,7 @@ import { infoLog, errorLog } from "@/lib/logger";
 import { assertStrictMultiTenantBoot, warnTrustForwardedHostIfOn, warnMissingMagicLinkTransport } from "@/lib/strict-multi-tenant-bootcheck";
 
 export async function registerNodeInstrumentation() {
-  // Audit P1-4 — refuse to boot if env signals say this is a strict
+  // refuse to boot if env signals say this is a strict
   // multi-tenant deployment but VF_STRICT_MULTI_TENANT is unset/typoed.
   // Runs BEFORE any other init so a misconfigured stamp never starts
   // serving traffic.

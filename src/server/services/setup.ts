@@ -46,8 +46,8 @@ export async function isSetupRequired(): Promise<boolean> {
  * The number lives in the bigint range (Postgres advisory locks take
  * a signed 8-byte int). Concurrent `completeSetup` callers serialise
  * on this key; whichever loses the race observes `userCount > 0`
- * inside its transaction and aborts. Audit P1-11 /
- * docs/plans/2026-05-20-go-live-readiness-audit.md.
+ * inside its transaction and aborts. /
+ *
  */
 // Hex 0:7416d50e8e8a9111 — 16 digits, low-bit clear so it never collides
 // with a sign-extended negative on the Postgres signed bigint side. Use
@@ -79,7 +79,7 @@ export async function completeSetup(input: {
   const passwordHash = await bcrypt.hash(input.password, 12);
 
   return prisma.$transaction(async (tx) => {
-    // Audit P1-11 — serialise the OSS first-run bootstrap. Without
+    // serialise the OSS first-run bootstrap. Without
     // this advisory lock two concurrent POST /api/setup calls both
     // pass `isSetupRequired()` (userCount === 0), then both insert a
     // user; the loser silently overwrites the winner's admin row.

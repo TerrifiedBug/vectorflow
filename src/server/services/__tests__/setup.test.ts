@@ -372,7 +372,7 @@ describe("setup service", () => {
   });
 });
 
-describe("completeSetup TOCTOU guard (audit P1-11)", () => {
+describe("completeSetup TOCTOU guard", () => {
   it("throws SetupAlreadyCompletedError when a concurrent caller has already created a user", async () => {
     // Simulate the case where another tx has committed a user row between
     // the route's isSetupRequired() pre-check and the in-tx re-check.

@@ -2,7 +2,6 @@ import { errorLog, infoLog, warnLog } from "@/lib/logger";
 
 /**
  * Boot-time assertion that catches the silent downgrade described in
- * audit P1-4 / docs/plans/2026-05-20-go-live-readiness-audit.md.
  *
  * Background — `isStrictMultiTenantMode()` reads
  * `process.env.VF_STRICT_MULTI_TENANT === "true"` and is the kill-switch
@@ -84,8 +83,7 @@ export function assertStrictMultiTenantBoot(opts?: {
 /**
  * Boot-time warning for `VF_TRUST_FORWARDED_HOST=true`.
  *
- * Audit P1-8 / docs/plans/2026-05-20-go-live-readiness-audit.md: when
- * this flag is on the app trusts `X-Forwarded-Host` for org resolution,
+ * When this flag is on the app trusts `X-Forwarded-Host` for org resolution,
  * OIDC issuer routing, and exchange-code redeem-org validation. If the
  * upstream proxy does NOT strip client-supplied `X-Forwarded-*` headers
  * before forwarding, a tenant can spoof the host and cause every
@@ -101,8 +99,7 @@ export function warnTrustForwardedHostIfOn(): void {
     "redeem-org checks. The upstream proxy MUST strip client-supplied " +
     "X-Forwarded-* headers before forwarding; otherwise a tenant can " +
     "spoof the host and force cross-org behaviour. " +
-    "See docs/internal/architecture.md and the audit note at " +
-    "docs/plans/2026-05-20-go-live-readiness-audit.md (P1-8).";
+    "See docs/internal/architecture.md for the ingress contract.";
   warnLog("instrumentation", message);
 }
 
@@ -110,8 +107,7 @@ export function warnTrustForwardedHostIfOn(): void {
  * Boot-time warning when the deployment is in strict multi-tenant mode
  * but no recognised mail transport is configured.
  *
- * Audit P1-9 / docs/plans/2026-05-20-go-live-readiness-audit.md: the
- * magic-link request endpoint logs a per-request warning when no
+ * The magic-link request endpoint logs a per-request warning when no
  * transport is wired in production — but by then the user has already
  * been told "ok" (anti-enumeration) and their signup has silently
  * failed. Surfacing the same gap at boot lets an operator catch the
@@ -119,7 +115,7 @@ export function warnTrustForwardedHostIfOn(): void {
  *
  * Recognised transports (any one is enough):
  *
- *   - `RESEND_API_KEY` — Resend (the cloud default per §19).
+ *   - `RESEND_API_KEY` — Resend.
  *   - `POSTMARK_API_KEY` — Postmark.
  *   - `SENDGRID_API_KEY` — SendGrid.
  *   - `SMTP_HOST` — generic SMTP relay; matches what the docker compose
@@ -152,7 +148,7 @@ export function warnMissingMagicLinkTransport(): void {
     "strict multi-tenant mode is on but no magic-link mail transport is " +
       `configured. Set one of ${MAGIC_LINK_TRANSPORT_ENVS.join(", ")}; ` +
       "without it, every magic-link request returns 200 (anti-enumeration) " +
-      "while the mail is silently dropped — see audit P1-9 in " +
-      "docs/plans/2026-05-20-go-live-readiness-audit.md.",
+      "while the mail is silently dropped in " +
+      "",
   );
 }

@@ -1,5 +1,5 @@
 /**
- * Companion to `cross-org-access.test.ts` (audit P2-12).
+ * Companion to `cross-org-access.test.ts`.
  *
  * The main audit allows a small set of procedures through
  * `INTENTIONALLY_UNGUARDED` because they do tenant scoping inline in
@@ -100,7 +100,7 @@ const JUSTIFICATIONS: Justification[] = [
 
 const REPO_ROOT = resolve(__dirname, "../..");
 
-describe("INTENTIONALLY_UNGUARDED allowlist justification (audit P2-12)", () => {
+describe("INTENTIONALLY_UNGUARDED allowlist justification", () => {
   it.each(JUSTIFICATIONS)(
     "$procedure: $file still contains the documented inline auth markers",
     ({ procedure, file, mustContain }) => {

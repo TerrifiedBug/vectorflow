@@ -83,7 +83,7 @@ export async function startRegistration(opts: {
   userId: string;
   userName: string;
   userDisplayName?: string;
-  /** Tenant scope persisted on the challenge row (audit P2-10). */
+  /** Tenant scope persisted on the challenge row. */
   organizationId?: string;
   /**
    * Existing credentials for the user; passed as `excludeCredentials` so
@@ -239,7 +239,7 @@ export async function finishRegistration(opts: {
 export async function startAuthentication(opts: {
   rp: WebAuthnRpConfig;
   userId?: string;
-  /** Tenant scope persisted on the challenge row (audit P2-10). */
+  /** Tenant scope persisted on the challenge row. */
   organizationId?: string;
 }): Promise<PublicKeyCredentialRequestOptionsJSON> {
   const allowCredentials = opts.userId

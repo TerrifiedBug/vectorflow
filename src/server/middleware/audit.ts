@@ -110,7 +110,7 @@ async function resolveTeamId(
 }
 
 /**
- * Audit P2-6 — defense-in-depth assertion that the team/environment
+ * Defense-in-depth assertion that the team/environment
  * the audit middleware just resolved is actually owned by the caller's
  * organisation. The procedure's own `withTeamAccess` gate already
  * blocks cross-org IDs at request time; this check makes sure that if
@@ -425,7 +425,7 @@ export function withAudit(action: string, entityType: string) {
           } catch { /* ignore */ }
         }
 
-        // Audit P2-6 — defense-in-depth org-belongs check on the
+        // Defense-in-depth org-belongs check on the
         // resolved IDs before they hit the audit log.
         const callerOrgId = (ctx as Record<string, unknown>).organizationId as
           | string

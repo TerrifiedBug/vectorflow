@@ -1,9 +1,8 @@
--- Audit P1-2 / docs/plans/2026-05-20-go-live-readiness-audit.md
 --
 -- Add `organizationId` to Secret / Certificate / CertificateBundle so
 -- RLS can fence direct queries that bypass the environment → team →
 -- org join. Backfill from the parent Environment row; install RLS
--- policies that match the rest of phase5a (organizationId GUC
+-- policies that match the rest of the strict RLS policies (organizationId GUC
 -- comparison with the sentinel-coerced NULL fallback). Composite
 -- indexes match the pattern verify-indexes.sh enforces.
 
@@ -50,11 +49,13 @@ CREATE INDEX IF NOT EXISTS "CertificateBundle_organizationId_idx"
 CREATE INDEX IF NOT EXISTS "CertificateBundle_organizationId_environmentId_idx"
     ON "CertificateBundle"("organizationId", "environmentId");
 
--- ─── 4. RLS — mirror the phase5a strict policy ─────────────────────────────
+-- ─── 4. RLS — match the the strict RLS policies STRICT policy ─────────────────────────────
 --
--- Three tenant tables, three identical policies. Same shape as the
--- existing phase5a loop: the GUC must match the row, with an unset
--- sentinel coerced so the "not set" case denies access.
+-- Three tenant tables, three identical policies. Same shape as
+-- 20260516000003: when `app.org_id` is unset
+-- `current_setting('app.org_id', true)` returns NULL → equality is
+-- NULL → policy denies. OSS bypasses via the table-owner role's
+-- BYPASSRLS default; Cloud's non-owner role is fenced.
 
 DO $$
 DECLARE
@@ -70,14 +71,8 @@ BEGIN
             tbl || '_org_isolation', tbl);
         EXECUTE format($p$
             CREATE POLICY %I ON %I
-            USING (
-                "organizationId" = COALESCE(NULLIF(current_setting('app.org_id', true), ''), 'app_org_id_unset_sentinel')
-                OR COALESCE(NULLIF(current_setting('app.org_id', true), ''), '') = ''
-            )
-            WITH CHECK (
-                "organizationId" = COALESCE(NULLIF(current_setting('app.org_id', true), ''), 'app_org_id_unset_sentinel')
-                OR COALESCE(NULLIF(current_setting('app.org_id', true), ''), '') = ''
-            );
+            USING ("organizationId" = current_setting('app.org_id', true))
+            WITH CHECK ("organizationId" = current_setting('app.org_id', true));
         $p$, tbl || '_org_isolation', tbl);
     END LOOP;
 END $$;

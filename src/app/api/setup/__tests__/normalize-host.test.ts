@@ -26,7 +26,7 @@ import * as route from "@/app/api/setup/route";
 
 const { normalizeHostValue } = route.__test__;
 
-describe("normalizeHostValue (audit P1-11)", () => {
+describe("normalizeHostValue", () => {
   it("returns null for null/undefined/empty", () => {
     expect(normalizeHostValue(null)).toBeNull();
     expect(normalizeHostValue(undefined)).toBeNull();

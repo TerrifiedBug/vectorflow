@@ -21,7 +21,7 @@ export async function setActiveTap(
     nodeId: string;
     pipelineId: string;
     componentId: string;
-    /** Tenant scope persisted on the tap row (audit P2-10). */
+    /** Tenant scope persisted on the tap row. */
     organizationId?: string;
   },
 ): Promise<void> {

@@ -52,10 +52,7 @@ describe("authorizeMagicLink", () => {
       lockedAt: null,
     });
 
-    const result = await authorizeMagicLink({
-      token: "fake-base64url-token",
-      organizationId: "org-a",
-    });
+    const result = await authorizeMagicLink({ token: "fake-base64url-token" }, "org-a");
 
     expect(result).toEqual({
       id: "user-1",
@@ -88,10 +85,7 @@ describe("authorizeMagicLink", () => {
       lockedAt: null,
     });
 
-    const result = await authorizeMagicLink({
-      token: "fake-base64url-token",
-      organizationId: "org-a",
-    });
+    const result = await authorizeMagicLink({ token: "fake-base64url-token" }, "org-a");
 
     expect(result?.id).toBe("user-new");
     expect(mocks.userCreate).toHaveBeenCalledWith(
@@ -141,10 +135,7 @@ describe("authorizeMagicLink", () => {
       image: null,
       lockedAt: new Date(),
     });
-    const result = await authorizeMagicLink({
-      token: "fake-base64url-token",
-      organizationId: "org-a",
-    });
+    const result = await authorizeMagicLink({ token: "fake-base64url-token" }, "org-a");
     expect(result).toBeNull();
     expect(mocks.writeAuditLog).not.toHaveBeenCalled();
   });
@@ -163,10 +154,7 @@ describe("authorizeMagicLink", () => {
       lockedAt: null,
       totpEnabled: true,
     });
-    const result = await authorizeMagicLink({
-      token: "fake-base64url-token",
-      organizationId: "org-a",
-    });
+    const result = await authorizeMagicLink({ token: "fake-base64url-token" }, "org-a");
     expect(result).toBeNull();
     expect(mocks.writeAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -192,7 +180,16 @@ describe("authorizeMagicLink", () => {
     expect(result).toBeNull();
   });
 
-  it("ignores credentials.organizationId; the token row is the org binding (audit P2-4)", async () => {
+  it("refuses when no expectedOrganizationId override is supplied (host-bound binding required)", async () => {
+    // The pure helper requires the caller (NextAuth-bound wrapper or
+    // test) to pin the expected org. Without it, the helper refuses
+    // rather than skipping the cross-org check.
+    const result = await authorizeMagicLink({ token: "tok-no-org" });
+    expect(result).toBeNull();
+    expect(mocks.consumeMagicLink).not.toHaveBeenCalled();
+  });
+
+  it("forwards the expected organizationId override verbatim to consumeMagicLink", async () => {
     mocks.consumeMagicLink.mockResolvedValue({
       ok: true,
       email: "a@example.test",
@@ -205,15 +202,15 @@ describe("authorizeMagicLink", () => {
       image: null,
       lockedAt: null,
     });
-
-    // No organizationId in credentials — the provider used to refuse,
-    // but the token alone is the org binding so the call succeeds.
-    const result = await authorizeMagicLink({ token: "tok-no-org" });
+    const result = await authorizeMagicLink({ token: "tok-with-org" }, "org-a");
     expect(result).not.toBeNull();
-    expect(mocks.consumeMagicLink).toHaveBeenCalledWith({ token: "tok-no-org" });
+    expect(mocks.consumeMagicLink).toHaveBeenLastCalledWith({
+      token: "tok-with-org",
+      expectedOrganizationId: "org-a",
+    });
   });
 
-  it("does NOT forward credentials.organizationId to consumeMagicLink (audit P2-4)", async () => {
+  it("ignores credentials.organizationId; only the override is honoured", async () => {
     mocks.consumeMagicLink.mockResolvedValue({
       ok: true,
       email: "a@example.test",
@@ -227,31 +224,25 @@ describe("authorizeMagicLink", () => {
       lockedAt: null,
     });
 
-    // Even when a (potentially attacker-controlled) organizationId is
-    // in the credentials, the provider trusts only the token row.
-    await authorizeMagicLink({ token: "tok-with-org", organizationId: "org-attacker" });
+    // Even with an attacker-controlled organizationId in credentials,
+    // the provider trusts ONLY the host-derived override.
+    await authorizeMagicLink(
+      { token: "tok-with-org", organizationId: "org-attacker" },
+      "org-b",
+    );
     expect(mocks.consumeMagicLink).toHaveBeenLastCalledWith({
       token: "tok-with-org",
+      expectedOrganizationId: "org-b",
     });
   });
 
-  it("succeeds when credentials.organizationId is an empty string — it is no longer used (audit P2-4)", async () => {
-    mocks.consumeMagicLink.mockResolvedValue({
-      ok: true,
-      email: "a@example.test",
-      organizationId: "org-a",
-    });
-    mocks.userFindFirst.mockResolvedValue({
-      id: "u",
-      email: "a@example.test",
-      name: null,
-      image: null,
-      lockedAt: null,
-    });
+  it("refuses when credentials carry organizationId but no override is passed", async () => {
+    // credentials.organizationId is intentionally ignored; the absence
+    // of the host-derived override is what disqualifies the redeem.
     const result = await authorizeMagicLink({
       token: "tok-empty-org",
       organizationId: "",
     });
-    expect(result).not.toBeNull();
+    expect(result).toBeNull();
   });
 });

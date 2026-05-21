@@ -25,7 +25,7 @@ export async function GET(request: Request) {
  * no port, no IPv6 brackets) so equality comparison survives the casing
  * and bracket variants legal browsers and proxies emit.
  *
- * Audit P1-11 — the previous string-equality check on raw `origin`/`host`
+ * The previous string-equality check on raw `origin`/`host`
  * passed an attacker who submitted `EXAMPLE.COM` against `example.com`,
  * passed when `origin` was missing (the `if (origin && host)` branch
  * was skipped entirely), and silently failed open when `new URL(origin)`

@@ -436,7 +436,7 @@ model WebAuthnCredential {
 /// enough for the platform/authenticator round trip.
 model WebAuthnChallenge {
   id        String   @id @default(cuid())
-  /// Tenant scope (audit P2-10). The challenge bytes are themselves a
+  /// Tenant scope. The challenge bytes are themselves a
   /// 256-bit secret so cross-org enumeration is not feasible without
   /// guessing, but having the column lets the cleanup job filter by
   /// tenant and lets RLS fence direct reads end-to-end.
@@ -581,7 +581,6 @@ model ScimGroup {
   id             String            @id @default(cuid())
   /// Tenant scope. SCIM groups are managed per-org so a SCIM token
   /// issued for org A cannot list or mutate groups belonging to org B
-  /// (audit P0-2 / docs/plans/2026-05-20-go-live-readiness-audit.md).
   organizationId String            @default("default")
   organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   displayName    String
@@ -1040,7 +1039,7 @@ model EventSampleRequest {
 /// survives across server instances in HA deployments.
 model ActiveTap {
   requestId   String   @id
-  /// Tenant scope (audit P2-10). `pipeline.stopTap` runs inline
+  /// Tenant scope. `pipeline.stopTap` runs inline
   /// authorisation on top of this row; the column adds RLS coverage
   /// for any future direct query that bypasses the handler.
   organizationId String   @default("default")
@@ -1235,7 +1234,7 @@ model Secret {
   id             String      @id @default(cuid())
   /// Tenant scope. Mirrors the parent environment's organisation so
   /// RLS can fence direct queries that bypass the environment ↔ team ↔
-  /// org join (audit P1-2 / docs/plans/2026-05-20-go-live-readiness-audit.md).
+  /// org join.
   organizationId String      @default("default")
   name           String
   encryptedValue String

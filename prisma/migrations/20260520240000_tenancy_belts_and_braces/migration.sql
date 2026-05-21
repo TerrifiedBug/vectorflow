@@ -1,8 +1,8 @@
--- Audit P2-10 + P2-11 defense-in-depth migrations bundled into one
--- file because they're all small one-shot ALTERs / index creations and
--- splitting would dilute the diff.
+-- Two defense-in-depth migrations bundled into one file because they're
+-- all small one-shot ALTERs / index creations and splitting would
+-- dilute the diff.
 
--- ── P2-10: organizationId on WebAuthnChallenge + ActiveTap ──────────────────
+-- ── organizationId on WebAuthnChallenge + ActiveTap ────────────────────────
 --
 -- Both tables had no tenant column. WebAuthnChallenge is protected
 -- against enumeration by the 256-bit random challenge value, and
@@ -32,19 +32,13 @@ BEGIN
             tbl || '_org_isolation', tbl);
         EXECUTE format($p$
             CREATE POLICY %I ON %I
-            USING (
-                "organizationId" = COALESCE(NULLIF(current_setting('app.org_id', true), ''), 'app_org_id_unset_sentinel')
-                OR COALESCE(NULLIF(current_setting('app.org_id', true), ''), '') = ''
-            )
-            WITH CHECK (
-                "organizationId" = COALESCE(NULLIF(current_setting('app.org_id', true), ''), 'app_org_id_unset_sentinel')
-                OR COALESCE(NULLIF(current_setting('app.org_id', true), ''), '') = ''
-            );
+            USING ("organizationId" = current_setting('app.org_id', true))
+            WITH CHECK ("organizationId" = current_setting('app.org_id', true));
         $p$, tbl || '_org_isolation', tbl);
     END LOOP;
 END $$;
 
--- ── P2-11: global uniqueness on verified OrganizationDomainClaim ───────────
+-- ── global uniqueness on verified OrganizationDomainClaim ─────────────────
 --
 -- The Prisma schema enforces (organizationId, domain) uniqueness, but
 -- two different orgs could in principle race to verifiedAt at the same

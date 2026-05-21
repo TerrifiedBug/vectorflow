@@ -143,7 +143,7 @@ describe("SCIM audit status logging", () => {
   });
 });
 
-describe("SCIM cross-tenant isolation (audit P0-2)", () => {
+describe("SCIM cross-tenant isolation", () => {
   it("scimGetUser returns null for users not in the caller's org", async () => {
     prismaMock.user.findFirst.mockResolvedValue(null);
     const result = await scimGetUser("org-A", "user-from-org-B");

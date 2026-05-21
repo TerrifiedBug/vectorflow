@@ -9,7 +9,7 @@ name: Verify Tenancy
 #   * verify-audit-chain    — the customer audit-export envelope verifier
 #                             smoke-test on a freshly-built export.
 #
-# These were named in `docs/plans/2026-05-20-go-live-readiness-audit.md`
+# These were named in ``
 # (P0-3) as launch blockers because they exist on disk as scripts but
 # were never wired into CI — meaning a future PR that drops an RLS
 # policy, breaks GUC scoping under PgBouncer, or corrupts the audit
@@ -55,10 +55,10 @@ jobs:
 
     services:
       postgres:
-        # TimescaleDB image so the compressed-hypertable carve-out
-        # documented in 20260516000001_phase5a_rls_and_composite_indexes
-        # is exercised — running against vanilla Postgres would let a
-        # regression on the carve-out logic slip through.
+        # TimescaleDB image so the compressed-hypertable carve-out the
+        # RLS migration relies on is exercised — running against
+        # vanilla Postgres would let a regression on the carve-out
+        # logic slip through.
         image: timescale/timescaledb:latest-pg16
         env:
           POSTGRES_DB: vectorflow

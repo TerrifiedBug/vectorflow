@@ -83,7 +83,7 @@ export async function writeScimAuditLog(params: {
 /**
  * List users belonging to `organizationId` (via OrgMember). Cross-tenant
  * listing is impossible because we always join through OrgMember.
- * (audit P0-2 / docs/plans/2026-05-20-go-live-readiness-audit.md)
+ *
  */
 export async function scimListUsers(
   organizationId: string,
@@ -137,7 +137,6 @@ export async function scimGetUser(organizationId: string, id: string) {
 
 /**
  * Create or adopt a User and bind them to `organizationId` via OrgMember.
- * (audit P0-2 / docs/plans/2026-05-20-go-live-readiness-audit.md)
  *
  * A pre-existing global User is adopted only when their authMethod is
  * already SSO-compatible OR a previous SCIM token has linked them. The

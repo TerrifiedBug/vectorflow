@@ -414,8 +414,7 @@ async function getAuthInstance() {
                 // Block OIDC login for existing non-OIDC accounts — an
                 // admin MUST explicitly link the account through the
                 // settings surface, never via implicit email collision.
-                // Audit P2-1 / docs/plans/2026-05-20-go-live-readiness-audit.md:
-                // the old check only blocked authMethod === "LOCAL",
+                // The old check only blocked authMethod === "LOCAL",
                 // letting an attacker who controlled an OIDC issuer
                 // silently fuse with an account whose primary
                 // authMethod was WEBAUTHN or MAGIC_LINK.
@@ -504,7 +503,7 @@ async function getAuthInstance() {
             if (account) {
               token.provider = account.provider;
             }
-            // Audit P2-13 — encode the organizationId on the JWT
+            // encode the organizationId on the JWT
             // payload as `org_id`. Per-org signing keys (jwt-key.ts)
             // already prevent cross-org token replay at the
             // verify-signature layer, but downstream readers that
@@ -523,7 +522,7 @@ async function getAuthInstance() {
             // org-domain-claim PR.
             //
             // Cached for 5s on the token itself so we don't hit the DB
-            // on every authenticated request. Audit P2-2 reduced the
+            // on every authenticated request. reduced the
             // window from 60s; GDPR Art. 17 expectations are tighter
             // than a minute, and 5s is short enough that an admin who
             // just erased a user can refresh the dashboard and see the

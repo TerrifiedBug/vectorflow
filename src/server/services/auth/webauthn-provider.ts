@@ -64,9 +64,7 @@ function expectedOrigins(): string | string[] {
     return [`https://${rpId}`, `http://${rpId}`];
   }
   // OSS / dev fallback: accept localhost on common dev ports.
-  //
-  // Audit P2-3 / docs/plans/2026-05-20-go-live-readiness-audit.md:
-  // refuse this fallback in production. If `VF_WEBAUTHN_RP_ID` is
+  // Refuse this fallback in production. If `VF_WEBAUTHN_RP_ID` is
   // missing and `VF_WEBAUTHN_ORIGINS` is missing too, the server has
   // no idea what origin to expect from a WebAuthn assertion. The old
   // behaviour quietly accepted `http://localhost:3000` even on a

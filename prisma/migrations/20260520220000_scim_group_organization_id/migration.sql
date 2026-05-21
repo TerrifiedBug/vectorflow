@@ -1,5 +1,5 @@
 -- Add `organizationId` to `ScimGroup` so SCIM groups belong to a single
--- organisation. Closes audit P0-2 / docs/plans/2026-05-20-go-live-readiness-audit.md
+-- organisation. Closes
 -- — without this, a SCIM bearer token issued for org A could list and
 -- mutate ScimGroup rows owned by org B because the table had no tenant
 -- column at all.

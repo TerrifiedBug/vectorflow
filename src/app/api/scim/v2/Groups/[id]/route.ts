@@ -36,7 +36,7 @@ function toScimGroupResponse(
  * Verify the SCIM caller's organisation owns this group. Returns the
  * group on success and null when the group either doesn't exist or
  * belongs to a peer org — callers MUST 404 (never reveal cross-tenant
- * existence). Audit P0-2 / docs/plans/2026-05-20-go-live-readiness-audit.md.
+ * existence).
  */
 async function findOrgGroup(organizationId: string, id: string) {
   return prisma.scimGroup.findFirst({
