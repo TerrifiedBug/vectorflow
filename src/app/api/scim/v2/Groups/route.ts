@@ -40,7 +40,8 @@ function scimError(detail: string, status: number) {
 }
 
 export async function GET(req: NextRequest) {
-  if (!(await authenticateScim(req))) {
+  const auth = await authenticateScim(req);
+  if (!auth.ok) {
     return scimError("Unauthorized", 401);
   }
 
@@ -55,7 +56,7 @@ export async function GET(req: NextRequest) {
       ? Math.min(countRaw, 1000)
       : 100;
 
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = { organizationId: auth.organizationId };
   if (filter) {
     const nameMatch = filter.match(/displayName\s+eq\s+"(.+?)"/);
     if (nameMatch) where.displayName = nameMatch[1];
@@ -89,7 +90,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!(await authenticateScim(req))) {
+  const auth = await authenticateScim(req);
+  if (!auth.ok) {
     return scimError("Unauthorized", 401);
   }
 
@@ -109,8 +111,15 @@ export async function POST(req: NextRequest) {
     }
 
     const { group, memberResponses, auditAction } = await prisma.$transaction(async (tx) => {
+      // Adoption is scoped per-org: composite uniqueness (orgId, displayName)
+      // means the same displayName can exist in peer orgs without collision.
       const existing = await tx.scimGroup.findUnique({
-        where: { displayName },
+        where: {
+          organizationId_displayName: {
+            organizationId: auth.organizationId,
+            displayName,
+          },
+        },
       });
 
       let scimGroup;
@@ -133,6 +142,7 @@ export async function POST(req: NextRequest) {
       } else {
         scimGroup = await tx.scimGroup.create({
           data: {
+            organizationId: auth.organizationId,
             displayName,
             externalId: body.externalId ?? null,
           },
@@ -140,7 +150,7 @@ export async function POST(req: NextRequest) {
         action = "scim.group_created";
       }
 
-      const members = await processGroupMembers(tx, scimGroup.id, body.members);
+      const members = await processGroupMembers(tx, scimGroup.id, body.members, auth.organizationId);
 
       return { group: scimGroup, memberResponses: members, auditAction: action };
     });
@@ -185,6 +195,7 @@ async function processGroupMembers(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   scimGroupId: string,
   members: unknown,
+  organizationId: string,
 ): Promise<Array<{ value: string; display?: string }>> {
   if (!Array.isArray(members) || members.length === 0) return [];
 
@@ -194,8 +205,14 @@ async function processGroupMembers(
     const userId = (member as { value?: unknown }).value;
     if (typeof userId !== "string") continue;
 
-    const user = await tx.user.findUnique({
-      where: { id: userId },
+    // Cross-tenant guard: only resolve users who are already members of
+    // this SCIM caller's org. A POST that names a userId from a peer
+    // org silently skips that member rather than provisioning it.
+    const user = await tx.user.findFirst({
+      where: {
+        id: userId,
+        orgMemberships: { some: { organizationId } },
+      },
       select: { id: true, email: true },
     });
     if (!user) continue;
@@ -206,8 +223,8 @@ async function processGroupMembers(
       update: {},
     });
 
-    const groupNames = await getScimGroupNamesForUser(tx, userId);
-    await reconcileUserTeamMemberships(tx, userId, groupNames);
+    const groupNames = await getScimGroupNamesForUser(tx, userId, organizationId);
+    await reconcileUserTeamMemberships(tx, userId, groupNames, organizationId);
 
     results.push({ value: userId, display: user.email });
   }

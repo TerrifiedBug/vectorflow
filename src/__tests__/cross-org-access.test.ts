@@ -133,6 +133,11 @@ const GATE_PATTERNS = [
   "userId_teamId",
   "orgMember.findUnique",
   "platformOperator.findUnique",
+  // `requireOrgAdmin()` middleware — the OrgMember lookup
+  // happens inside the `isOrgWideAdmin` helper, so the middleware body
+  // shows the helper name rather than the prisma lookup. Recognise
+  // either token so a procedure gated on org-level admin passes.
+  "isOrgWideAdmin",
 ];
 
 /**

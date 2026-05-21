@@ -2,7 +2,7 @@ import { z } from "zod";
 import crypto from "crypto";
 import { TRPCError } from "@trpc/server";
 import { S3Client, HeadBucketCommand, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { router, protectedProcedure, requirePlatformOperator, denyInDemo } from "@/trpc/init";
+import { router, protectedProcedure, requirePlatformOperator, requireOrgAdmin, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt, ENCRYPTION_DOMAINS } from "@/server/services/crypto";
 import { withAudit } from "@/server/middleware/audit";
@@ -138,7 +138,7 @@ export const settingsRouter = router({
 
   updateOidc: protectedProcedure
     .use(denyInDemo())
-    .use(requirePlatformOperator())
+    .use(requireOrgAdmin())
     .input(
       z.object({
         issuer: z.string().url().min(1),
@@ -205,7 +205,7 @@ export const settingsRouter = router({
 
   updateOidcRoleMapping: protectedProcedure
     .use(denyInDemo())
-    .use(requirePlatformOperator())
+    .use(requireOrgAdmin())
     .input(
       z.object({
         defaultRole: z.enum(["VIEWER", "EDITOR", "ADMIN"]),
@@ -226,7 +226,7 @@ export const settingsRouter = router({
 
   updateOidcTeamMappings: protectedProcedure
     .use(denyInDemo())
-    .use(requirePlatformOperator())
+    .use(requireOrgAdmin())
     .input(z.object({
       mappings: z.array(z.object({
         group: z.string().min(1),
@@ -241,11 +241,14 @@ export const settingsRouter = router({
     }))
     .use(withAudit("settings.oidc_team_mapping_updated", "SystemSettings"))
     .mutation(async ({ input, ctx }) => {
-      // Validate all teamIds exist
+      // Validate all teamIds exist AND belong to the caller's org. Without
+      // the organizationId scope an org admin could map their OIDC groups
+      // to teamIds owned by peer orgs; the subsequent OIDC sign-in path
+      // would silently add users into those foreign teams.
       if (input.mappings.length > 0) {
         const teamIds = [...new Set(input.mappings.map((m) => m.teamId))];
         const teams = await prisma.team.findMany({
-          where: { id: { in: teamIds } },
+          where: { id: { in: teamIds }, organizationId: ctx.organizationId },
           select: { id: true },
         });
         const foundIds = new Set(teams.map((t) => t.id));
@@ -259,7 +262,10 @@ export const settingsRouter = router({
       }
 
       if (input.defaultTeamId) {
-        const team = await prisma.team.findUnique({ where: { id: input.defaultTeamId } });
+        const team = await prisma.team.findFirst({
+          where: { id: input.defaultTeamId, organizationId: ctx.organizationId },
+          select: { id: true },
+        });
         if (!team) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Default team not found" });
         }
@@ -278,20 +284,28 @@ export const settingsRouter = router({
       });
       invalidateAuthCache();
 
-      // In SCIM mode, reconcile all users who have ScimGroupMember records
+      // In SCIM mode, reconcile users who have ScimGroupMember records
+      // in THIS organisation. The previous loop pulled every userId
+      // globally and asked for `getScimGroupNamesForUser(tx, userId)`
+      // without an org id — the helper then defaulted to
+      // `DEFAULT_ORG_ID`, silently mis-scoping non-default tenants
+      // and applying the wrong team-mapping diffs.
       if (result.scimEnabled) {
         const { reconcileUserTeamMemberships, getScimGroupNamesForUser } =
           await import("@/server/services/group-mappings");
 
         const usersWithScimGroups = await prisma.scimGroupMember.findMany({
+          where: {
+            scimGroup: { organizationId: ctx.organizationId },
+          },
           select: { userId: true },
           distinct: ["userId"],
         });
 
         await prisma.$transaction(async (tx) => {
           for (const { userId } of usersWithScimGroups) {
-            const groupNames = await getScimGroupNamesForUser(tx, userId);
-            await reconcileUserTeamMemberships(tx, userId, groupNames);
+            const groupNames = await getScimGroupNamesForUser(tx, userId, ctx.organizationId);
+            await reconcileUserTeamMemberships(tx, userId, groupNames, ctx.organizationId);
           }
         });
       }

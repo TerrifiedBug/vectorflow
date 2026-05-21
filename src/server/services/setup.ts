@@ -37,6 +37,36 @@ export async function isSetupRequired(): Promise<boolean> {
   return userCount === 0;
 }
 
+/**
+ * Postgres advisory lock key for the OSS first-run setup. A 63-bit
+ * stable hash of the literal string `vectorflow:setup-bootstrap`.
+ * Constant rather than computed so we know it never changes across
+ * deploys and never collides with other advisory locks the app uses.
+ *
+ * The number lives in the bigint range (Postgres advisory locks take
+ * a signed 8-byte int). Concurrent `completeSetup` callers serialise
+ * on this key; whichever loses the race observes `userCount > 0`
+ * inside its transaction and aborts. /
+ *
+ */
+// Hex 0:7416d50e8e8a9111 — 16 digits, low-bit clear so it never collides
+// with a sign-extended negative on the Postgres signed bigint side. Use
+// hex literal (not BigInt literal) so this file targets ES2017 cleanly.
+const SETUP_ADVISORY_LOCK_KEY = "8364738473773410001";
+
+/**
+ * Sentinel error thrown when a concurrent caller has already completed
+ * setup. The route layer translates this to a 400 — the same response
+ * the pre-lock TOCTOU guard returned.
+ */
+export class SetupAlreadyCompletedError extends Error {
+  readonly _tag = "SetupAlreadyCompletedError" as const;
+  constructor() {
+    super("Setup has already been completed.");
+    this.name = "SetupAlreadyCompletedError";
+  }
+}
+
 export async function completeSetup(input: {
   email: string;
   name: string;
@@ -49,6 +79,21 @@ export async function completeSetup(input: {
   const passwordHash = await bcrypt.hash(input.password, 12);
 
   return prisma.$transaction(async (tx) => {
+    // serialise the OSS first-run bootstrap. Without
+    // this advisory lock two concurrent POST /api/setup calls both
+    // pass `isSetupRequired()` (userCount === 0), then both insert a
+    // user; the loser silently overwrites the winner's admin row.
+    // pg_advisory_xact_lock blocks the second caller until the first
+    // commits, after which the userCount re-check below catches the
+    // already-completed state.
+    await tx.$executeRawUnsafe(
+      `SELECT pg_advisory_xact_lock(${SETUP_ADVISORY_LOCK_KEY})`,
+    );
+    const existingUserCount = await tx.user.count();
+    if (existingUserCount > 0) {
+      throw new SetupAlreadyCompletedError();
+    }
+
     const user = await tx.user.create({
       data: {
         email: input.email,

@@ -32,25 +32,41 @@ function toScimGroupResponse(
   };
 }
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  if (!(await authenticateScim(req))) {
-    return scimError("Unauthorized", 401);
-  }
+/**
+ * Verify the SCIM caller's organisation owns this group. Returns the
+ * group on success and null when the group either doesn't exist or
+ * belongs to a peer org — callers MUST 404 (never reveal cross-tenant
+ * existence).
+ */
+async function findOrgGroup(organizationId: string, id: string) {
+  return prisma.scimGroup.findFirst({
+    where: { id, organizationId },
+  });
+}
 
-  const { id } = await params;
-  const group = await prisma.scimGroup.findUnique({
-    where: { id },
+/**
+ * Scoped find that includes members. Same org isolation rules as
+ * `findOrgGroup` above.
+ */
+async function findOrgGroupWithMembers(organizationId: string, id: string) {
+  return prisma.scimGroup.findFirst({
+    where: { id, organizationId },
     include: {
       members: { select: { userId: true, user: { select: { email: true } } } },
     },
   });
+}
 
-  if (!group) {
-    return scimError("Group not found", 404);
-  }
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const auth = await authenticateScim(req);
+  if (!auth.ok) return scimError("Unauthorized", 401);
+
+  const { id } = await params;
+  const group = await findOrgGroupWithMembers(auth.organizationId, id);
+  if (!group) return scimError("Group not found", 404);
 
   return NextResponse.json(
     toScimGroupResponse(
@@ -64,20 +80,29 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!(await authenticateScim(req))) {
-    return scimError("Unauthorized", 401);
-  }
+  const auth = await authenticateScim(req);
+  if (!auth.ok) return scimError("Unauthorized", 401);
 
   const { id } = await params;
-  const group = await prisma.scimGroup.findUnique({ where: { id } });
-  if (!group) {
-    return scimError("Group not found", 404);
-  }
+  const group = await findOrgGroup(auth.organizationId, id);
+  if (!group) return scimError("Group not found", 404);
+
+  const orgId = auth.organizationId;
 
   try {
     const body = await req.json();
     const operations = body.Operations ?? body.operations ?? [];
-    debugLog("scim", `PATCH /Groups/${id}`, { displayName: group.displayName, operations: operations.map((o: { op: string; path?: string; value?: unknown }) => ({ op: o.op, path: o.path, valueType: typeof o.value, valueLength: Array.isArray(o.value) ? o.value.length : undefined })) });
+    debugLog("scim", `PATCH /Groups/${id}`, {
+      displayName: group.displayName,
+      operations: operations.map(
+        (o: { op: string; path?: string; value?: unknown }) => ({
+          op: o.op,
+          path: o.path,
+          valueType: typeof o.value,
+          valueLength: Array.isArray(o.value) ? o.value.length : undefined,
+        }),
+      ),
+    });
 
     await prisma.$transaction(async (tx) => {
       for (const op of operations) {
@@ -93,23 +118,28 @@ export async function PATCH(
             where: { id },
             data: { displayName: op.value },
           });
-          // Reconcile all users in this group — their mappings may resolve differently
           const groupMembers = await tx.scimGroupMember.findMany({
             where: { scimGroupId: id },
           });
           for (const gm of groupMembers) {
-            const groupNames = await getScimGroupNamesForUser(tx, gm.userId);
-            await reconcileUserTeamMemberships(tx, gm.userId, groupNames);
+            const groupNames = await getScimGroupNamesForUser(tx, gm.userId, orgId);
+            await reconcileUserTeamMemberships(tx, gm.userId, groupNames, orgId);
           }
         }
 
-        // Add members
+        // Add members — cross-tenant guard: only resolve users who are
+        // already members of this SCIM caller's org.
         if (operation === "add" && op.path === "members") {
           const members = Array.isArray(op.value) ? op.value : [op.value];
           for (const member of members) {
             const userId = member.value;
             if (typeof userId !== "string") continue;
-            const user = await tx.user.findUnique({ where: { id: userId } });
+            const user = await tx.user.findFirst({
+              where: {
+                id: userId,
+                orgMemberships: { some: { organizationId: orgId } },
+              },
+            });
             if (!user) continue;
 
             await tx.scimGroupMember.upsert({
@@ -118,8 +148,8 @@ export async function PATCH(
               update: {},
             });
 
-            const groupNames = await getScimGroupNamesForUser(tx, userId);
-            await reconcileUserTeamMemberships(tx, userId, groupNames);
+            const groupNames = await getScimGroupNamesForUser(tx, userId, orgId);
+            await reconcileUserTeamMemberships(tx, userId, groupNames, orgId);
           }
         }
 
@@ -136,8 +166,8 @@ export async function PATCH(
             await tx.scimGroupMember.deleteMany({
               where: { scimGroupId: id, userId },
             });
-            const groupNames = await getScimGroupNamesForUser(tx, userId);
-            await reconcileUserTeamMemberships(tx, userId, groupNames);
+            const groupNames = await getScimGroupNamesForUser(tx, userId, orgId);
+            await reconcileUserTeamMemberships(tx, userId, groupNames, orgId);
           } else if (op.path === "members") {
             const members = Array.isArray(op.value) ? op.value : [op.value];
             for (const member of members) {
@@ -148,8 +178,8 @@ export async function PATCH(
                 where: { scimGroupId: id, userId },
               });
 
-              const groupNames = await getScimGroupNamesForUser(tx, userId);
-              await reconcileUserTeamMemberships(tx, userId, groupNames);
+              const groupNames = await getScimGroupNamesForUser(tx, userId, orgId);
+              await reconcileUserTeamMemberships(tx, userId, groupNames, orgId);
             }
           }
         }
@@ -162,6 +192,7 @@ export async function PATCH(
       entityId: id,
       metadata: {
         displayName: group.displayName,
+        organizationId: orgId,
         operations: operations.map((o: { op: string; path?: string }) => ({
           op: o.op,
           path: o.path,
@@ -170,17 +201,8 @@ export async function PATCH(
       status: "success",
     });
 
-    const updated = await prisma.scimGroup.findUnique({
-      where: { id },
-      include: {
-        members: {
-          select: { userId: true, user: { select: { email: true } } },
-        },
-      },
-    });
-    if (!updated) {
-      return scimError("Group not found", 404);
-    }
+    const updated = await findOrgGroupWithMembers(orgId, id);
+    if (!updated) return scimError("Group not found", 404);
 
     return NextResponse.json(
       toScimGroupResponse(
@@ -198,7 +220,7 @@ export async function PATCH(
       action: "scim.group_patched",
       entityType: "ScimGroup",
       entityId: id,
-      metadata: { displayName: group.displayName },
+      metadata: { displayName: group.displayName, organizationId: orgId },
       status: "failure",
       error,
     });
@@ -211,15 +233,14 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!(await authenticateScim(req))) {
-    return scimError("Unauthorized", 401);
-  }
+  const auth = await authenticateScim(req);
+  if (!auth.ok) return scimError("Unauthorized", 401);
 
   const { id } = await params;
-  const group = await prisma.scimGroup.findUnique({ where: { id } });
-  if (!group) {
-    return scimError("Group not found", 404);
-  }
+  const group = await findOrgGroup(auth.organizationId, id);
+  if (!group) return scimError("Group not found", 404);
+
+  const orgId = auth.organizationId;
 
   try {
     const body = await req.json();
@@ -239,13 +260,20 @@ export async function PUT(
         });
       }
 
-      // Full member sync: compute desired set, diff against current
+      // Full member sync: compute desired set, diff against current.
+      // Cross-tenant guard: only consider users who already belong to
+      // this SCIM caller's org.
       const desiredUserIds = new Set<string>();
       if (membersProvided) {
         for (const m of body.members) {
           const userId = (m as { value?: unknown }).value;
           if (typeof userId !== "string") continue;
-          const user = await tx.user.findUnique({ where: { id: userId } });
+          const user = await tx.user.findFirst({
+            where: {
+              id: userId,
+              orgMemberships: { some: { organizationId: orgId } },
+            },
+          });
           if (!user) continue;
           desiredUserIds.add(userId);
         }
@@ -276,7 +304,6 @@ export async function PUT(
       }
 
       if (!skipRemoval) {
-        // Remove absent members
         for (const member of currentMembers) {
           if (!desiredUserIds.has(member.userId)) {
             await tx.scimGroupMember.delete({ where: { id: member.id } });
@@ -287,8 +314,8 @@ export async function PUT(
       // Reconcile all affected users (union of current + desired)
       const allAffectedUserIds = new Set([...currentUserIds, ...desiredUserIds]);
       for (const userId of allAffectedUserIds) {
-        const groupNames = await getScimGroupNamesForUser(tx, userId);
-        await reconcileUserTeamMemberships(tx, userId, groupNames);
+        const groupNames = await getScimGroupNamesForUser(tx, userId, orgId);
+        await reconcileUserTeamMemberships(tx, userId, groupNames, orgId);
       }
     });
 
@@ -299,21 +326,13 @@ export async function PUT(
       metadata: {
         displayName: body.displayName ?? group.displayName,
         memberCount: body.members?.length,
+        organizationId: orgId,
       },
       status: "success",
     });
 
-    const updated = await prisma.scimGroup.findUnique({
-      where: { id },
-      include: {
-        members: {
-          select: { userId: true, user: { select: { email: true } } },
-        },
-      },
-    });
-    if (!updated) {
-      return scimError("Group not found", 404);
-    }
+    const updated = await findOrgGroupWithMembers(orgId, id);
+    if (!updated) return scimError("Group not found", 404);
 
     return NextResponse.json(
       toScimGroupResponse(
@@ -331,7 +350,7 @@ export async function PUT(
       action: "scim.group_updated",
       entityType: "ScimGroup",
       entityId: id,
-      metadata: { displayName: group.displayName },
+      metadata: { displayName: group.displayName, organizationId: orgId },
       status: "failure",
       error,
     });
@@ -344,29 +363,26 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!(await authenticateScim(req))) {
-    return scimError("Unauthorized", 401);
-  }
+  const auth = await authenticateScim(req);
+  if (!auth.ok) return scimError("Unauthorized", 401);
 
   const { id } = await params;
-  const group = await prisma.scimGroup.findUnique({
-    where: { id },
+  const group = await prisma.scimGroup.findFirst({
+    where: { id, organizationId: auth.organizationId },
     include: { members: { select: { userId: true } } },
   });
-  if (!group) {
-    return scimError("Group not found", 404);
-  }
+  if (!group) return scimError("Group not found", 404);
+
+  const orgId = auth.organizationId;
 
   try {
-    // Collect affected user IDs before deletion
     const affectedUserIds = group.members.map((m) => m.userId);
 
-    // Delete group and reconcile all affected users in a single transaction
     await prisma.$transaction(async (tx) => {
       await tx.scimGroup.delete({ where: { id } });
       for (const userId of affectedUserIds) {
-        const groupNames = await getScimGroupNamesForUser(tx, userId);
-        await reconcileUserTeamMemberships(tx, userId, groupNames);
+        const groupNames = await getScimGroupNamesForUser(tx, userId, orgId);
+        await reconcileUserTeamMemberships(tx, userId, groupNames, orgId);
       }
     });
 
@@ -374,7 +390,7 @@ export async function DELETE(
       action: "scim.group_deleted",
       entityType: "ScimGroup",
       entityId: id,
-      metadata: { displayName: group.displayName },
+      metadata: { displayName: group.displayName, organizationId: orgId },
       status: "success",
     });
 
@@ -386,7 +402,7 @@ export async function DELETE(
       action: "scim.group_deleted",
       entityType: "ScimGroup",
       entityId: id,
-      metadata: { displayName: group.displayName },
+      metadata: { displayName: group.displayName, organizationId: orgId },
       status: "failure",
       error,
     });

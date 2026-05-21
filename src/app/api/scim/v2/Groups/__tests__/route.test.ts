@@ -12,7 +12,7 @@ vi.mock("@/server/services/scim", () => ({
 }));
 
 vi.mock("../../auth", () => ({
-  authenticateScim: vi.fn().mockResolvedValue(true),
+  authenticateScim: vi.fn().mockResolvedValue({ ok: true, organizationId: "default" }),
 }));
 
 vi.mock("@/lib/logger", () => ({

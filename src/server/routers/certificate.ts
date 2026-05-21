@@ -180,9 +180,16 @@ export const certificateRouter = router({
 
       await validateBundleCertificates(input.environmentId, input);
 
+      // Resolve the parent environment's organisation so the bundle's
+      // tenant column mirrors the environment join.
+      const envForOrg = await prisma.environment.findUnique({
+        where: { id: input.environmentId },
+        select: { organizationId: true },
+      });
       return prisma.certificateBundle.create({
         data: {
           environmentId: input.environmentId,
+          organizationId: envForOrg?.organizationId ?? "default",
           name: input.name,
           caId: input.caId ?? null,
           certId: input.certId ?? null,
@@ -296,6 +303,10 @@ export const certificateRouter = router({
         throw new TRPCError({ code: "CONFLICT", message: "A certificate with this name already exists in this environment" });
       }
 
+      const envForCertOrg = await prisma.environment.findUnique({
+        where: { id: input.environmentId },
+        select: { organizationId: true },
+      });
       return prisma.certificate.create({
         data: {
           name: input.name,
@@ -303,6 +314,7 @@ export const certificateRouter = router({
           fileType: input.fileType,
           encryptedData: encrypt(data),
           environmentId: input.environmentId,
+          organizationId: envForCertOrg?.organizationId ?? "default",
         },
         select: { id: true, name: true, filename: true, fileType: true, createdAt: true },
       });

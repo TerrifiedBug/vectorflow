@@ -1,7 +1,16 @@
 import "@/lib/env";
 import { infoLog, errorLog } from "@/lib/logger";
+import { assertStrictMultiTenantBoot, warnTrustForwardedHostIfOn, warnMissingMagicLinkTransport } from "@/lib/strict-multi-tenant-bootcheck";
 
 export async function registerNodeInstrumentation() {
+  // refuse to boot if env signals say this is a strict
+  // multi-tenant deployment but VF_STRICT_MULTI_TENANT is unset/typoed.
+  // Runs BEFORE any other init so a misconfigured stamp never starts
+  // serving traffic.
+  assertStrictMultiTenantBoot();
+  warnTrustForwardedHostIfOn();
+  warnMissingMagicLinkTransport();
+
   // Initialize leader election FIRST — determines which services this instance runs.
   let leaderIsLeader: () => boolean;
   let leaderRenewIntervalMs = 5000;

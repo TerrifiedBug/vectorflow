@@ -65,8 +65,10 @@ describe("setup service", () => {
         if (typeof fn !== "function") return;
         const tx = {
           user: {
+            count: vi.fn().mockResolvedValue(0),
             create: vi.fn().mockResolvedValue(mockUser),
           },
+          $executeRawUnsafe: vi.fn().mockResolvedValue(0),
           team: {
             create: vi.fn().mockResolvedValue(mockTeam),
             update: vi.fn().mockResolvedValue(mockTeam),
@@ -117,6 +119,7 @@ describe("setup service", () => {
         if (typeof fn !== "function") return;
         const tx = {
           user: {
+            count: vi.fn().mockResolvedValue(0),
             create: vi.fn().mockImplementation(async (args: { data: Record<string, unknown> }) => {
               // Verify the password is hashed, not plaintext
               expect(args.data.passwordHash).toBe("$2a$12$hashed");
@@ -128,6 +131,7 @@ describe("setup service", () => {
               };
             }),
           },
+          $executeRawUnsafe: vi.fn().mockResolvedValue(0),
           team: { create: vi.fn().mockResolvedValue({ id: "team-1", name: "T" }), update: vi.fn().mockResolvedValue({}) },
           teamMember: { create: vi.fn().mockResolvedValue({}) },
           environment: { create: vi.fn().mockResolvedValue({ id: "env-1", name: "Prod" }) },
@@ -166,7 +170,8 @@ describe("setup service", () => {
 
     function makeTx(upsertMock: ReturnType<typeof vi.fn>) {
       return {
-        user: { create: vi.fn().mockResolvedValue({ id: "u1", email: "admin@example.com", name: "Admin" }) },
+        $executeRawUnsafe: vi.fn().mockResolvedValue(0),
+        user: { count: vi.fn().mockResolvedValue(0), create: vi.fn().mockResolvedValue({ id: "u1", email: "admin@example.com", name: "Admin" }) },
         team: { create: vi.fn().mockResolvedValue({ id: "t1", name: "Default" }), update: vi.fn().mockResolvedValue({}) },
         teamMember: { create: vi.fn().mockResolvedValue({}) },
         environment: { create: vi.fn().mockResolvedValue({ id: "e1", name: "Production" }) },
@@ -218,7 +223,8 @@ describe("setup service", () => {
       prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
         if (typeof fn !== "function") return;
         const tx = {
-          user: { create: vi.fn().mockResolvedValue({ id: "u1", email: "a@b.c", name: "A" }) },
+          $executeRawUnsafe: vi.fn().mockResolvedValue(0),
+          user: { count: vi.fn().mockResolvedValue(0), create: vi.fn().mockResolvedValue({ id: "u1", email: "a@b.c", name: "A" }) },
           team: { create: vi.fn().mockResolvedValue({ id: "t1" }), update: vi.fn().mockResolvedValue({}) },
           teamMember: { create: vi.fn().mockResolvedValue({}) },
           environment: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
@@ -254,7 +260,8 @@ describe("setup service", () => {
       prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
         if (typeof fn !== "function") return;
         const tx = {
-          user: { create: vi.fn().mockResolvedValue({ id: "u1" }) },
+          $executeRawUnsafe: vi.fn().mockResolvedValue(0),
+          user: { count: vi.fn().mockResolvedValue(0), create: vi.fn().mockResolvedValue({ id: "u1" }) },
           team: {
             create: vi.fn().mockImplementation(async (args: { data: Record<string, unknown> }) => {
               teamData = args.data;
@@ -295,7 +302,8 @@ describe("setup service", () => {
       prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
         if (typeof fn !== "function") return;
         const tx = {
-          user: { create: vi.fn().mockResolvedValue({ id: "u1", email: "owner@example.com", name: "Owner" }) },
+          $executeRawUnsafe: vi.fn().mockResolvedValue(0),
+          user: { count: vi.fn().mockResolvedValue(0), create: vi.fn().mockResolvedValue({ id: "u1", email: "owner@example.com", name: "Owner" }) },
           team: { create: vi.fn().mockResolvedValue({ id: "t1" }), update: vi.fn().mockResolvedValue({}) },
           teamMember: { create: vi.fn().mockResolvedValue({}) },
           environment: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
@@ -333,7 +341,8 @@ describe("setup service", () => {
         prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
           if (typeof fn !== "function") return;
           const tx = {
-            user: { create: vi.fn().mockResolvedValue({ id: "u1", email: "a@b.c", name: "A" }) },
+            $executeRawUnsafe: vi.fn().mockResolvedValue(0),
+            user: { count: vi.fn().mockResolvedValue(0), create: vi.fn().mockResolvedValue({ id: "u1", email: "a@b.c", name: "A" }) },
             team: { create: vi.fn().mockResolvedValue({ id: "t1" }), update: vi.fn().mockResolvedValue({}) },
             teamMember: { create: vi.fn().mockResolvedValue({}) },
             environment: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
@@ -360,5 +369,35 @@ describe("setup service", () => {
         else process.env.VF_STRICT_MULTI_TENANT = ORIG;
       }
     });
+  });
+});
+
+describe("completeSetup TOCTOU guard", () => {
+  it("throws SetupAlreadyCompletedError when a concurrent caller has already created a user", async () => {
+    // Simulate the case where another tx has committed a user row between
+    // the route's isSetupRequired() pre-check and the in-tx re-check.
+    const { SetupAlreadyCompletedError } = await import(
+      "@/server/services/setup"
+    );
+    prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
+      if (typeof fn !== "function") return;
+      const tx = {
+        $executeRawUnsafe: vi.fn().mockResolvedValue(0),
+        // userCount > 0 → second caller observes the existing admin and aborts
+        user: { count: vi.fn().mockResolvedValue(1), create: vi.fn() },
+      };
+      return fn(tx);
+    });
+    await expect(
+      completeSetup({
+        email: "racer@example.com",
+        name: "Racer",
+        password: "pw1234",
+        teamName: "T",
+        telemetryChoice: "no",
+        requireTwoFactor: false,
+        environmentName: "P",
+      }),
+    ).rejects.toBeInstanceOf(SetupAlreadyCompletedError);
   });
 });

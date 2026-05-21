@@ -173,9 +173,10 @@ export async function startTapHandler(
   nodeId: string,
   pipelineId: string,
   componentId: string,
+  organizationId: string,
 ): Promise<string> {
   const requestId = nanoid();
-  await setActiveTap(requestId, { nodeId, pipelineId, componentId });
+  await setActiveTap(requestId, { nodeId, pipelineId, componentId, organizationId });
   relayPush(nodeId, {
     type: "tap_start" as const,
     requestId,
@@ -759,7 +760,7 @@ export const pipelineObservabilityRouter = router({
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.tap_started", "Pipeline"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const statuses = await prisma.nodePipelineStatus.findMany({
         where: { pipelineId: input.pipelineId, status: "RUNNING" },
         select: { nodeId: true },
@@ -774,6 +775,7 @@ export const pipelineObservabilityRouter = router({
         statuses[0].nodeId,
         input.pipelineId,
         input.componentId,
+        ctx.organizationId,
       );
       return { requestId };
     }),

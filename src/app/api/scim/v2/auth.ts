@@ -1,28 +1,56 @@
 import crypto from "crypto";
 import { NextRequest } from "next/server";
 import { getOrgSettings } from "@/lib/org-settings";
-import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 import { decrypt } from "@/server/services/crypto";
+import { resolveOrgIdFromHost } from "@/lib/host-to-org";
 
 /**
- * Authenticate a SCIM request using the bearer token.
- * Uses constant-time comparison to prevent timing attacks.
+ * Authenticate a SCIM request using the bearer token and return the
+ * organisation that token is valid for, or `null` on failure.
+ *
+ * The previous implementation hard-coded `DEFAULT_ORG_ID`, which made SCIM
+ * single-tenant. In a multi-tenant deployment that either silently
+ * broke SCIM (no DEFAULT_ORG_ID row in prod) or — worse — let any token
+ * with that DSN write into the default org regardless of the request
+ * host. Now:
+ *
+ *   1. Resolve the requesting organisation from the `Host:` header
+ *      (the per-tenant subdomain pattern `<orgSlug>.vectorflow.sh`).
+ *      `resolveOrgIdFromHost` falls back to `DEFAULT_ORG_ID` for OSS
+ *      single-tenant deployments so OSS behaviour is preserved.
+ *   2. Load the bearer token from THAT organisation's settings.
+ *   3. Compare in constant time.
+ *
+ * Cross-tenant probing is now impossible: a token configured for org A
+ * cannot satisfy a request on org B's host because the lookup happens
+ * against org B's settings.
  */
-export async function authenticateScim(req: NextRequest): Promise<boolean> {
+export async function authenticateScim(
+  req: NextRequest,
+): Promise<{ ok: true; organizationId: string } | { ok: false }> {
   const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return false;
-
+  if (!auth?.startsWith("Bearer ")) return { ok: false };
   const token = auth.slice(7);
-  const settings = await getOrgSettings(DEFAULT_ORG_ID);
-  if (!settings?.scimEnabled || !settings?.scimBearerToken) return false;
+
+  const host =
+    (process.env.VF_TRUST_FORWARDED_HOST === "true"
+      ? req.headers.get("x-forwarded-host")
+      : null) ?? req.headers.get("host") ?? "";
+  const organizationId = await resolveOrgIdFromHost(host);
+
+  const settings = await getOrgSettings(organizationId);
+  if (!settings?.scimEnabled || !settings?.scimBearerToken) {
+    return { ok: false };
+  }
 
   try {
     const storedToken = decrypt(settings.scimBearerToken);
     const a = Buffer.from(token);
     const b = Buffer.from(storedToken);
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
+    if (a.length !== b.length) return { ok: false };
+    if (!crypto.timingSafeEqual(a, b)) return { ok: false };
+    return { ok: true, organizationId };
   } catch {
-    return false;
+    return { ok: false };
   }
 }

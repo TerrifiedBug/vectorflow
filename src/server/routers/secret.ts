@@ -78,6 +78,7 @@ export const secretRouter = router({
           name: input.name,
           encryptedValue,
           environmentId: input.environmentId,
+          organizationId: envOrgId,
         },
         select: { id: true, name: true, createdAt: true, updatedAt: true },
       });

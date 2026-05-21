@@ -64,6 +64,21 @@ function expectedOrigins(): string | string[] {
     return [`https://${rpId}`, `http://${rpId}`];
   }
   // OSS / dev fallback: accept localhost on common dev ports.
+  // Refuse this fallback in production. If `VF_WEBAUTHN_RP_ID` is
+  // missing and `VF_WEBAUTHN_ORIGINS` is missing too, the server has
+  // no idea what origin to expect from a WebAuthn assertion. The old
+  // behaviour quietly accepted `http://localhost:3000` even on a
+  // production stamp; an attacker who reached the server on the
+  // host's loopback (e.g. via a side-channel) could complete a
+  // WebAuthn ceremony bound to localhost. Fail loudly so an operator
+  // sees the misconfiguration before the first user signs in.
+  if (process.env.NODE_ENV === "production") {
+    warnLog(
+      "webauthn",
+      "WebAuthn is requested but neither VF_WEBAUTHN_RP_ID nor VF_WEBAUTHN_ORIGINS is set in production. Refusing the localhost fallback — set one of them before enabling WebAuthn.",
+    );
+    return [];
+  }
   return [
     "http://localhost:3000",
     "http://127.0.0.1:3000",

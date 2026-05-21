@@ -80,28 +80,38 @@ export async function writeScimAuditLog(params: {
   });
 }
 
+/**
+ * List users belonging to `organizationId` (via OrgMember). Cross-tenant
+ * listing is impossible because we always join through OrgMember.
+ *
+ */
 export async function scimListUsers(
+  organizationId: string,
   filter?: string,
   startIndex = 1,
   count = 100,
 ) {
   // Parse simple SCIM filter like 'userName eq "john@example.com"'
-  const where: Record<string, unknown> = {};
+  const userWhere: Record<string, unknown> = {
+    orgMemberships: {
+      some: { organizationId },
+    },
+  };
   if (filter) {
     const userNameMatch = filter.match(/userName\s+eq\s+"(.+?)"/);
-    if (userNameMatch) where.email = userNameMatch[1];
+    if (userNameMatch) userWhere.email = userNameMatch[1];
     const extIdMatch = filter.match(/externalId\s+eq\s+"(.+?)"/);
-    if (extIdMatch) where.scimExternalId = extIdMatch[1];
+    if (extIdMatch) userWhere.scimExternalId = extIdMatch[1];
   }
 
   const [users, total] = await Promise.all([
     prisma.user.findMany({
-      where,
+      where: userWhere,
       skip: startIndex - 1,
       take: count,
       select: USER_SELECT,
     }),
-    prisma.user.count({ where }),
+    prisma.user.count({ where: userWhere }),
   ]);
 
   return {
@@ -113,16 +123,30 @@ export async function scimListUsers(
   };
 }
 
-export async function scimGetUser(id: string) {
-  const user = await prisma.user.findUnique({
-    where: { id },
+export async function scimGetUser(organizationId: string, id: string) {
+  const user = await prisma.user.findFirst({
+    where: {
+      id,
+      orgMemberships: { some: { organizationId } },
+    },
     select: USER_SELECT,
   });
   if (!user) return null;
   return toScimUser(user);
 }
 
-export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUser; adopted: boolean }> {
+/**
+ * Create or adopt a User and bind them to `organizationId` via OrgMember.
+ *
+ * A pre-existing global User is adopted only when their authMethod is
+ * already SSO-compatible OR a previous SCIM token has linked them. The
+ * caller's `organizationId` is the only org the new OrgMember is added
+ * to — cross-tenant provisioning is structurally impossible.
+ */
+export async function scimCreateUser(
+  organizationId: string,
+  scimUser: ScimUser,
+): Promise<{ user: ScimUser; adopted: boolean }> {
   const email =
     scimUser.emails?.[0]?.value ?? scimUser.userName;
   const name =
@@ -132,7 +156,8 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
   let failureAction: "scim.user_created" | "scim.user_adopted" = "scim.user_created";
 
   try {
-    // Check if user already exists (e.g. created via OIDC login before SCIM provisioning)
+    // Check if user already exists globally (e.g. created via OIDC login
+    // before SCIM provisioning, OR adopted by SCIM in another org).
     const existing = await prisma.user.findUnique({
       where: { email },
       select: { ...USER_SELECT, authMethod: true },
@@ -151,7 +176,33 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
         throw err;
       }
 
-      // Adopt: link the SCIM externalId to the existing SSO user
+      // Cross-tenant adoption guard: the existing User has been linked
+      // to an OrgMember somewhere — if NONE of those memberships is in
+      // THIS organisation, refusing the adoption is the safe default.
+      // An auto-upsert would let a SCIM admin in org B attach their
+      // org to an account belonging to org A purely on email collision,
+      // and SCIM PATCH/PUT can then mutate the shared User row
+      // (email, lock state) — creating a cross-tenant control path
+      // over identity state. Require an explicit cross-org link flow
+      // (or pre-existing membership) instead.
+      const memberOfThisOrg = await prisma.orgMember.findUnique({
+        where: {
+          userId_organizationId: { userId: existing.id, organizationId },
+        },
+        select: { userId: true },
+      });
+      if (!memberOfThisOrg) {
+        const err = new Error(
+          `User ${email} already exists in another organisation and cannot be auto-adopted by SCIM. ` +
+          "An administrator must add the user to this organisation through the org-management surface first.",
+        );
+        (err as Error & { scimConflict: boolean }).scimConflict = true;
+        throw err;
+      }
+
+      // Adopt: link the SCIM externalId to the existing SSO user. The
+      // OrgMember row in this org already exists (we just verified it);
+      // no upsert needed.
       const updated = await prisma.user.update({
         where: { id: existing.id },
         data: {
@@ -164,7 +215,7 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
         action: "scim.user_adopted",
         entityType: "ScimUser",
         entityId: updated.id,
-        metadata: { email, scimExternalId: scimUser.externalId },
+        metadata: { email, scimExternalId: scimUser.externalId, organizationId },
         status: "success",
       });
 
@@ -184,6 +235,9 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
         scimExternalId: scimUser.externalId,
         lockedAt: scimUser.active === false ? new Date() : null,
         lockedBy: scimUser.active === false ? "SCIM" : null,
+        orgMemberships: {
+          create: { organizationId, role: "MEMBER" },
+        },
       },
       select: USER_SELECT,
     });
@@ -192,7 +246,7 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
       action: "scim.user_created",
       entityType: "ScimUser",
       entityId: user.id,
-      metadata: { email, scimExternalId: scimUser.externalId },
+      metadata: { email, scimExternalId: scimUser.externalId, organizationId },
       status: "success",
     });
 
@@ -202,7 +256,7 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
       action: failureAction,
       entityType: "ScimUser",
       entityId: email,
-      metadata: { email, scimExternalId: scimUser.externalId },
+      metadata: { email, scimExternalId: scimUser.externalId, organizationId },
       status: "failure",
       error,
     });
@@ -210,8 +264,27 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
   }
 }
 
-export async function scimUpdateUser(id: string, scimUser: Partial<ScimUser>) {
+/**
+ * Verify the SCIM caller's organisation owns this user. Returns the
+ * user-membership pair on success and null on miss (the caller should
+ * 404 the request — never reveal whether a user with that id exists
+ * in some OTHER organisation).
+ */
+async function requireOrgMember(organizationId: string, userId: string) {
+  return prisma.orgMember.findUnique({
+    where: {
+      userId_organizationId: { userId, organizationId },
+    },
+    select: { userId: true },
+  });
+}
+export async function scimUpdateUser(
+  organizationId: string,
+  id: string,
+  scimUser: Partial<ScimUser>,
+) {
   debugLog("scim", `PUT /Users/${id}`, { active: scimUser.active, userName: scimUser.userName, externalId: scimUser.externalId });
+  if (!(await requireOrgMember(organizationId, id))) return null;
   const data: Record<string, unknown> = {};
 
   if (scimUser.name?.formatted) data.name = scimUser.name.formatted;
@@ -275,10 +348,12 @@ export async function scimUpdateUser(id: string, scimUser: Partial<ScimUser>) {
 }
 
 export async function scimPatchUser(
+  organizationId: string,
   id: string,
   operations: ScimPatchOp[],
 ) {
   debugLog("scim", `PATCH /Users/${id}`, { operations: operations.map(o => ({ op: o.op, path: o.path, value: o.value })) });
+  if (!(await requireOrgMember(organizationId, id))) return null;
   const data: Record<string, unknown> = {};
 
   for (const op of operations) {
@@ -393,29 +468,72 @@ export async function fireScimSyncFailedAlert(errorMessage: string): Promise<voi
   }
 }
 
-export async function scimDeleteUser(id: string) {
-  debugLog("scim", `DELETE /Users/${id}`);
+/**
+ * SCIM deprovisioning. In multi-tenant deployments this REMOVES the
+ * user from the SCIM caller's organisation. If the user still belongs
+ * to other orgs the global User row is left untouched (so SSO sign-in
+ * into those orgs continues to work). Otherwise the user is locked
+ * globally — preserving the OSS single-tenant deactivation behaviour.
+ * Returns `null` when the user is not a member of the caller's org.
+ */
+export async function scimDeleteUser(organizationId: string, id: string) {
+  debugLog("scim", `DELETE /Users/${id} org=${organizationId}`);
+  if (!(await requireOrgMember(organizationId, id))) return null;
   try {
-    // Don't actually delete -- lock the account
-    // Only claim SCIM ownership if not already locked by another source
-    const existing = await prisma.user.findUnique({ where: { id }, select: { lockedBy: true } });
-    const lockedBy = (!existing?.lockedBy || existing.lockedBy === "SCIM") ? "SCIM" : existing.lockedBy;
-    await prisma.user.update({
-      where: { id },
-      data: { lockedAt: new Date(), lockedBy },
+    await prisma.$transaction(async (tx) => {
+      // Step 1: clear EVERY team membership for this user on teams owned
+      // by the deprovisioning org. `OrgMember.delete` alone is not enough
+      // — `withTeamAccess` and the team-based authorisation paths read
+      // from `TeamMember`, so leaving stale rows behind keeps the user
+      // authorised on this org's teams (especially for active sessions).
+      await tx.teamMember.deleteMany({
+        where: {
+          userId: id,
+          team: { organizationId },
+        },
+      });
+
+      // Step 2: remove the OrgMember for this org.
+      await tx.orgMember.delete({
+        where: {
+          userId_organizationId: { userId: id, organizationId },
+        },
+      });
+
+      // Step 3: if the user has no remaining org memberships, lock the
+      // global User. SCIM ownership of the lock is only claimed when
+      // no other source already owns it (admin-locked rows survive).
+      const remaining = await tx.orgMember.count({ where: { userId: id } });
+      if (remaining === 0) {
+        const existing = await tx.user.findUnique({
+          where: { id },
+          select: { lockedBy: true },
+        });
+        const lockedBy =
+          !existing?.lockedBy || existing.lockedBy === "SCIM"
+            ? "SCIM"
+            : existing.lockedBy;
+        await tx.user.update({
+          where: { id },
+          data: { lockedAt: new Date(), lockedBy },
+        });
+      }
     });
 
     await writeScimAuditLog({
       action: "scim.user_deactivated",
       entityType: "ScimUser",
       entityId: id,
+      metadata: { organizationId },
       status: "success",
     });
+    return { ok: true as const };
   } catch (error) {
     await writeScimAuditLog({
       action: "scim.user_deactivated",
       entityType: "ScimUser",
       entityId: id,
+      metadata: { organizationId },
       status: "failure",
       error,
     });

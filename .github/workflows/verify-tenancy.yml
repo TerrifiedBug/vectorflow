@@ -1,0 +1,182 @@
+name: Verify Tenancy
+
+# Drift-resistant gates for the multi-tenancy isolation primitives:
+#
+#   * verify-rls.sh         — every tenant table has RLS enabled with at
+#                             least one policy.
+#   * verify-pgbouncer-leak — the `withOrgTx` GUC scoping survives a
+#                             PgBouncer transaction-pooling deployment.
+#   * verify-audit-chain    — the customer audit-export envelope verifier
+#                             smoke-test on a freshly-built export.
+#
+# These were named in ``
+# (P0-3) as launch blockers because they exist on disk as scripts but
+# were never wired into CI — meaning a future PR that drops an RLS
+# policy, breaks GUC scoping under PgBouncer, or corrupts the audit
+# hash chain would not be caught until production.
+#
+# Triggers: pull_request + push only. No scheduled / nightly run — per
+# explicit user direction (2026-05-20 launch window). Re-enabling the
+# weekly DR-verify + nightly E2E schedules is intentionally out of scope.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**"
+      - "scripts/verify-rls.sh"
+      - "scripts/verify-pgbouncer-leak.sh"
+      - "scripts/verify-audit-chain.ts"
+      - "src/server/services/audit-export*"
+      - ".github/workflows/verify-tenancy.yml"
+  pull_request:
+    paths:
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**"
+      - "scripts/verify-rls.sh"
+      - "scripts/verify-pgbouncer-leak.sh"
+      - "scripts/verify-audit-chain.ts"
+      - "src/server/services/audit-export*"
+      - ".github/workflows/verify-tenancy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify-rls:
+    name: RLS policy coverage
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # TimescaleDB image so the compressed-hypertable carve-out the
+        # RLS migration relies on is exercised — running against
+        # vanilla Postgres would let a regression on the carve-out
+        # logic slip through.
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_DB: vectorflow
+          POSTGRES_USER: vectorflow
+          POSTGRES_PASSWORD: verify-rls-test
+        options: >-
+          --health-cmd "pg_isready -U vectorflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://vectorflow:verify-rls-test@localhost:5432/vectorflow
+
+      - name: Verify RLS coverage
+        run: ./scripts/verify-rls.sh
+        env:
+          DATABASE_URL: postgresql://vectorflow:verify-rls-test@localhost:5432/vectorflow
+
+  verify-pgbouncer-leak:
+    name: PgBouncer GUC isolation
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_DB: vectorflow
+          POSTGRES_USER: vectorflow
+          POSTGRES_PASSWORD: verify-pgbouncer-test
+        options: >-
+          --health-cmd "pg_isready -U vectorflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://vectorflow:verify-pgbouncer-test@localhost:5432/vectorflow
+
+      - name: Verify withOrgTx GUC isolation
+        run: ./scripts/verify-pgbouncer-leak.sh
+        env:
+          # Verify against direct Postgres (no PgBouncer) — catches the
+          # SET LOCAL regression case described in the script's header.
+          # Adding a PgBouncer service here is a follow-up.
+          DATABASE_URL: postgresql://vectorflow:verify-pgbouncer-test@localhost:5432/vectorflow
+
+  verify-audit-chain:
+    name: Audit-chain verifier smoke test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run audit-chain verifier unit tests
+        # The verifier ships with vitest coverage in
+        # src/server/services/__tests__/audit-export*.test.ts that
+        # rebuilds a valid envelope, tampers with each row, and asserts
+        # the verifier rejects. Running just those tests is a
+        # ~5-second smoke that survives schema rebases.
+        run: npx vitest run src/server/services/__tests__/audit-export

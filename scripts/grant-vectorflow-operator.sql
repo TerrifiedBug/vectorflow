@@ -9,7 +9,7 @@
 --      yet exist (it short-circuited with a NOTICE), AND
 --   2. You later provisioned the role out of band (Terraform, manual
 --      psql as cluster admin), AND
---   3. The operator console needs read access to the views but the
+--   3. An operator role consumer needs read access to the views but the
 --      grants from the migration never landed.
 --
 -- The role intentionally never gets SELECT on the underlying tables;

@@ -17,14 +17,27 @@ export const TAP_TTL_MS = 5 * 60 * 1000;
 
 export async function setActiveTap(
   requestId: string,
-  tap: { nodeId: string; pipelineId: string; componentId: string },
+  tap: {
+    nodeId: string;
+    pipelineId: string;
+    componentId: string;
+    /** Tenant scope persisted on the tap row. REQUIRED — silently
+     *  defaulting to "default" silently mis-tags non-default-org taps
+     *  and breaks RLS once `app.org_id` is set. Caller MUST pass the
+     *  resolved org id. */
+    organizationId: string;
+  },
 ): Promise<void> {
+  if (!tap.organizationId) {
+    throw new Error("setActiveTap: organizationId is required");
+  }
   await prisma.activeTap.create({
     data: {
       requestId,
       nodeId: tap.nodeId,
       pipelineId: tap.pipelineId,
       componentId: tap.componentId,
+      organizationId: tap.organizationId,
       expiresAt: new Date(Date.now() + TAP_TTL_MS),
     },
   });

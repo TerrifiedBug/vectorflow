@@ -2,17 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateScim } from "../auth";
 import { scimListUsers, scimCreateUser, fireScimSyncFailedAlert } from "@/server/services/scim";
 
+function unauthorized() {
+  return NextResponse.json(
+    {
+      schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"],
+      detail: "Unauthorized",
+      status: "401",
+    },
+    { status: 401 },
+  );
+}
+
 export async function GET(req: NextRequest) {
-  if (!(await authenticateScim(req))) {
-    return NextResponse.json(
-      {
-        schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"],
-        detail: "Unauthorized",
-        status: "401",
-      },
-      { status: 401 },
-    );
-  }
+  const auth = await authenticateScim(req);
+  if (!auth.ok) return unauthorized();
 
   const url = new URL(req.url);
   const filter = url.searchParams.get("filter") ?? undefined;
@@ -25,45 +28,91 @@ export async function GET(req: NextRequest) {
       ? Math.min(countRaw, 1000)
       : 100;
 
-  const result = await scimListUsers(filter, startIndex, count);
+  const result = await scimListUsers(auth.organizationId, filter, startIndex, count);
   return NextResponse.json(result);
 }
 
 export async function POST(req: NextRequest) {
-  if (!(await authenticateScim(req))) {
-    return NextResponse.json(
-      {
-        schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"],
-        detail: "Unauthorized",
-        status: "401",
-      },
-      { status: 401 },
-    );
-  }
+  const auth = await authenticateScim(req);
+  if (!auth.ok) return unauthorized();
 
   try {
     const body = await req.json();
-    const { user, adopted } = await scimCreateUser(body);
+
+    // SCIM 2.0 request-shape validation — return 400 (`invalidValue`)
+    // for malformed payloads rather than letting `scimCreateUser`'s
+    // downstream property accesses turn missing fields into a server
+    // 500. The IdP would otherwise retry on 500 and trip the
+    // `scim_sync_failed` alert path on every retry.
+    const userName =
+      typeof body?.userName === "string" ? body.userName : undefined;
+    const primaryEmail =
+      Array.isArray(body?.emails) && typeof body.emails[0]?.value === "string"
+        ? body.emails[0].value
+        : undefined;
+    if (!userName && !primaryEmail) {
+      return NextResponse.json(
+        {
+          schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"],
+          detail: "userName or emails[0].value is required",
+          status: "400",
+          scimType: "invalidValue",
+        },
+        { status: 400 },
+      );
+    }
+
+    const { user, adopted } = await scimCreateUser(auth.organizationId, body);
     // Return 200 for adopted (existing) users, 201 for newly created
     return NextResponse.json(user, { status: adopted ? 200 : 201 });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to create user";
-    // RFC 7644 §3.3: uniqueness conflicts use 409
-    const isConflict = error instanceof Error && (error as Error & { scimConflict?: boolean }).scimConflict === true;
-    const status = isConflict ? 409 : 400;
-    // Don't fire sync-failed alerts for 409 conflicts — these are routine
-    // IdP probes for existing users, not actual sync failures.
-    if (!isConflict) {
-      void fireScimSyncFailedAlert(message);
+      error instanceof Error ? error.message : "Unknown error";
+
+    // Local-account / cross-org-adoption conflict — return 409 per SCIM 2.0
+    if ((error as { scimConflict?: boolean }).scimConflict) {
+      return NextResponse.json(
+        {
+          schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"],
+          detail: message,
+          status: "409",
+          scimType: "uniqueness",
+        },
+        { status: 409 },
+      );
     }
+
+    // SyntaxError from `await req.json()` on a malformed body is a
+    // request-shape problem — 400, not 500. Same for TypeError /
+    // RangeError that came out of a malformed input field deeper in
+    // the create path (e.g. `email.split` failing because email was
+    // not a string at all). 500 stays for genuinely-unexpected
+    // throws (Prisma down, bcrypt failure, etc.) so an operator
+    // alert path is still wired to the right class of error.
+    if (
+      error instanceof SyntaxError ||
+      error instanceof TypeError ||
+      error instanceof RangeError
+    ) {
+      return NextResponse.json(
+        {
+          schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"],
+          detail: message,
+          status: "400",
+          scimType: "invalidValue",
+        },
+        { status: 400 },
+      );
+    }
+
+    await fireScimSyncFailedAlert(message);
     return NextResponse.json(
       {
         schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"],
         detail: message,
-        status: String(status),
+        status: "500",
       },
-      { status },
+      { status: 500 },
     );
   }
 }

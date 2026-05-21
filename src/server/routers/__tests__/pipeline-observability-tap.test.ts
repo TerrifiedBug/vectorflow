@@ -101,13 +101,14 @@ describe("tap handler functions", () => {
     it("registers a tap and sends tap_start push", async () => {
       mockSetActiveTap.mockResolvedValueOnce(undefined);
 
-      const requestId = await startTapHandler("node-1", "pipeline-1", "source_1");
+      const requestId = await startTapHandler("node-1", "pipeline-1", "source_1", "default");
 
       expect(requestId).toBe("mock-request-id");
       expect(mockSetActiveTap).toHaveBeenCalledWith("mock-request-id", {
         nodeId: "node-1",
         pipelineId: "pipeline-1",
         componentId: "source_1",
+        organizationId: "default",
       });
       expect(relayPush).toHaveBeenCalledWith("node-1", {
         type: "tap_start",

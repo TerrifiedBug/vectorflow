@@ -171,10 +171,19 @@ const roleLevel: Record<Role, number> = {
   ADMIN: 2,
 };
 
-async function resolvePipelineBatchTeamId(pipelineIds: string[]) {
+/**
+ * Resolve the team that owns `pipelineIds` and require the batch to be
+ * single-team. scopes the lookup by `organizationId` so a
+ * Prisma bug (or future refactor) cannot accidentally return a
+ * cross-org pipeline whose teamId the batch would then validate against.
+ */
+async function resolvePipelineBatchTeamId(
+  pipelineIds: string[],
+  organizationId: string,
+) {
   const uniquePipelineIds = [...new Set(pipelineIds)];
   const pipelines = await prisma.pipeline.findMany({
-    where: { id: { in: uniquePipelineIds } },
+    where: { id: { in: uniquePipelineIds }, organizationId },
     select: {
       id: true,
       environment: { select: { teamId: true } },
@@ -234,6 +243,37 @@ export const requireRole = (minRole: Role) =>
 
     return next({
       ctx: { session: ctx.session, userRole: highestRole },
+    });
+  });
+
+/**
+ * Per-organisation admin authorization middleware. The org-scoped
+ * counterpart to `requirePlatformOperator`: an OrgMember whose role is
+ * OWNER or ADMIN of the caller's resolved organisation passes.
+ *
+ * Per-org settings (OIDC, sub-processor notice email, etc.) were previously gated behind
+ * `requirePlatformOperator()` which forced VectorFlow staff to mutate
+ * customer-owned settings on the customer's behalf — violating the
+ * "operators are NEVER tenant Users" boundary and breaking self-service
+ * SSO setup for cloud customers. This gate restores org-level control
+ * to org OWNERs/ADMINs while still being a defense-in-depth barrier in
+ * front of mutations (the per-procedure validation — e.g. the OIDC
+ * domain-claim gate — remains).
+ */
+export const requireOrgAdmin = () =>
+  t.middleware(async ({ ctx, next }) => {
+    if (!ctx.session?.user?.id) {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
+    const ok = await isOrgWideAdmin(ctx.session.user.id, ctx.organizationId);
+    if (!ok) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "This action requires an organisation OWNER or ADMIN role",
+      });
+    }
+    return next({
+      ctx: { ...ctx, session: ctx.session, userRole: "ADMIN" as Role },
     });
   });
 
@@ -379,7 +419,7 @@ export const withTeamAccess = (minRole: Role) =>
     // Resolve teamId from pipelineIds array and reject mixed-team batches before handlers run.
     // hasPipelineIds is always true here when pipelineIds were present (teamId was left undefined above).
     if (hasPipelineIds && !teamId) {
-      teamId = await resolvePipelineBatchTeamId(rawInput!.pipelineIds as string[]);
+      teamId = await resolvePipelineBatchTeamId(rawInput!.pipelineIds as string[], ctx.organizationId);
     }
 
     // Resolve teamId from upstreamId (pipeline dependency endpoints)

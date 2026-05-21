@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { debugLog } from "@/lib/logger";
 import { getOrgSettings } from "@/lib/org-settings";
-import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
 export interface GroupMapping {
   group: string;
@@ -22,7 +21,7 @@ const ROLE_RANK: Record<string, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2 };
  * the wrong configuration.
  */
 export async function loadGroupMappings(
-  organizationId: string = DEFAULT_ORG_ID,
+  organizationId: string,
 ): Promise<GroupMapping[]> {
   const settings = await getOrgSettings(organizationId);
 
@@ -63,7 +62,7 @@ export async function reconcileUserTeamMemberships(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   userId: string,
   userGroupNames: string[],
-  organizationId: string = DEFAULT_ORG_ID,
+  organizationId: string,
 ): Promise<void> {
   const allMappings = await loadGroupMappings(organizationId);
   debugLog("reconcile", `userId=${userId}, userGroups=${JSON.stringify(userGroupNames)}, mappings=${JSON.stringify(allMappings)}`);
@@ -126,14 +125,21 @@ export async function reconcileUserTeamMemberships(
 }
 
 /**
- * Get the group names a user belongs to via ScimGroupMember records.
+ * Get the group names a user belongs to via ScimGroupMember records,
+ * scoped to a single organisation. Cross-tenant ScimGroup names cannot
+ * influence team reconciliation because the join is org-bound
+ *
  */
 export async function getScimGroupNamesForUser(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   userId: string,
+  organizationId: string,
 ): Promise<string[]> {
   const memberships = await tx.scimGroupMember.findMany({
-    where: { userId },
+    where: {
+      userId,
+      scimGroup: { organizationId },
+    },
     include: { scimGroup: { select: { displayName: true } } },
   });
   return memberships.map((m) => m.scimGroup.displayName);

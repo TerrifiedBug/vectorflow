@@ -74,7 +74,8 @@ model Organization {
   webhookConfirmations WebhookConfirmation[]
   billingProviderRefs  BillingProviderRef[]
   operatorApprovals    OperatorApprovalRequest[]
-  domainClaims         OrganizationDomainClaim[]
+  domainClaims OrganizationDomainClaim[]
+  scimGroups   ScimGroup[]
 }
 
 model OrgMember {
@@ -435,6 +436,11 @@ model WebAuthnCredential {
 /// enough for the platform/authenticator round trip.
 model WebAuthnChallenge {
   id        String   @id @default(cuid())
+  /// Tenant scope. The challenge bytes are themselves a
+  /// 256-bit secret so cross-org enumeration is not feasible without
+  /// guessing, but having the column lets the cleanup job filter by
+  /// tenant and lets RLS fence direct reads end-to-end.
+  organizationId String  @default("default")
   /// One of "register" or "authenticate".
   kind      String
   /// The challenge bytes, base64url-encoded.
@@ -448,6 +454,7 @@ model WebAuthnChallenge {
 
   @@index([expiresAt])
   @@index([userId])
+  @@index([organizationId, expiresAt])
 }
 
 /// Magic-link sign-in token.
@@ -571,11 +578,19 @@ model Team {
 }
 
 model ScimGroup {
-  id          String            @id @default(cuid())
-  displayName String            @unique
-  externalId  String?           @unique
-  members     ScimGroupMember[]
-  createdAt   DateTime          @default(now())
+  id             String            @id @default(cuid())
+  /// Tenant scope. SCIM groups are managed per-org so a SCIM token
+  /// issued for org A cannot list or mutate groups belonging to org B
+  organizationId String            @default("default")
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  displayName    String
+  externalId     String?
+  members        ScimGroupMember[]
+  createdAt      DateTime          @default(now())
+
+  @@unique([organizationId, displayName])
+  @@unique([organizationId, externalId])
+  @@index([organizationId])
 }
 
 model ScimGroupMember {
@@ -1024,6 +1039,10 @@ model EventSampleRequest {
 /// survives across server instances in HA deployments.
 model ActiveTap {
   requestId   String   @id
+  /// Tenant scope. `pipeline.stopTap` runs inline
+  /// authorisation on top of this row; the column adds RLS coverage
+  /// for any future direct query that bypasses the handler.
+  organizationId String   @default("default")
   nodeId      String
   pipelineId  String
   componentId String
@@ -1032,6 +1051,7 @@ model ActiveTap {
 
   @@index([expiresAt])
   @@index([nodeId])
+  @@index([organizationId, expiresAt])
 }
 
 model EventSample {
@@ -1212,6 +1232,10 @@ model StagedRollout {
 
 model Secret {
   id             String      @id @default(cuid())
+  /// Tenant scope. Mirrors the parent environment's organisation so
+  /// RLS can fence direct queries that bypass the environment ↔ team ↔
+  /// org join.
+  organizationId String      @default("default")
   name           String
   encryptedValue String
   environmentId  String
@@ -1220,10 +1244,14 @@ model Secret {
   updatedAt      DateTime    @updatedAt
 
   @@unique([environmentId, name])
+  @@index([organizationId])
+  @@index([organizationId, environmentId])
 }
 
 model Certificate {
   id            String              @id @default(cuid())
+  /// Tenant scope — see Secret.organizationId.
+  organizationId String              @default("default")
   name          String
   filename      String
   fileType      String
@@ -1236,10 +1264,14 @@ model Certificate {
   createdAt     DateTime            @default(now())
 
   @@unique([environmentId, name])
+  @@index([organizationId])
+  @@index([organizationId, environmentId])
 }
 
 model CertificateBundle {
   id            String       @id @default(cuid())
+  /// Tenant scope — see Secret.organizationId.
+  organizationId String       @default("default")
   name          String
   environmentId String
   environment   Environment  @relation(fields: [environmentId], references: [id], onDelete: Cascade)
@@ -1253,6 +1285,8 @@ model CertificateBundle {
   updatedAt     DateTime     @updatedAt
 
   @@unique([environmentId, name])
+  @@index([organizationId])
+  @@index([organizationId, environmentId])
 }
 
 model Template {
