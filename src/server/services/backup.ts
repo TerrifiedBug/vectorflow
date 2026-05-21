@@ -545,7 +545,7 @@ export async function createBackup(
       pgVersion,
     };
 
-    // Write companion .meta.json (preserved for backward compat until Phase 13)
+    // Write companion .meta.json (preserved for backward compat with legacy backups)
     await fs.writeFile(metaPath, JSON.stringify(metadata, null, 2));
 
     // Upload to active storage backend (S3 or local)
@@ -624,7 +624,7 @@ export async function createBackup(
 
 /**
  * Return all backup records from the database, sorted newest-first.
- * The BackupRecord table is the source of truth after Phase 12.
+ * The BackupRecord table is the source of truth.
  * Legacy backups are imported into the DB via importLegacyBackups() on startup.
  */
 export async function listBackups(): Promise<BackupRecord[]> {
@@ -686,7 +686,8 @@ export async function deleteBackup(filename: string): Promise<void> {
  * and create BackupRecord rows for them.
  *
  * Idempotent: files that already have a BackupRecord are skipped.
- * Called on server startup (leader-only) to migrate pre-Phase-12 backups.
+ * Called on server startup (leader-only) to migrate legacy backups
+ * created before BackupRecord existed.
  */
 export async function importLegacyBackups(): Promise<{
   imported: number;
@@ -810,7 +811,7 @@ export async function restoreFromBackup(filename: string): Promise<RestoreResult
       const raw = await fs.readFile(metaPath, "utf-8");
       backupMeta = JSON.parse(raw) as BackupMetadata;
     } catch {
-      // Fallback: read metadata from BackupRecord (Phase-12+ backups may not need .meta.json)
+      // Fallback: read metadata from BackupRecord (newer backups may not need .meta.json)
       if (backupRecord) {
         backupMeta = {
           version: backupRecord.vfVersion ?? "unknown",
@@ -846,7 +847,7 @@ export async function restoreFromBackup(filename: string): Promise<RestoreResult
         );
       }
     }
-    // If no BackupRecord exists (legacy backup created before Phase 12), skip checksum verification
+    // If no BackupRecord exists (legacy untracked backup), skip checksum verification
 
     // Create a safety backup before restoring
     await createBackup("pre_restore");

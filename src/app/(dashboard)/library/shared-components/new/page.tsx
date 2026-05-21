@@ -19,7 +19,7 @@ export default function NewSharedComponentPage() {
         description="The v2.0 handoff calls out per-component config drawers and schemas as not yet designed. This route stays available, but creation is gated so users do not mistake a raw schema browser for an approved workflow."
         secondary={{ label: "Back to shared components", href: "/library/shared-components" }}
         helperLines={[
-          { icon: "scope", text: "Source of truth: HANDOFF §2 and §12 flag per-Vector-component config schemas as design-pending." },
+          { icon: "scope", text: "Coming soon — per-Vector-component config schemas are not part of the current shipped surface." },
           { icon: "gate", text: "Requires approved source, transform, and sink configuration surfaces before enabling creation." },
         ]}
       />

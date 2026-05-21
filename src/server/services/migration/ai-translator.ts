@@ -529,7 +529,7 @@ async function callAiCompletion(params: {
   const { teamId, systemPrompt, userPrompt } = params;
   const config = await getTeamAiConfig(teamId);
 
-  // Phase 5z: gate non-vendor URLs on the per-org opt-in.
+  // Gate non-vendor URLs on the per-org opt-in.
   await enforceAiBaseUrlPolicy({
     baseUrl: config.baseUrl,
     organizationId: config.organizationId,

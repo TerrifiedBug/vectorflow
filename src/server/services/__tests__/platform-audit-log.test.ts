@@ -40,16 +40,16 @@ function makeTxStub() {
 }
 
 describe("platformAuditGenesisHash", () => {
-  it("is deterministic per stamp", () => {
-    const a = platformAuditGenesisHash("stamp-eu-1");
-    const b = platformAuditGenesisHash("stamp-eu-1");
+  it("is deterministic per deployment", () => {
+    const a = platformAuditGenesisHash("deploy-eu-1");
+    const b = platformAuditGenesisHash("deploy-eu-1");
     expect(a).toBe(b);
     expect(a).toHaveLength(64); // sha256 hex
   });
 
-  it("differs between stamps", () => {
-    expect(platformAuditGenesisHash("stamp-eu-1")).not.toBe(
-      platformAuditGenesisHash("stamp-us-1"),
+  it("differs between deployments", () => {
+    expect(platformAuditGenesisHash("deploy-eu-1")).not.toBe(
+      platformAuditGenesisHash("deploy-us-1"),
     );
   });
 });
@@ -68,13 +68,13 @@ describe("writePlatformAuditLog", () => {
     );
   });
 
-  it("uses genesis hash as prevHash when the stamp has no rows yet", async () => {
+  it("uses genesis hash as prevHash when the deployment has no rows yet", async () => {
     mocks.platformAuditChainTailFindUnique.mockResolvedValue(null);
     mocks.platformAuditLogCreate.mockImplementation(async (args) => args.data);
     mocks.platformAuditChainTailUpsert.mockResolvedValue({});
 
     const result = await writePlatformAuditLog({
-      deploymentId: "stamp-x",
+      deploymentId: "deploy-x",
       operatorId: "op-1",
       operatorRole: "INCIDENT",
       action: "grant.request",
@@ -82,11 +82,11 @@ describe("writePlatformAuditLog", () => {
       reason: "P0 incident",
     });
 
-    expect(result.prevHash).toBe(platformAuditGenesisHash("stamp-x"));
+    expect(result.prevHash).toBe(platformAuditGenesisHash("deploy-x"));
     expect(result.hash).toHaveLength(64);
     expect(mocks.platformAuditLogCreate).toHaveBeenCalledTimes(1);
     const created = mocks.platformAuditLogCreate.mock.calls[0]?.[0]?.data;
-    expect(created?.prevHash).toBe(platformAuditGenesisHash("stamp-x"));
+    expect(created?.prevHash).toBe(platformAuditGenesisHash("deploy-x"));
     expect(created?.hash).toBe(result.hash);
   });
 
@@ -98,7 +98,7 @@ describe("writePlatformAuditLog", () => {
     mocks.platformAuditChainTailUpsert.mockResolvedValue({});
 
     const result = await writePlatformAuditLog({
-      deploymentId: "stamp-x",
+      deploymentId: "deploy-x",
       operatorId: "op-2",
       operatorRole: "SUPPORT",
       action: "kms.unwrap",
@@ -109,7 +109,7 @@ describe("writePlatformAuditLog", () => {
     expect(result.hash).not.toBe(result.prevHash);
   });
 
-  it("acquires per-stamp advisory lock BEFORE reading the tail", async () => {
+  it("acquires per-deployment advisory lock BEFORE reading the tail", async () => {
     mocks.platformAuditChainTailFindUnique.mockResolvedValue(null);
     mocks.platformAuditLogCreate.mockImplementation(async (args) => args.data);
 
@@ -125,9 +125,9 @@ describe("writePlatformAuditLog", () => {
     });
 
     await writePlatformAuditLog({
-      deploymentId: "stamp-x",
+      deploymentId: "deploy-x",
       operatorId: "op-3",
-      action: "stamp.restart",
+      action: "deployment.restart",
     });
 
     expect(lockTaken).toBe(true);
@@ -139,7 +139,7 @@ describe("writePlatformAuditLog", () => {
     mocks.platformAuditLogCreate.mockImplementation(async (args) => args.data);
 
     const result = await writePlatformAuditLog({
-      deploymentId: "stamp-x",
+      deploymentId: "deploy-x",
       operatorId: "op-4",
       action: "org.suspend",
       organizationId: "org-c",
@@ -147,7 +147,7 @@ describe("writePlatformAuditLog", () => {
 
     expect(mocks.platformAuditChainTailUpsert).toHaveBeenCalledTimes(1);
     const upsertArgs = mocks.platformAuditChainTailUpsert.mock.calls[0]?.[0];
-    expect(upsertArgs?.where?.deploymentId).toBe("stamp-x");
+    expect(upsertArgs?.where?.deploymentId).toBe("deploy-x");
     expect(upsertArgs?.create?.lastHash).toBe(result.hash);
     expect(upsertArgs?.update?.lastHash).toBe(result.hash);
   });
@@ -158,9 +158,9 @@ describe("writePlatformAuditLog", () => {
 
     await expect(
       writePlatformAuditLog({
-        deploymentId: "stamp-x",
+        deploymentId: "deploy-x",
         operatorId: null,
-        action: "stamp.restart",
+        action: "deployment.restart",
         metadata: { trigger: "health-check" },
       }),
     ).resolves.toMatchObject({ hash: expect.any(String) });
@@ -188,7 +188,7 @@ describe("verifyPlatformAuditChain", () => {
   ) {
     return {
       id: "r1",
-      deploymentId: "stamp-x",
+      deploymentId: "deploy-x",
       operatorId: "op-1",
       operatorRole: "SUPPORT",
       action: "grant.request",
@@ -199,7 +199,7 @@ describe("verifyPlatformAuditChain", () => {
       metadata: null,
       ipAddress: null,
       createdAt: new Date(0),
-      prevHash: platformAuditGenesisHash("stamp-x"),
+      prevHash: platformAuditGenesisHash("deploy-x"),
       hash: "TBD",
       ...overrides,
     };
@@ -219,7 +219,7 @@ describe("verifyPlatformAuditChain", () => {
     );
 
     await writePlatformAuditLog({
-      deploymentId: "stamp-x",
+      deploymentId: "deploy-x",
       operatorId: "op-1",
       operatorRole: "SUPPORT",
       action: "grant.request",
@@ -229,7 +229,7 @@ describe("verifyPlatformAuditChain", () => {
     expect(savedRow).toBeDefined();
     const ver = verifyPlatformAuditChain(
       [savedRow as never],
-      platformAuditGenesisHash("stamp-x"),
+      platformAuditGenesisHash("deploy-x"),
     );
     expect(ver).toEqual({ ok: true });
   });
@@ -239,7 +239,7 @@ describe("verifyPlatformAuditChain", () => {
     row.hash = "ignored";
     const ver = verifyPlatformAuditChain(
       [row],
-      platformAuditGenesisHash("stamp-x"),
+      platformAuditGenesisHash("deploy-x"),
     );
     expect(ver.ok).toBe(false);
     if (!ver.ok) {
@@ -275,7 +275,7 @@ describe("verifyPlatformAuditChain", () => {
 
     for (const action of ["grant.request", "grant.approve", "grant.use"] as const) {
       await writePlatformAuditLog({
-        deploymentId: "stamp-x",
+        deploymentId: "deploy-x",
         operatorId: "op-1",
         operatorRole: "SUPPORT",
         action,
@@ -286,7 +286,7 @@ describe("verifyPlatformAuditChain", () => {
     // Sanity: intact chain verifies.
     const intact = verifyPlatformAuditChain(
       written as never,
-      platformAuditGenesisHash("stamp-x"),
+      platformAuditGenesisHash("deploy-x"),
     );
     expect(intact.ok).toBe(true);
 
@@ -295,7 +295,7 @@ describe("verifyPlatformAuditChain", () => {
 
     const broken = verifyPlatformAuditChain(
       written as never,
-      platformAuditGenesisHash("stamp-x"),
+      platformAuditGenesisHash("deploy-x"),
     );
     expect(broken.ok).toBe(false);
     if (!broken.ok) {

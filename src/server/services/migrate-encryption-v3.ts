@@ -1,5 +1,5 @@
 /**
- * Phase 3 encryption migration helpers.
+ * Envelope-encryption migration helpers (v2 → v3 ciphertexts).
  *
  * Walks tenant tables row-by-row and re-encrypts `v2:` ciphertexts as v3
  * envelope-encrypted blobs bound to the row's org. Designed to be:

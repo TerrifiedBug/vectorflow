@@ -7,7 +7,7 @@
 # index whose **leading column is `organizationId`**. Every tenant table
 # MUST have at least one such index, or the post-RLS hot path becomes a
 # Seq Scan over the whole tenant population — which destroys SLO p95s
-# the moment a few thousand orgs land on a stamp.
+# the moment a few thousand orgs land on a single deployment.
 #
 # This script:
 #
@@ -182,7 +182,7 @@ if [[ "$failures" -gt 0 ]]; then
   cat <<MSG
 verify-indexes: at least one tenant table is missing a composite
 \`(organizationId, ...)\` btree index. Without one, Postgres falls back
-to a Seq Scan for the RLS predicate and the p95 SLO from §12.5 cannot
+to a Seq Scan for the RLS predicate and the per-org p95 SLO cannot
 be held. Add the index in a Prisma migration:
 
   @@index([organizationId, <next-most-selective-column>])

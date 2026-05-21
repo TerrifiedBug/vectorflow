@@ -37,7 +37,7 @@ export interface DekCacheOptions {
  *   `Buffer` with zeros in place so any retained reference is wiped too.
  * - **Single-flight (same ciphertext).** Concurrent gets for the *same*
  *   `(org, ct)` share a single underlying `unwrapDataKey` call.
- * - **Warm-up.** `warm()` pre-populates the cache; used at stamp startup
+ * - **Warm-up.** `warm()` pre-populates the cache; used at deployment startup
  *   to absorb agent-reconnect storms without an outbound KMS spike.
  */
 export class DekCache {

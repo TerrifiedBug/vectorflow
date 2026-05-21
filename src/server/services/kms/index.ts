@@ -17,8 +17,9 @@ let cachedDekCache: DekCache | null = null;
  * `VF_KMS_PROVIDER`:
  *   - `local-dev` (default) — `LocalDevKmsProvider`.
  *   - `vault-transit`       — `VaultTransitKmsProvider` (requires Vault env).
- *   - `aws-kms`             — only available when a closed-source adapter
- *                             is registered; otherwise throws.
+ *
+ * Unknown values throw, so deployment overlays that need an additional
+ * provider must replace this factory rather than extending the switch.
  *
  * Tests use `resetKmsForTests()` to clear the singleton.
  */
@@ -39,10 +40,6 @@ export function getKmsProvider(): KmsProvider {
         transitMount: process.env.VF_VAULT_TRANSIT_MOUNT ?? "transit",
       });
       break;
-    case "aws-kms":
-      throw new Error(
-        "VF_KMS_PROVIDER=aws-kms is provided by a closed-source adapter not bundled in OSS; set VF_KMS_PROVIDER=local-dev or vault-transit",
-      );
     default:
       throw new Error(`Unknown VF_KMS_PROVIDER value: ${provider}`);
   }

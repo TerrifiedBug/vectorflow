@@ -752,7 +752,7 @@ describe("team router", () => {
       );
     });
 
-    // ── Phase 5z: AI base URL allowlist + per-org opt-in ────────────────────
+    // ── AI base URL allowlist + per-org opt-in ────────────────────
 
     it("allows aiBaseUrl when it resolves to an allowlisted vendor (api.openai.com)", async () => {
       prismaMock.team.update.mockResolvedValue({

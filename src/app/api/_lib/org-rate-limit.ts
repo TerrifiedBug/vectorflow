@@ -15,8 +15,7 @@
  *   git-sync:  120 / min
  *
  * Callers may override the per-endpoint default by passing an explicit
- * `limit` (plan-tier-aware quota wiring lives in Phase 5 quota engine,
- * which will compute the override based on `OrgPlan`).
+ * `limit` (plan-tier-aware quota wiring composes via the QuotaPolicyProvider).
  */
 
 import { rateLimiter } from "@/app/api/v1/_lib/rate-limiter";

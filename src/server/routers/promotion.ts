@@ -278,7 +278,7 @@ export const promotionRouter = router({
         };
       }
 
-      // UI path (Phase 5): if no approval required, auto-execute
+      // UI path: if no approval required, auto-execute
       if (!targetEnv.requireDeployApproval) {
         await executePromotion(promotionRequest.id, userId);
         return { requestId: promotionRequest.id, status: "DEPLOYED", pendingApproval: false };

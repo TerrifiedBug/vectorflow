@@ -7,18 +7,12 @@
  *     `getOrgConstraints()` already returns `reason: "deleted"` for any
  *     org with `deletedAt` set, so every customer-side handler 404s
  *     immediately. Agent endpoints return 503 with `Retry-After: 86400`
- *     (same as suspension; covered by Phase 5t).
+ *     (same as suspension).
  *   - `cancelOrgDeletion(orgId)` — clears `deletedAt` during the grace
  *     window. Idempotent; called by the customer-admin "Undo" button.
  *   - `listOrgsPastGrace()` — returns orgs whose `deletedAt` is older
  *     than `GRACE_DAYS`. A tenant-lifecycle cron uses this to drive
  *     hard-delete + `kms:ScheduleKeyDeletion`.
- *
- * (NOT in OSS):
- *
- *   - The hard-delete step itself (cascade `DELETE`, KMS key
- *     destruction). That logic lives in a closed-source adapter and is
- *     not bundled in OSS.
  *
  * Notes:
  *
@@ -34,7 +28,7 @@
  *     observes `deletedAt` already set and returns the original
  *     scheduled-deletion date.
  *   - `GRACE_DAYS` is env-tunable (`VF_DELETE_GRACE_DAYS`, default 30)
- *     so thecan run shorter grace windows in staging.
+ *     so operators can run shorter grace windows in staging.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -47,7 +41,7 @@ const GRACE_DAYS =
   Number.isFinite(GRACE_DAYS_RAW) && GRACE_DAYS_RAW > 0 ? GRACE_DAYS_RAW : 30;
 
 export interface DeletionRequestor {
-  /** "customer" = owner/admin in the org self-serve UI; "operator" = platform staff. */
+  /** "customer" = owner/admin in the org self-serve UI; "operator" = a platform-operator account. */
   kind: "customer" | "operator";
   /** User.id when kind === "customer"; PlatformOperator.id when kind === "operator". */
   id: string;
@@ -77,7 +71,7 @@ export async function requestOrgDeletion(
   organizationId: string,
   by: DeletionRequestor,
 ): Promise<RequestOrgDeletionResult> {
-  // Phase 1: atomic org update (advisory lock not needed; updateMany CAS is sufficient).
+  // Step 1: atomic org update (advisory lock not needed; updateMany CAS is sufficient).
   const result = await prisma.$transaction(async (tx) => {
     // Verify the org exists before attempting the atomic update.
     const org = await tx.organization.findUnique({
@@ -134,7 +128,7 @@ export async function requestOrgDeletion(
     return { deletedAt: now, alreadyPending: false as const, wrote: true };
   });
 
-  // Phase 2: write the chained audit row OUTSIDE the transaction so
+  // Step 2: write the chained audit row OUTSIDE the transaction so
   // writeAuditLog's advisory lock does not nest inside the org update tx.
   if (result.wrote) {
     writeAuditLog({
@@ -190,7 +184,7 @@ export async function cancelOrgDeletion(
   organizationId: string,
   by: DeletionRequestor,
 ): Promise<CancelOrgDeletionResult> {
-  // Phase 1: atomic org update.
+  // Step 1: atomic org update.
   const result = await prisma.$transaction(async (tx) => {
     const org = await tx.organization.findUnique({
       where: { id: organizationId },
@@ -225,7 +219,7 @@ export async function cancelOrgDeletion(
     return { cancelled: true, wasScheduledFor: scheduledHardDelete, wrote: true };
   });
 
-  // Phase 2: write the chained audit row OUTSIDE the transaction.
+  // Step 2: write the chained audit row OUTSIDE the transaction.
   if (result.wrote && result.wasScheduledFor) {
     const scheduledFor = result.wasScheduledFor;
     writeAuditLog({
@@ -266,10 +260,8 @@ export interface PendingHardDelete {
 
 /**
  * Enumerate orgs whose `deletedAt` is older than the grace window.
- * The hard-delete cron uses this to drive `kms:ScheduleKeyDeletion`
- * + cascade SQL DELETE. OSS callers may use it too (e.g. self-hosted
- * compliance teams running a manual cleanup), but the actual destructive
- * step is intentionally NOT exposed in OSS.
+ * Callers wire this into a hard-delete cron (cascade SQL DELETE +
+ * `kms:ScheduleKeyDeletion`) appropriate for their deployment model.
  */
 export async function listOrgsPastGrace(
   now: Date = new Date(),

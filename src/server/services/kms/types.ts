@@ -7,17 +7,21 @@
  *     domain-scoped keys with HKDF, and AES-256-GCM encrypts the row
  *     with per-row AAD that binds the ciphertext to (org, domain, table, rowId).
  *
- * OSS providers shipped here:
+ * Providers shipped here:
  *   - `LocalDevKmsProvider` — wraps with a master KEK derived from
  *     `VF_LOCAL_KMS_KEY` (or `NEXTAUTH_SECRET`). Dev/test only.
  *   - `VaultTransitKmsProvider` — calls Vault Transit `encrypt`/`decrypt`
  *     for production self-hosted users.
  *
- * Closed providers (not bundled in OSS):
- *   - `AwsKmsProvider` — AWS KMS `GenerateDataKey` / `Decrypt`.
+ * Additional providers may be registered by deployment overlays; this
+ * module only exposes the abstract interface and the providers that
+ * ship with the repo.
  */
 
-export type KmsProviderKind = "local-dev" | "vault-transit" | "aws-kms";
+// Built-in provider kinds. Typed as a string literal union for
+// autocomplete on the built-ins, plus `string & {}` so deployment
+// overlays can introduce their own kinds without widening this file.
+export type KmsProviderKind = "local-dev" | "vault-transit" | (string & {});
 
 export interface KmsKeyDescriptor {
   /** Which provider is fronting the wrapping key. */
@@ -67,9 +71,11 @@ export interface KmsProvider {
    * Perform a *real* round-trip to the wrapping-key provider. Used by
    * the deep readiness probe to detect Vault/KMS outages before
    * requests hit the cryptographic hot path. Implementations:
-   *   - local-dev:    in-process KEK fingerprint (no I/O).
-   *   - vault-transit: GET on the transit key's metadata endpoint.
-   *   - aws-kms:      KMS:DescribeKey on the org's CMK.
+   *   - local-dev:     in-process KEK fingerprint (no I/O).
+   *   - vault-transit: HTTP GET on the transit key's metadata endpoint.
+   * Custom providers should issue the cheapest authenticated round-trip
+   * their backend supports and report `ok: false` with a coarse `error`
+   * on any non-2xx or transport failure.
    *
    * `signal` MUST be honoured by network implementations so an abandoned
    * probe (caller timed out) does not leave a hanging request behind to

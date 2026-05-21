@@ -8,7 +8,7 @@
  *
  * Used by `/api/health/deep` to fail readiness when the host drifts too
  * far. Several control-plane invariants (JWT expiry, TOTP windows, KMS
- * grant token expiry) silently misbehave when stamp hosts disagree on the
+ * grant token expiry) silently misbehave when deployment hosts disagree on the
  * time of day.
  *
  * Defaults to a small set of high-availability public NTP-backed HTTP

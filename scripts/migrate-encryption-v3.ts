@@ -1,5 +1,5 @@
 /**
- * Phase 3 envelope-encryption migration.
+ * Envelope-encryption migration (v2 → v3 ciphertexts).
  *
  * Walks every per-org encrypted column and re-wraps the value as a v3
  * ciphertext bound to the row's organization. Per-org DEKs are minted on

@@ -221,7 +221,7 @@ describe("sanitizeSentryEvent — full event", () => {
   it("redacts request body + headers + query + extra all in one pass", () => {
     const e = blankEvent();
     e.request = {
-      url: "https://stamp.local/api/secret?token=tok&keep=ok",
+      url: "https://deployment.local/api/secret?token=tok&keep=ok",
       data: { secret: "x" },
       headers: { Authorization: "Bearer eyJ", "User-Agent": "ua" },
       query_string: "token=tok&keep=ok",

@@ -230,7 +230,7 @@ describe("pipelineCrudRouter", () => {
       );
     });
 
-    it("rejects with PAYMENT_REQUIRED when the per-org pipelines quota is exhausted (Phase 5v)", async () => {
+    it("rejects with PAYMENT_REQUIRED when the per-org pipelines quota is exhausted ", async () => {
       const environment = { id: "env-1", organizationId: "org-1" };
       prismaMock.environment.findUnique.mockResolvedValue(environment as never);
       // FREE plan limit is 10 pipelines; we're already at 10 -> reject.

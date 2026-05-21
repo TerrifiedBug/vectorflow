@@ -8,7 +8,7 @@ import { isOrgWideAdmin } from "@/lib/org-admin";
  * Asserts the caller has at least `minRole` on the (single) team
  * resolved from the pipeline batch.
  *
- * Phase 7a (audit gap): the legacy `User.isSuperAdmin` global-admin
+ * The legacy `User.isSuperAdmin` global-admin
  * shortcut is gone — callers elevate via `isOrgWideAdmin` against the
  * org. The optional `organizationId` argument is accepted for future
  * strict-multi-tenant callers (every protectedProcedure ctx carries

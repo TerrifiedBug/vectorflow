@@ -1,5 +1,5 @@
 /**
- * Phase 5u: every outbound HTTP callsite from the control plane goes through
+ * Every outbound HTTP callsite from the control plane goes through
  * `validateOutboundUrl`. This test spies on the policy function and asserts
  * each callsite invokes it BEFORE `fetch`. If a future refactor removes a
  * `validateOutboundUrl` call, the corresponding spy assertion fails.
@@ -72,7 +72,7 @@ describe("outbound-webhook", () => {
         url: "https://customer.example.com/webhook",
         encryptedSecret: null,
         organizationId: "org_a",
-        // Phase 5aa: pre-confirm so the test exercises the SSRF guard,
+        // Pre-confirm so the test exercises the SSRF guard,
         // not the new confirmation-required short-circuit.
         confirmedAt: new Date(),
       },
@@ -108,7 +108,7 @@ describe("outbound-webhook", () => {
         url: "http://10.0.0.5/hook",
         encryptedSecret: null,
         organizationId: "org_a",
-        // Phase 5aa: pre-confirm so we exercise the SSRF rejection path.
+        // Pre-confirm so we exercise the SSRF rejection path.
         confirmedAt: new Date(),
       },
       {

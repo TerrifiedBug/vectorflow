@@ -67,7 +67,7 @@ const handler = async (req: Request) => {
     });
   }
 
-  // §12.2: every request hits the lifecycle gate, streaming or not.
+  // Every request hits the lifecycle gate, streaming or not.
   // Producing the *right body shape* for `httpBatchStreamLink` after the
   // fact is impractical \u2014 the JSONL framing is internal to
   // `jsonlStreamProducer` and a HTTP 423 / 404 outer status would

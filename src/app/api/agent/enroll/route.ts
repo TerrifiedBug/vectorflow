@@ -103,7 +103,7 @@ export async function POST(request: Request) {
     // Create the fleet node entry with agent-provided labels so group matching
     // can use them immediately (fixes the chicken-and-egg problem where nodes
     // enrolled with no labels could never match groups with specific criteria).
-    // Per-org plan-tier quota gate (§10). Wrap the node insert in the
+    // Per-org plan-tier quota gate. Wrap the node insert in the
     // (advisory-lock + pre-count + post-count) helper so the FREE/PRO
     // `agents` limit is honoured even under concurrent enrollment requests.
     // On exceed we surface 402 + the structured envelope; the agent retry

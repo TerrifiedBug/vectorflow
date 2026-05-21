@@ -139,7 +139,7 @@ export const pipelineCrudRouter = router({
         });
       }
 
-      // Per-org plan-tier quota gate (§10). Throws PAYMENT_REQUIRED with the
+      // Per-org plan-tier quota gate. Throws PAYMENT_REQUIRED with the
       // QuotaExceededError as `cause` when the FREE/PRO `pipelines` limit is
       // reached. The pipeline insert runs inside the still-locked transaction
       // and the post-create count gate rolls back if any concurrent inserts
@@ -150,7 +150,7 @@ export const pipelineCrudRouter = router({
             name: input.name,
             description: input.description,
             environmentId: input.environmentId,
-            // Phase 5v: write the org id on the row so the quota post-check
+            // Write the org id on the row so the quota post-check
             // (which counts by `organizationId`) actually sees it. Without
             // this the column would default to "default" and non-default
             // tenants could bypass the cap indefinitely.

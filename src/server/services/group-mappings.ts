@@ -14,7 +14,7 @@ const ROLE_RANK: Record<string, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2 };
 /**
  * Load all group-to-team mappings from `OrganizationSettings`.
  *
- * Phase 5w: takes an explicit `organizationId` so the OIDC sign-in
+ * Takes an explicit `organizationId` so the OIDC sign-in
  * callback reads the mappings for the resolved tenant. Defaulting to
  * `DEFAULT_ORG_ID` (previous behaviour) caused cross-tenant
  * contamination: a non-default tenant login would apply the default

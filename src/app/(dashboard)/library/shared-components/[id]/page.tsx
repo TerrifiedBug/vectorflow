@@ -19,7 +19,7 @@ export default function SharedComponentDetailPage() {
         description="The current v2.0 spec does not define the detail editor for shared Vector components. This route is intentionally gated rather than presenting raw schema fields, linked-pipeline actions, or destructive controls as if they were designed."
         secondary={{ label: "Back to shared components", href: "/library/shared-components" }}
         helperLines={[
-          { icon: "scope", text: "Source of truth: HANDOFF §2 marks per-component config schemas as not yet designed." },
+          { icon: "scope", text: "Coming soon — per-component config editing is not part of the current shipped surface." },
           { icon: "gate", text: "Requires design approval before showing configuration editing, linked-pipeline updates, or delete actions here." },
         ]}
       />

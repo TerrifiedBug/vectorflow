@@ -60,7 +60,7 @@ export async function completeSetup(input: {
 
     // Bind the new user to the default organisation as OWNER so that
     // `orgProcedure` middleware (which requires an OrgMember row) lets
-    // them in. The Organization row itself is seeded by the Phase 1
+    // them in. The Organization row itself is seeded by the
     // migration `20260515000001_add_organization_tenancy` — no need to
     // upsert it here.
     await tx.orgMember.create({

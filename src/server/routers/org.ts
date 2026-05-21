@@ -437,9 +437,9 @@ export const orgRouter = router({
    *   - Caller MUST NOT be the target (no self-rescue).
    *   - Target MUST be an OrgMember of the caller's organisation.
    *
-   * Single-OWNER orgs have no peer to invoke this; they rely on an
-   * operator break-glass approval via `operator-console.resetOrgOwnerAuth`
-   * (Cloud) or a direct DB update (OSS single-tenant).
+   * Single-OWNER orgs have no peer to invoke this; recovery requires
+   * a privileged operator (a platform-operator account with the
+   * appropriate role) or a direct DB update.
    */
   resetMemberAuth: protectedProcedure
     .use(denyInDemo())

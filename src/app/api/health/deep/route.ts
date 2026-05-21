@@ -11,8 +11,7 @@
  *   - Clock skew: NTP-bounded skew (JWT, TOTP, KMS grant token expiry).
  *   - DEK cache warm: at least one cache hit on the first probe of an org.
  *
- * The path `/api/health/cloud` is kept as a 308 redirect to this endpoint
- * so existing load-balancer probes keep working.
+ * `/api/health/cloud` is kept as a 308 alias to this endpoint.
  */
 
 import { checkClockSkew } from "@/server/services/clock-skew";

@@ -180,7 +180,7 @@ describe("revokeOrgSessions", () => {
     expect(mocks.auditLogCreate).not.toHaveBeenCalled();
   });
 
-  it("operator-driven revocation does not stamp userId on AuditLog", async () => {
+  it("operator-driven revocation does not set userId on AuditLog", async () => {
     mocks.organizationFindUnique.mockResolvedValue({ id: "org-a", dataKeyCiphertext: "ct-a" });
     mocks.organizationUpdate.mockResolvedValue({ jwtKeyRotationCounter: 1 });
     mocks.writeAuditLog.mockResolvedValue(undefined);

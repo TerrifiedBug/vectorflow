@@ -838,7 +838,7 @@ describe("settingsRouter", () => {
     });
   });
 
-  // ── updateAiBaseUrlOptIn (Phase 5z) ──────────────────────────────────
+  // ── updateAiBaseUrlOptIn ──────────────────────────────────
 
   describe("updateAiBaseUrlOptIn", () => {
     it("rejects when caller is not an org OWNER (ADMIN userRole alone is insufficient)", async () => {

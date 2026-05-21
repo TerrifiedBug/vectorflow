@@ -126,7 +126,7 @@ export async function getJwtSecretForOrg(orgId: string): Promise<JwtKeyResult> {
 }
 
 export interface RevokeOrgSessionsRequestor {
-  /** "customer" = owner/admin self-serve; "operator" = platform staff. */
+  /** "customer" = owner/admin self-serve; "operator" = a platform-operator account. */
   kind: "customer" | "operator";
   /** User.id when "customer"; PlatformOperator.id when "operator". */
   id: string;

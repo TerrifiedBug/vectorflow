@@ -240,7 +240,7 @@ describe("environment router", () => {
       ).rejects.toThrow("Team not found");
     });
 
-    it("rejects with PAYMENT_REQUIRED when the per-org environments quota is exhausted (Phase 5v)", async () => {
+    it("rejects with PAYMENT_REQUIRED when the per-org environments quota is exhausted ", async () => {
       prismaMock.team.findUnique.mockResolvedValue({
         id: "team-1",
         organizationId: "org-1",

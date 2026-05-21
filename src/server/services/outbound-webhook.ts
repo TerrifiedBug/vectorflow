@@ -43,7 +43,7 @@ interface EndpointLike {
    */
   organizationId: string;
   /**
-   * Phase 5aa: timestamp of the most recent successful one-time
+   * Timestamp of the most recent successful one-time
    * confirmation, or null/undefined when the endpoint has been created /
    * had its URL changed but the confirmation flow has not completed.
    * Delivery FAILS CLOSED when this is null OR undefined.
@@ -61,7 +61,7 @@ interface EndpointLike {
 /**
  * Returns true if the result represents a permanent (non-retryable) failure.
  * 4xx non-429 HTTP responses and DNS/connection errors are permanent. The
- * caller-supplied `isPermanent` flag is the OTHER trigger — Phase 5aa
+ * caller-supplied `isPermanent` flag is the OTHER trigger —
  * `fetchHardened` errors (redirect cap, protocol downgrade, DNS rebinding)
  * set `isPermanent: true` directly without a status code, and the retry
  * loop MUST honour that signal to dead-letter rather than reschedule.
@@ -96,7 +96,7 @@ export async function deliverOutboundWebhook(
     return { success: true, statusCode: 200, isPermanent: false };
   }
 
-  // Phase 5aa: refuse delivery to an unconfirmed destination. Loose equality
+  // Refuse delivery to an unconfirmed destination. Loose equality
   // catches BOTH `null` (explicit) and `undefined` (callers that don't
   // include `confirmedAt` in their select). All in-tree callers now thread
   // `confirmedAt` through; this is the fail-closed guarantee for any future
@@ -151,7 +151,7 @@ export async function deliverOutboundWebhook(
   }
 
   try {
-    // Phase 5aa: `fetchHardened` adds (a) max 3 redirect hops with per-hop
+    // `fetchHardened` adds (a) max 3 redirect hops with per-hop
     // SSRF + scheme re-validation, (b) DNS rebinding mitigation via a
     // 30s cache of public IPs, (c) protocol-downgrade rejection. The
     // signing already-happened above against the original URL; redirects

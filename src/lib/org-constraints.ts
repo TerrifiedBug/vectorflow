@@ -15,8 +15,8 @@
  * Note: `deleted`/`suspended` precede `demo` so operator visibility into
  * a tenant's actual state isn't masked by a deployment-wide demo flag.
  *
- * This is the constraint layer the §10 quota engine and the suspension
- * middleware will plug into. Existing call sites of `isDemoMode()` can
+ * Constraint layer that the quota engine and the suspension middleware
+ * plug into. Existing call sites of `isDemoMode()` can
  * continue to work; new code uses `getOrgConstraints(orgId)`.
  */
 

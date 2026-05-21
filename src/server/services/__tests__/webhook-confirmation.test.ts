@@ -1,5 +1,5 @@
 /**
- * Phase 5aa: webhook destination one-time confirmation lifecycle.
+ * Webhook destination one-time confirmation lifecycle.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";

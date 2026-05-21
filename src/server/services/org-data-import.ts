@@ -321,7 +321,7 @@ export async function importOrgData(
   // broadcasting to every enabled channel in the environment — alerts
   // end up at unintended destinations after import.
   //
-  // Defensive: envelopes from older exports (pre-Phase-5cc) won't have
+  // Defensive: envelopes from older exports won't have
   // this field. Treat a missing array as "nothing to restore" rather
   // than failing the import.
   let alertRuleChannelInserts = 0;
