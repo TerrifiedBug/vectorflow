@@ -284,20 +284,28 @@ export const settingsRouter = router({
       });
       invalidateAuthCache();
 
-      // In SCIM mode, reconcile all users who have ScimGroupMember records
+      // In SCIM mode, reconcile users who have ScimGroupMember records
+      // in THIS organisation. The previous loop pulled every userId
+      // globally and asked for `getScimGroupNamesForUser(tx, userId)`
+      // without an org id — the helper then defaulted to
+      // `DEFAULT_ORG_ID`, silently mis-scoping non-default tenants
+      // and applying the wrong team-mapping diffs.
       if (result.scimEnabled) {
         const { reconcileUserTeamMemberships, getScimGroupNamesForUser } =
           await import("@/server/services/group-mappings");
 
         const usersWithScimGroups = await prisma.scimGroupMember.findMany({
+          where: {
+            scimGroup: { organizationId: ctx.organizationId },
+          },
           select: { userId: true },
           distinct: ["userId"],
         });
 
         await prisma.$transaction(async (tx) => {
           for (const { userId } of usersWithScimGroups) {
-            const groupNames = await getScimGroupNamesForUser(tx, userId);
-            await reconcileUserTeamMemberships(tx, userId, groupNames);
+            const groupNames = await getScimGroupNamesForUser(tx, userId, ctx.organizationId);
+            await reconcileUserTeamMemberships(tx, userId, groupNames, ctx.organizationId);
           }
         });
       }
