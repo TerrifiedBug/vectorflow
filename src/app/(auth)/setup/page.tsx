@@ -51,7 +51,7 @@ const STEPS = [
   {
     id: 2,
     title: "Team setup",
-    description: "Name the workspace that will own environments and pipelines.",
+    description: "Name the organization that will own environments and pipelines.",
     icon: Users,
   },
   {
@@ -158,7 +158,7 @@ export default function SetupPage() {
             Bring your instance online.
           </h1>
           <p className="mt-3 text-[12px] leading-relaxed text-fg-1">
-            Configure the initial owner, workspace, security, and environment. You can change everything later in Settings.
+            Configure the initial owner, organization, security, and environment. You can change everything later in Settings.
           </p>
 
           <div className="mt-10 space-y-0">
