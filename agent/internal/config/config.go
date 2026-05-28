@@ -20,6 +20,11 @@ type Config struct {
 	LogFlushInterval time.Duration
 	NodeLabels       map[string]string
 	MetricsPort      int // port for the agent self-metrics Prometheus endpoint (0 = disabled)
+	// UpdatePublicKey is a base64 (std) ed25519 public key. When set, agent
+	// self-updates MUST carry a valid signature over the binary's SHA256
+	// digest; an unsigned or mis-signed update is refused. When empty, updates
+	// fall back to checksum-only verification (and the agent warns).
+	UpdatePublicKey string
 }
 
 // parseNodeLabels parses a comma-separated "key=value,key2=value2" string
@@ -127,5 +132,6 @@ func Load() (*Config, error) {
 		SlogLevel:        slogLevel,
 		NodeLabels:       nodeLabels,
 		MetricsPort:      metricsPort,
+		UpdatePublicKey:  strings.TrimSpace(os.Getenv("VF_UPDATE_PUBLIC_KEY")),
 	}, nil
 }

@@ -112,6 +112,10 @@ type PendingAction struct {
 	TargetVersion string `json:"targetVersion"`
 	DownloadURL   string `json:"downloadUrl"`
 	Checksum      string `json:"checksum"`
+	// Signature is a base64 (std) ed25519 signature over the binary's SHA256
+	// digest. Required and verified when the agent has VF_UPDATE_PUBLIC_KEY set;
+	// ignored otherwise.
+	Signature string `json:"signature,omitempty"`
 }
 
 // ConfigResponse is returned from GET /api/agent/config

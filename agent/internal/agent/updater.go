@@ -1,13 +1,16 @@
 package agent
 
 import (
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,6 +41,17 @@ var updateHTTPClient = &http.Client{
 // On success this function does not return (the process is replaced).
 func (a *Agent) handleSelfUpdate(action *client.PendingAction) error {
 	slog.Info("self-update requested", "targetVersion", action.TargetVersion, "url", action.DownloadURL)
+
+	// Refuse to fetch the binary over an insecure scheme. The download URL
+	// comes from the server; a plain-http URL is a downgrade/MITM vector for
+	// what becomes a re-exec as (often root) the agent user.
+	parsedURL, err := url.Parse(action.DownloadURL)
+	if err != nil {
+		return fmt.Errorf("parse download url: %w", err)
+	}
+	if !strings.EqualFold(parsedURL.Scheme, "https") {
+		return fmt.Errorf("refusing self-update over insecure scheme %q: https is required", parsedURL.Scheme)
+	}
 
 	// Download the new binary to a temp file next to the current executable
 	execPath, err := os.Executable()
@@ -83,7 +97,8 @@ func (a *Agent) handleSelfUpdate(action *client.PendingAction) error {
 	}
 
 	// Verify checksum
-	actualHash := hex.EncodeToString(hasher.Sum(nil))
+	digest := hasher.Sum(nil)
+	actualHash := hex.EncodeToString(digest)
 	expectedHash := strings.TrimPrefix(action.Checksum, "sha256:")
 	expectedHash = strings.ToLower(strings.TrimSpace(expectedHash))
 
@@ -91,6 +106,21 @@ func (a *Agent) handleSelfUpdate(action *client.PendingAction) error {
 		return fmt.Errorf("checksum mismatch: expected %s, got %s", expectedHash, actualHash)
 	}
 	slog.Info("checksum verified", "sha256", actualHash)
+
+	// Verify publisher signature. The checksum only proves the bytes match what
+	// the server said to expect — a compromised server could supply both a
+	// malicious binary and its matching checksum. An ed25519 signature over the
+	// digest, checked against a key pinned in the agent's environment, closes
+	// the server-compromise → fleet-wide-RCE path.
+	if a.cfg.UpdatePublicKey != "" {
+		if err := verifyUpdateSignature(a.cfg.UpdatePublicKey, action.Signature, digest); err != nil {
+			return fmt.Errorf("self-update signature verification failed: %w", err)
+		}
+		slog.Info("update signature verified")
+	} else {
+		slog.Warn("VF_UPDATE_PUBLIC_KEY is not set — self-update is verified by checksum only; " +
+			"set it to a base64 ed25519 public key to require publisher-signed updates")
+	}
 
 	// Make the new binary executable
 	if err := os.Chmod(tmpPath, 0755); err != nil {
@@ -115,5 +145,29 @@ func (a *Agent) handleSelfUpdate(action *client.PendingAction) error {
 	}
 
 	// unreachable — syscall.Exec replaces the process
+	return nil
+}
+
+// verifyUpdateSignature checks an ed25519 signature over the update binary's
+// SHA256 digest against a pinned base64 public key. Returns an error (fail
+// closed) if the key/signature is missing, malformed, or does not verify.
+func verifyUpdateSignature(pubKeyB64, sigB64 string, message []byte) error {
+	if strings.TrimSpace(sigB64) == "" {
+		return fmt.Errorf("no signature on update but VF_UPDATE_PUBLIC_KEY is set")
+	}
+	pub, err := base64.StdEncoding.DecodeString(strings.TrimSpace(pubKeyB64))
+	if err != nil {
+		return fmt.Errorf("decode VF_UPDATE_PUBLIC_KEY: %w", err)
+	}
+	if len(pub) != ed25519.PublicKeySize {
+		return fmt.Errorf("VF_UPDATE_PUBLIC_KEY is not a %d-byte ed25519 key (got %d bytes)", ed25519.PublicKeySize, len(pub))
+	}
+	sig, err := base64.StdEncoding.DecodeString(strings.TrimSpace(sigB64))
+	if err != nil {
+		return fmt.Errorf("decode signature: %w", err)
+	}
+	if !ed25519.Verify(ed25519.PublicKey(pub), message, sig) {
+		return fmt.Errorf("signature does not verify against the pinned public key")
+	}
 	return nil
 }
