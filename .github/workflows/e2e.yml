@@ -47,6 +47,10 @@ jobs:
       NEXTAUTH_SECRET: e2e-test-secret-key-at-least-32-chars
       NEXTAUTH_URL: http://localhost:3000
       ENCRYPTION_KEY: e2e-test-encryption-key-32chars!!
+      # `next build` runs in production mode and the WebAuthn provider hard-fails
+      # at module load if VF_WEBAUTHN_RP_ID is unset. The e2e server runs on
+      # localhost, so localhost is the correct RP id (origins derive to :3000).
+      VF_WEBAUTHN_RP_ID: localhost
 
     steps:
       - uses: actions/checkout@v6
