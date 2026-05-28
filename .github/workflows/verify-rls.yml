@@ -13,12 +13,16 @@ on:
       - "prisma/schema.prisma"
       - "scripts/verify-rls.sh"
       - ".github/workflows/verify-rls.yml"
+      - "src/server/routers/**"
+      - "src/server/services/**"
   pull_request:
     paths:
       - "prisma/migrations/**"
       - "prisma/schema.prisma"
       - "scripts/verify-rls.sh"
       - ".github/workflows/verify-rls.yml"
+      - "src/server/routers/**"
+      - "src/server/services/**"
   workflow_dispatch:
 
 permissions:
