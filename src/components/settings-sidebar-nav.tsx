@@ -58,7 +58,7 @@ export const settingsNavGroups: SettingsNavGroup[] = [
     label: "Organization",
     description: "Teams, users, and integrations",
     items: [
-      { title: "All Teams", description: "Create and manage teams for multi-tenant workspace isolation.", href: "/settings/teams", icon: Building2, requiredSuperAdmin: true },
+      { title: "All Teams", description: "Create and manage teams for multi-tenant isolation.", href: "/settings/teams", icon: Building2, requiredSuperAdmin: true },
       { title: "Members & Ownership", description: "Organisation-level members and OWNER ↔ ADMIN ownership transfer.", href: "/settings/organization", icon: Crown, requiredSuperAdmin: false, demoHidden: true },
       { title: "My Team", description: "Configure your team's name, environments, and preferences.", href: "/settings/team", icon: Users, requiredSuperAdmin: false, demoHidden: true },
       { title: "Service Accounts", description: "Create API tokens for CI/CD pipelines and external integrations.", href: "/settings/service-accounts", icon: Bot, requiredSuperAdmin: false, demoHidden: true },

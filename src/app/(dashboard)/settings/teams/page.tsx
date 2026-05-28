@@ -8,7 +8,7 @@ export default function TeamsPage() {
     <div className="min-h-full bg-bg text-fg">
       <PageHeader
         title="All Teams"
-        subtitle="Create and manage teams for multi-tenant workspace isolation."
+        subtitle="Create and manage teams for multi-tenant isolation."
       />
       <div className="space-y-4 p-4">
         <TeamsManagement />
