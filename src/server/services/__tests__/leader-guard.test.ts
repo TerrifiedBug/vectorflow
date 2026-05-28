@@ -58,6 +58,11 @@ vi.mock("@/server/services/fleet-alert-service", () => ({
   initFleetAlertService: () => mockInitFleetAlertService(),
 }));
 
+const mockInitFleetHealthScheduler = vi.fn();
+vi.mock("@/server/services/fleet-health-scheduler", () => ({
+  initFleetHealthScheduler: () => mockInitFleetHealthScheduler(),
+}));
+
 const mockInitGitSyncRetryService = vi.fn();
 vi.mock("@/server/services/git-sync-retry", () => ({
   initGitSyncRetryService: () => mockInitGitSyncRetryService(),
@@ -91,6 +96,7 @@ const allSingletonInits = () => [
   mockInitAutoRollbackService,
   mockInitStagedRolloutService,
   mockInitFleetAlertService,
+  mockInitFleetHealthScheduler,
   mockInitGitSyncRetryService,
   mockInitAnomalyDetectionService,
 ];
