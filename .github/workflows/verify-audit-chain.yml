@@ -1,0 +1,55 @@
+name: Verify Audit Chain
+
+# Smoke-tests the customer audit-export envelope verifier: rebuilds a valid
+# export, tampers with each row in turn, and asserts the verifier rejects.
+# ~5-second vitest run that survives schema rebases.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/server/services/audit-chain*.ts"
+      - "src/server/services/audit-export*.ts"
+      - "src/server/services/__tests__/audit-chain*.test.ts"
+      - "src/server/services/__tests__/audit-export*.test.ts"
+      - "scripts/verify-audit-chain.ts"
+      - ".github/workflows/verify-audit-chain.yml"
+  pull_request:
+    paths:
+      - "src/server/services/audit-chain*.ts"
+      - "src/server/services/audit-export*.ts"
+      - "src/server/services/__tests__/audit-chain*.test.ts"
+      - "src/server/services/__tests__/audit-export*.test.ts"
+      - "scripts/verify-audit-chain.ts"
+      - ".github/workflows/verify-audit-chain.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify-audit-chain:
+    name: Audit-chain verifier smoke test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run audit-chain verifier unit tests
+        run: npx vitest run src/server/services/__tests__/audit-chain src/server/services/__tests__/audit-export
