@@ -349,12 +349,12 @@ describe("heartbeat async decomposition", () => {
     // Flush microtasks so .catch() handlers run
     await new Promise((r) => setTimeout(r, 10));
 
-    // Verify errors are logged, not swallowed
-    // errorLog calls console.error("%s [%s] %s", ts, tag, message, data)
-    // so the message is at index 3
-    const errorMessages = consoleErrorSpy.mock.calls.map((c) => c[3] ?? c[0]);
-    expect(errorMessages).toContain("Sample processing error");
-    expect(errorMessages).toContain("Per-component latency upsert error");
+    // Verify errors are logged. The JSON logger emits each call as
+    // a single argument (the JSON-stringified record); substring-
+    // match the message field rather than the printf-style args.
+    const errorMessages = consoleErrorSpy.mock.calls.map((c) => String(c[0]));
+    expect(errorMessages.some((m) => m.includes("Sample processing error"))).toBe(true);
+    expect(errorMessages.some((m) => m.includes("Per-component latency upsert error"))).toBe(true);
 
     consoleErrorSpy.mockRestore();
   });

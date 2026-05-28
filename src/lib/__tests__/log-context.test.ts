@@ -104,17 +104,17 @@ describe("logger picks up context", () => {
     vi.restoreAllMocks();
   });
 
-  it("infoLog prepends {org=...} when run inside a context", async () => {
+  it("infoLog records orgId+requestId from context as JSON fields", async () => {
     const spy = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    // Lazy-import after spy is installed so the logger picks up the mock.
     const { infoLog } = await import("../logger");
     runWithLogContext({ orgId: "org-x", requestId: "rq-9" }, () => {
       infoLog("tag", "hello");
     });
     expect(spy).toHaveBeenCalledTimes(1);
-    const args = spy.mock.calls[0];
-    // 4th positional arg is the safeMessage (third %s slot).
-    expect(args[3]).toBe("{org=org-x req=rq-9} hello");
+    const record = JSON.parse(spy.mock.calls[0][0] as string) as Record<string, unknown>;
+    expect(record.organization_id).toBe("org-x");
+    expect(record.request_id).toBe("rq-9");
+    expect(record.msg).toBe("hello");
   });
 
   it("infoLog emits the original message verbatim outside a context", async () => {
@@ -122,15 +122,20 @@ describe("logger picks up context", () => {
     const { infoLog } = await import("../logger");
     infoLog("tag", "no-context");
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy.mock.calls[0][3]).toBe("no-context");
+    const record = JSON.parse(spy.mock.calls[0][0] as string) as Record<string, unknown>;
+    expect(record.msg).toBe("no-context");
+    expect("organization_id" in record).toBe(false);
+    expect("request_id" in record).toBe(false);
   });
 
-  it("errorLog also picks up the context", async () => {
+  it("errorLog also picks up the context as a JSON field", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { errorLog } = await import("../logger");
     runWithLogContext({ orgId: "org-z" }, () => {
       errorLog("tag", "boom");
     });
-    expect(spy.mock.calls[0][3]).toBe("{org=org-z} boom");
+    const record = JSON.parse(spy.mock.calls[0][0] as string) as Record<string, unknown>;
+    expect(record.organization_id).toBe("org-z");
+    expect(record.msg).toBe("boom");
   });
 });

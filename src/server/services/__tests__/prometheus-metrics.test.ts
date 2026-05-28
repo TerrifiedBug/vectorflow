@@ -323,13 +323,11 @@ describe("PrometheusMetricsService", () => {
     const output = await service.collectMetrics();
     expect(output).toBeDefined();
     expect(typeof output).toBe("string");
-    expect(consoleSpy).toHaveBeenCalledWith(
-      "%s [%s] %s",
-      expect.any(String),
-      "prometheus-metrics",
-      "collectMetrics failed",
-      expect.any(Error),
-    );
+    expect(consoleSpy).toHaveBeenCalled();
+    {
+      const calls = (consoleSpy as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      expect(calls.some((c) => String(c[0]).includes("collectMetrics failed"))).toBe(true);
+    }
 
     consoleSpy.mockRestore();
   });

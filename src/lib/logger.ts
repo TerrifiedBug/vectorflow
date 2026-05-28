@@ -21,12 +21,15 @@ function serializeData(data: unknown): unknown {
 }
 
 /**
- * Write a single newline-terminated JSON record to `stream`.
- * Falls back gracefully when the payload contains un-serialisable values
- * (circular references, BigInt, etc.) so the logger never throws.
+ * Write a single JSON record. Routes through `console.{log,warn,error,debug}`
+ * (which writes to stdout/stderr under the hood) so existing test
+ * fixtures that `vi.spyOn(console, "log")` continue to intercept
+ * the call. The single argument is the JSON-stringified record;
+ * tests that need to assert on contents should `JSON.parse(args[0])`
+ * or substring-match the string.
  */
 function emit(
-  stream: NodeJS.WriteStream,
+  consoleFn: (line: string) => void,
   record: Record<string, unknown>,
 ): void {
   let line: string;
@@ -40,7 +43,7 @@ function emit(
       line = `{"ts":"${record["ts"]}","level":"${record["level"]}","tag":"${record["tag"]}","msg":"[logger serialization failure]"}`;
     }
   }
-  stream.write(line + "\n");
+  consoleFn(line);
 }
 
 function buildRecord(
@@ -64,17 +67,25 @@ function buildRecord(
 
 export function debugLog(tag: string, message: string, data?: unknown): void {
   if (!isDebug) return;
-  emit(process.stdout, buildRecord("debug", tag, message, data));
+  // eslint-disable-next-line no-console
+  emit(console.debug.bind(console), buildRecord("debug", tag, message, data));
 }
 
 export function infoLog(tag: string, message: string, data?: unknown): void {
-  emit(process.stdout, buildRecord("info", tag, message, data));
+  // Route through console.log (not console.info) — the rest of the
+  // codebase's test fixtures spy on console.log for info-level
+  // assertions; console.* are separate references on the console
+  // object so the routing matters for spy attachment.
+  // eslint-disable-next-line no-console
+  emit(console.log.bind(console), buildRecord("info", tag, message, data));
 }
 
 export function warnLog(tag: string, message: string, data?: unknown): void {
-  emit(process.stderr, buildRecord("warn", tag, message, data));
+  // eslint-disable-next-line no-console
+  emit(console.warn.bind(console), buildRecord("warn", tag, message, data));
 }
 
 export function errorLog(tag: string, message: string, data?: unknown): void {
-  emit(process.stderr, buildRecord("error", tag, message, data));
+  // eslint-disable-next-line no-console
+  emit(console.error.bind(console), buildRecord("error", tag, message, data));
 }

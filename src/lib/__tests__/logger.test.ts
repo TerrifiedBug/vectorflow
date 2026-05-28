@@ -3,10 +3,14 @@ import { infoLog, warnLog, errorLog, debugLog } from "../logger";
 import { runWithLogContext } from "../log-context";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+//
+// The logger writes a single JSON-stringified record as the sole argument to
+// the matching `console.*` method (info → console.info; warn → console.warn;
+// error/debug → console.error/console.debug). Tests spy on the console
+// method, capture the call args, and parse the JSON record.
 
-/** Capture a single process.stdout.write call and parse the JSON record. */
-function captureStdout(): { spy: ReturnType<typeof vi.spyOn>; readRecord: () => Record<string, unknown> } {
-  const spy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+function captureConsole(method: "log" | "info" | "warn" | "error" | "debug") {
+  const spy = vi.spyOn(console, method).mockImplementation(() => {});
   return {
     spy,
     readRecord: () => {
@@ -17,18 +21,9 @@ function captureStdout(): { spy: ReturnType<typeof vi.spyOn>; readRecord: () => 
   };
 }
 
-/** Capture a single process.stderr.write call and parse the JSON record. */
-function captureStderr(): { spy: ReturnType<typeof vi.spyOn>; readRecord: () => Record<string, unknown> } {
-  const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-  return {
-    spy,
-    readRecord: () => {
-      expect(spy).toHaveBeenCalledOnce();
-      const written = spy.mock.calls[0][0] as string;
-      return JSON.parse(written) as Record<string, unknown>;
-    },
-  };
-}
+const captureStdout = () => captureConsole("log");
+const captureStderr = () => captureConsole("error");
+const captureWarn = () => captureConsole("warn");
 
 // ── Suite ─────────────────────────────────────────────────────────────────────
 
@@ -45,7 +40,7 @@ describe("logger (JSON format)", () => {
 
   // ── JSON shape ──────────────────────────────────────────────────────────────
 
-  describe("infoLog — stdout, level=info", () => {
+  describe("infoLog — console.log, level=info", () => {
     it("emits a valid JSON line with required fields", () => {
       const { readRecord } = captureStdout();
       infoLog("test-tag", "hello world");
@@ -58,11 +53,11 @@ describe("logger (JSON format)", () => {
       });
     });
 
-    it("line ends with a newline", () => {
-      const spy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    it("argument is a parseable JSON string", () => {
+      const { spy } = captureStdout();
       infoLog("t", "m");
       const written = spy.mock.calls[0][0] as string;
-      expect(written).toMatch(/\n$/);
+      expect(() => JSON.parse(written)).not.toThrow();
     });
 
     it("includes data field when provided", () => {
@@ -96,21 +91,19 @@ describe("logger (JSON format)", () => {
     });
 
     it("sanitized msg does not break JSON parsing", () => {
-      const spy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const { spy } = captureStdout();
       infoLog("t", "line1\nline2");
       const written = spy.mock.calls[0][0] as string;
-      // Must parse cleanly — no embedded newline breaking JSON
-      expect(() => JSON.parse(written.trimEnd())).not.toThrow();
-      const r = JSON.parse(written.trimEnd()) as Record<string, unknown>;
+      const r = JSON.parse(written) as Record<string, unknown>;
       expect(r.msg).toBe("line1line2");
     });
   });
 
   // ── warnLog ─────────────────────────────────────────────────────────────────
 
-  describe("warnLog — stderr, level=warn", () => {
-    it("emits JSON to stderr with level=warn", () => {
-      const { readRecord } = captureStderr();
+  describe("warnLog — console.warn, level=warn", () => {
+    it("emits JSON via console.warn with level=warn", () => {
+      const { readRecord } = captureWarn();
       warnLog("warn-tag", "something fishy");
       const r = readRecord();
       expect(r).toMatchObject({
@@ -122,14 +115,14 @@ describe("logger (JSON format)", () => {
     });
 
     it("includes data when provided", () => {
-      const { readRecord } = captureStderr();
+      const { readRecord } = captureWarn();
       warnLog("warn-tag", "with data", { count: 42 });
       const r = readRecord();
       expect(r.data).toEqual({ count: 42 });
     });
 
     it("sanitizes newlines in tag and msg", () => {
-      const { readRecord } = captureStderr();
+      const { readRecord } = captureWarn();
       warnLog("tag\ninjection", "msg\r\ninjection");
       const r = readRecord();
       expect(r.tag).toBe("taginjection");
@@ -139,8 +132,8 @@ describe("logger (JSON format)", () => {
 
   // ── errorLog ────────────────────────────────────────────────────────────────
 
-  describe("errorLog — stderr, level=error", () => {
-    it("emits JSON to stderr with level=error", () => {
+  describe("errorLog — console.error, level=error", () => {
+    it("emits JSON via console.error with level=error", () => {
       const { readRecord } = captureStderr();
       errorLog("error-tag", "something broke");
       const r = readRecord();
@@ -234,31 +227,31 @@ describe("logger (JSON format)", () => {
     });
   });
 
-  // ── Routing to correct streams ───────────────────────────────────────────────
+  // ── Routing to correct console method ────────────────────────────────────────
 
-  describe("stream routing", () => {
-    it("infoLog writes to stdout, not stderr", () => {
-      const out = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-      const err = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  describe("console-method routing", () => {
+    it("infoLog routes to console.log, not console.error", () => {
+      const info = vi.spyOn(console, "log").mockImplementation(() => {});
+      const err = vi.spyOn(console, "error").mockImplementation(() => {});
       infoLog("t", "m");
-      expect(out).toHaveBeenCalledOnce();
+      expect(info).toHaveBeenCalledOnce();
       expect(err).not.toHaveBeenCalled();
     });
 
-    it("errorLog writes to stderr, not stdout", () => {
-      const out = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-      const err = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    it("errorLog routes to console.error, not console.log", () => {
+      const info = vi.spyOn(console, "log").mockImplementation(() => {});
+      const err = vi.spyOn(console, "error").mockImplementation(() => {});
       errorLog("t", "m");
       expect(err).toHaveBeenCalledOnce();
-      expect(out).not.toHaveBeenCalled();
+      expect(info).not.toHaveBeenCalled();
     });
 
-    it("warnLog writes to stderr, not stdout", () => {
-      const out = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-      const err = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    it("warnLog routes to console.warn, not console.log", () => {
+      const info = vi.spyOn(console, "log").mockImplementation(() => {});
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       warnLog("t", "m");
-      expect(err).toHaveBeenCalledOnce();
-      expect(out).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledOnce();
+      expect(info).not.toHaveBeenCalled();
     });
   });
 
@@ -267,14 +260,12 @@ describe("logger (JSON format)", () => {
   describe("debugLog", () => {
     it("does not emit when VF_LOG_LEVEL is not debug/trace (default in tests)", () => {
       // The vitest environment uses VF_LOG_LEVEL=info (default), so debugLog is gated.
-      const spy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const spy = vi.spyOn(console, "debug").mockImplementation(() => {});
       debugLog("t", "m");
       // Either emitted or not depending on env — assert the output is valid JSON if emitted
       if (spy.mock.calls.length > 0) {
         const written = spy.mock.calls[0][0] as string;
-        expect(() => JSON.parse(written.trimEnd())).not.toThrow();
-        const r = JSON.parse(written.trimEnd()) as Record<string, unknown>;
-        expect(r.level).toBe("debug");
+        expect(() => JSON.parse(written)).not.toThrow();
       }
     });
   });

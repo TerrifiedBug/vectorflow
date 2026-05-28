@@ -121,16 +121,15 @@ describe("webauthnProvider", () => {
 describe("module-init production guard", () => {
   it("throws when NODE_ENV=production and VF_WEBAUTHN_RP_ID is not set", async () => {
     const savedRpId = process.env.VF_WEBAUTHN_RP_ID;
-    const savedNodeEnv = process.env.NODE_ENV;
     try {
       delete process.env.VF_WEBAUTHN_RP_ID;
-      Object.defineProperty(process.env, "NODE_ENV", { value: "production", configurable: true });
+      vi.stubEnv("NODE_ENV", "production");
       vi.resetModules();
       await expect(import("../webauthn-provider")).rejects.toThrow(
         "VF_WEBAUTHN_RP_ID must be set in production",
       );
     } finally {
-      Object.defineProperty(process.env, "NODE_ENV", { value: savedNodeEnv ?? "test", configurable: true });
+      vi.unstubAllEnvs();
       if (savedRpId !== undefined) {
         process.env.VF_WEBAUTHN_RP_ID = savedRpId;
       } else {
@@ -142,14 +141,13 @@ describe("module-init production guard", () => {
 
   it("does not throw when NODE_ENV=production and VF_WEBAUTHN_RP_ID is set", async () => {
     const savedRpId = process.env.VF_WEBAUTHN_RP_ID;
-    const savedNodeEnv = process.env.NODE_ENV;
     try {
       process.env.VF_WEBAUTHN_RP_ID = "example.com";
-      Object.defineProperty(process.env, "NODE_ENV", { value: "production", configurable: true });
+      vi.stubEnv("NODE_ENV", "production");
       vi.resetModules();
       await expect(import("../webauthn-provider")).resolves.toBeDefined();
     } finally {
-      Object.defineProperty(process.env, "NODE_ENV", { value: savedNodeEnv ?? "test", configurable: true });
+      vi.unstubAllEnvs();
       if (savedRpId !== undefined) {
         process.env.VF_WEBAUTHN_RP_ID = savedRpId;
       } else {

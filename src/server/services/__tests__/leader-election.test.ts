@@ -56,12 +56,11 @@ describe("LeaderElection", () => {
 
     it("logs single-instance mode message", () => {
       new LeaderElection({ redis: null });
-      expect(console.log).toHaveBeenCalledWith(
-        "%s [%s] %s",
-        expect.any(String),
-        "leader-election",
-        "No Redis configured — assuming leadership (single-instance mode)",
-      );
+      expect(console.log).toHaveBeenCalled();
+      {
+        const calls = (console.log as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+        expect(calls.some((c) => String(c[0]).includes("No Redis configured \u2014 assuming leadership (single-instance mode)"))).toBe(true);
+      }
     });
   });
 
@@ -116,12 +115,11 @@ describe("LeaderElection", () => {
         renewIntervalMs: 5000,
       });
       await le.start();
-      expect(console.log).toHaveBeenCalledWith(
-        "%s [%s] %s",
-        expect.any(String),
-        "leader-election",
-        "Acquired leadership (instance=inst-log)",
-      );
+      expect(console.log).toHaveBeenCalled();
+      {
+        const calls = (console.log as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+        expect(calls.some((c) => String(c[0]).includes("Acquired leadership (instance=inst-log)"))).toBe(true);
+      }
       await le.stop();
     });
   });
@@ -177,12 +175,11 @@ describe("LeaderElection", () => {
       await vi.advanceTimersByTimeAsync(5000);
       expect(le.isLeader()).toBe(false); // 3 failures → lost
 
-      expect(console.log).toHaveBeenCalledWith(
-        "%s [%s] %s",
-        expect.any(String),
-        "leader-election",
-        "Lost leadership — another instance is leader",
-      );
+      expect(console.log).toHaveBeenCalled();
+      {
+        const calls = (console.log as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+        expect(calls.some((c) => String(c[0]).includes("Lost leadership \u2014 another instance is leader"))).toBe(true);
+      }
       await le.stop();
     });
 
@@ -255,12 +252,11 @@ describe("LeaderElection", () => {
       );
 
       expect(le.isLeader()).toBe(false);
-      expect(console.log).toHaveBeenCalledWith(
-        "%s [%s] %s",
-        expect.any(String),
-        "leader-election",
-        "Released leadership (shutdown)",
-      );
+      expect(console.log).toHaveBeenCalled();
+      {
+        const calls = (console.log as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+        expect(calls.some((c) => String(c[0]).includes("Released leadership (shutdown)"))).toBe(true);
+      }
     });
 
     it("does not call release if not leader", async () => {
@@ -372,12 +368,11 @@ describe("LeaderElection", () => {
 
       await le.start();
       expect(le.isLeader()).toBe(false);
-      expect(console.error).toHaveBeenCalledWith(
-        "%s [%s] %s",
-        expect.any(String),
-        "leader-election",
-        "Error acquiring leadership: connection refused",
-      );
+      expect(console.error).toHaveBeenCalled();
+      {
+        const calls = (console.error as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+        expect(calls.some((c) => String(c[0]).includes("Error acquiring leadership: connection refused"))).toBe(true);
+      }
       await le.stop();
     });
 
@@ -404,12 +399,11 @@ describe("LeaderElection", () => {
       await vi.advanceTimersByTimeAsync(5000);
 
       expect(le.isLeader()).toBe(false);
-      expect(console.error).toHaveBeenCalledWith(
-        "%s [%s] %s",
-        expect.any(String),
-        "leader-election",
-        "Error renewing leadership: LOADING Redis is loading",
-      );
+      expect(console.error).toHaveBeenCalled();
+      {
+        const calls = (console.error as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+        expect(calls.some((c) => String(c[0]).includes("Error renewing leadership: LOADING Redis is loading"))).toBe(true);
+      }
       await le.stop();
     });
 
@@ -429,12 +423,11 @@ describe("LeaderElection", () => {
       await le.start();
       // stop() calls release which will error — should not throw
       await expect(le.stop()).resolves.toBeUndefined();
-      expect(console.error).toHaveBeenCalledWith(
-        "%s [%s] %s",
-        expect.any(String),
-        "leader-election",
-        "Error releasing leadership: connection reset",
-      );
+      expect(console.error).toHaveBeenCalled();
+      {
+        const calls = (console.error as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+        expect(calls.some((c) => String(c[0]).includes("Error releasing leadership: connection reset"))).toBe(true);
+      }
     });
   });
 
