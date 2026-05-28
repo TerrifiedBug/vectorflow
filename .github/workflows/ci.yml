@@ -196,6 +196,8 @@ jobs:
             echo "value=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           fi
 
+      # QEMU enables building the linux/arm64 image on the amd64 runner.
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - id: build
@@ -203,12 +205,25 @@ jobs:
         with:
           context: .
           file: docker/server/Dockerfile
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: VF_VERSION=${{ steps.version.outputs.value }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Fail the release if the published manifest is not a multi-arch index
+      # covering both linux/amd64 and linux/arm64.
+      - name: Verify multi-arch manifest
+        run: |
+          platforms=$(docker buildx imagetools inspect \
+            ghcr.io/terrifiedbug/vectorflow-server@${{ steps.build.outputs.digest }} \
+            --format '{{range .Manifest.Manifests}}{{.Platform.OS}}/{{.Platform.Architecture}} {{end}}')
+          echo "platforms: $platforms"
+          for want in linux/amd64 linux/arm64; do
+            echo "$platforms" | grep -q "$want" || { echo "missing platform: $want"; exit 1; }
+          done
 
       - uses: sigstore/cosign-installer@v3.5.0
 
@@ -264,6 +279,8 @@ jobs:
             echo "value=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           fi
 
+      # QEMU enables building the linux/arm64 image on the amd64 runner.
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - id: build
@@ -271,12 +288,25 @@ jobs:
         with:
           context: agent
           file: agent/Dockerfile
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: VERSION=${{ steps.version.outputs.value }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Fail the release if the published manifest is not a multi-arch index
+      # covering both linux/amd64 and linux/arm64 (the agent runs as a per-node DaemonSet).
+      - name: Verify multi-arch manifest
+        run: |
+          platforms=$(docker buildx imagetools inspect \
+            ghcr.io/terrifiedbug/vectorflow-agent@${{ steps.build.outputs.digest }} \
+            --format '{{range .Manifest.Manifests}}{{.Platform.OS}}/{{.Platform.Architecture}} {{end}}')
+          echo "platforms: $platforms"
+          for want in linux/amd64 linux/arm64; do
+            echo "$platforms" | grep -q "$want" || { echo "missing platform: $want"; exit 1; }
+          done
 
       - uses: sigstore/cosign-installer@v3.5.0
 
