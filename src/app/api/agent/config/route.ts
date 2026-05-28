@@ -111,6 +111,10 @@ export async function GET(request: Request) {
         environmentId: agent.environmentId,
         isDraft: false,
         deployedAt: { not: null },
+        // Paused pipelines are excluded from the agent config response so
+        // the agent stops them within one poll cycle. pausedAt != null means
+        // paused; null means active.
+        pausedAt: null,
       },
       select: {
         id: true,

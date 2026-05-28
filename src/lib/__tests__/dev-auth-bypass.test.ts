@@ -29,6 +29,10 @@ describe("dev auth bypass", () => {
       email: "qa@example.test",
       name: "QA User",
       image: null,
+      // H7: every Session.user carries org_id so the host-derived
+      // org-id guard can verify it on every request. dev-auth-bypass
+      // defaults to "default" (single-tenant OSS install).
+      org_id: "default",
     });
   });
 

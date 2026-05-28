@@ -116,6 +116,11 @@ export function getDevAuthBypassSession(
     email: env.DEV_AUTH_BYPASS_USER_EMAIL ?? QA_DEV_USER.email,
     name: env.DEV_AUTH_BYPASS_USER_NAME ?? QA_DEV_USER.name,
     image: null,
+    // H7: every Session.user carries org_id so middleware can verify
+    // the JWT claim matches the host-derived org. In dev-auth-bypass
+    // we default to the well-known default org; production paths set
+    // it from the JWT callback.
+    org_id: env.DEV_AUTH_BYPASS_ORG_ID ?? "default",
   };
 
   return {

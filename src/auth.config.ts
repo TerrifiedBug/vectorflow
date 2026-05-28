@@ -56,11 +56,19 @@ export const authConfig: NextAuthConfig = {
       if (user) {
         token.id = user.id;
       }
+      // org_id is stamped by auth.ts's full jwt callback (Node.js runtime)
+      // and lives on the token as a persistent claim. Preserve it here so
+      // the Edge middleware can read it via the session callback below.
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
+        // Expose org binding on the session so the middleware authorized
+        // callback and server components can read it without decoding the JWT.
+        if (token.org_id) {
+          session.user.org_id = token.org_id as string;
+        }
       }
       return session;
     },

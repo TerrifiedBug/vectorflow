@@ -207,9 +207,12 @@ model OrganizationSettings {
 /// Claims do not auto-expire; verified claims can be re-verified at
 /// any time. Unique on `(organizationId, domain)`; a separate global
 /// invariant — no two orgs may hold a verified claim on the same
-/// domain — is enforced at the service layer because Postgres
-/// partial-unique indexes are not first-class in Prisma's schema
-/// language at this version.
+/// domain — is enforced atomically by the partial unique index
+/// `OrganizationDomainClaim_domain_verified_unique` created in migration
+/// `20260519000003_organization_domain_claim`. Prisma's schema language
+/// does not express conditional unique indexes at this version, so the
+/// constraint lives in raw SQL; the router's `verifyDomain` handler
+/// catches P2002 and surfaces a CONFLICT TRPCError.
 model OrganizationDomainClaim {
   id                String       @id @default(cuid())
   organizationId    String
@@ -236,6 +239,11 @@ model OrganizationDomainClaim {
   updatedAt         DateTime     @updatedAt
 
   @@unique([organizationId, domain])
+  // @@index below covers equality probes on `domain` for the soft pre-check
+  // in `verifyDomain`. The load-bearing cross-org uniqueness guard is the
+  // partial unique index `OrganizationDomainClaim_domain_verified_unique`
+  // (WHERE "verifiedAt" IS NOT NULL) defined in raw SQL in migration
+  // 20260519000003_organization_domain_claim — Prisma cannot express it.
   @@index([domain])
   @@index([organizationId])
 }
@@ -891,6 +899,8 @@ model Pipeline {
   migrationProject          MigrationProject?
   costRecommendations       CostRecommendation[]
   anomalyEvents             AnomalyEvent[]
+  pausedAt                  DateTime?
+  pausedBy                  String?              // userId or "VectorFlow Support" when paused by operator
   createdAt                 DateTime             @default(now())
   updatedAt                 DateTime             @updatedAt
 

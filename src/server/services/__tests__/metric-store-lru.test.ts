@@ -84,12 +84,11 @@ describe("MetricStore LRU eviction", () => {
       vi.advanceTimersByTime(1000);
     }
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      "%s [%s] %s",
-      expect.any(String),
-      "metric-store",
-      expect.stringContaining("80%"),
-    );
+    expect(warnSpy).toHaveBeenCalled();
+    {
+      const calls = (warnSpy as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      expect(calls.some((c) => String(c[0]).includes("80%"))).toBe(true);
+    }
 
     warnSpy.mockRestore();
   });

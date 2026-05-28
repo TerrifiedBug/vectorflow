@@ -153,7 +153,10 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 		}
 	}
 
-	// Stop pipelines that are no longer in the config
+	// Stop pipelines that are no longer in the config. This also handles
+	// pipelines that have been paused by an operator: the server excludes
+	// pausedAt != null rows from the config response, so the agent naturally
+	// stops them via this path. No agent-side "paused" state is required.
 	for id := range p.known {
 		if !seen[id] {
 			actions = append(actions, PipelineAction{

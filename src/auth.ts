@@ -491,15 +491,26 @@ async function getAuthInstance() {
             if (account) {
               token.provider = account.provider;
             }
-            // encode the organizationId on the JWT
-            // payload as `org_id`. Per-org signing keys (jwt-key.ts)
-            // already prevent cross-org token replay at the
-            // verify-signature layer, but downstream readers that
-            // decode the JWT body (e.g. log enrichers, OIDC RP
-            // callbacks, future audit consumers) can now self-describe
-            // which org the token belongs to. The `orgId` closure
-            // comes from `getAuthInstance` and is constant for the
-            // life of this NextAuth instance.
+            // Cross-org token replay guard (H7). On any request that presents
+            // an existing JWT (not a fresh sign-in), verify the org_id claim
+            // matches the org derived from the request host. Per-org signing
+            // keys are the primary defence for DEK-provisioned orgs; this is
+            // the belt for env-fallback orgs that share NEXTAUTH_SECRET.
+            // Strict from day one: tokens without an org_id claim (issued
+            // before H7 was deployed) are also rejected — operators MUST run
+            // bump-jwt-rotation-counter to force re-authentication on deploy.
+            if (!user && !account) {
+              const claimedOrgId = (token as { org_id?: unknown }).org_id;
+              if (typeof claimedOrgId !== "string" || claimedOrgId !== orgId) {
+                return {};
+              }
+            }
+            // Stamp / refresh the org_id claim on the token.
+            // On sign-in (user/account present) this sets the claim for the
+            // first time. On refresh it re-affirms the current org — if the
+            // org resolved from the host ever diverges from the stored claim
+            // the guard above has already rejected the token before we reach
+            // this line.
             token.org_id = orgId;
             // Server-side session invalidation for permanently-locked
             // accounts. `user.eraseSelf` sets `User.lockedAt` with
@@ -544,6 +555,10 @@ async function getAuthInstance() {
           async session({ session, token }) {
             if (session.user) {
               session.user.id = token.id as string;
+              // Forward the org binding onto the session object so callers
+              // (tRPC context, server components) can read it without
+              // decoding the JWT themselves.
+              session.user.org_id = token.org_id as string;
             }
             return session;
           },

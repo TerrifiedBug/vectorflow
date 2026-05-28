@@ -5,6 +5,7 @@ import { SENSITIVE_KEYS, sanitizeInput, computeDiff } from "./audit-sanitize";
 import { warnLog } from "@/lib/logger";
 
 export { SENSITIVE_KEYS, sanitizeInput, computeDiff };
+export { resolveTeamId, resolveEnvironmentId };
 
 /**
  * Resolve teamId from procedure input when not already in context.
@@ -13,22 +14,24 @@ export { SENSITIVE_KEYS, sanitizeInput, computeDiff };
 async function resolveTeamId(
   inputData: Record<string, unknown> | undefined,
   entityType: string,
+  organizationId?: string | null,
 ): Promise<string | null> {
   if (!inputData) return null;
+  const orgFilter = organizationId != null ? { organizationId } : {};
 
   if (inputData.teamId) return inputData.teamId as string;
 
   if (inputData.environmentId) {
-    const env = await prisma.environment.findUnique({
-      where: { id: inputData.environmentId as string },
+    const env = await prisma.environment.findFirst({
+      where: { id: inputData.environmentId as string, ...orgFilter },
       select: { teamId: true },
     });
     return env?.teamId ?? null;
   }
 
   if (inputData.pipelineId) {
-    const pipeline = await prisma.pipeline.findUnique({
-      where: { id: inputData.pipelineId as string },
+    const pipeline = await prisma.pipeline.findFirst({
+      where: { id: inputData.pipelineId as string, ...orgFilter },
       select: { environment: { select: { teamId: true } } },
     });
     return pipeline?.environment.teamId ?? null;
@@ -36,29 +39,29 @@ async function resolveTeamId(
 
   // For delete operations where input.id refers to the entity itself
   if (inputData.id && entityType === "Environment") {
-    const env = await prisma.environment.findUnique({
-      where: { id: inputData.id as string },
+    const env = await prisma.environment.findFirst({
+      where: { id: inputData.id as string, ...orgFilter },
       select: { teamId: true },
     });
     return env?.teamId ?? null;
   }
 
   if (inputData.id && entityType === "Pipeline") {
-    const pipeline = await prisma.pipeline.findUnique({
-      where: { id: inputData.id as string },
+    const pipeline = await prisma.pipeline.findFirst({
+      where: { id: inputData.id as string, ...orgFilter },
       select: { environment: { select: { teamId: true } } },
     });
     return pipeline?.environment.teamId ?? null;
   }
 
   if (inputData.id && entityType === "VectorNode") {
-    const node = await prisma.vectorNode.findUnique({
-      where: { id: inputData.id as string },
+    const node = await prisma.vectorNode.findFirst({
+      where: { id: inputData.id as string, ...orgFilter },
       select: { environmentId: true },
     });
     if (node?.environmentId) {
-      const env = await prisma.environment.findUnique({
-        where: { id: node.environmentId },
+      const env = await prisma.environment.findFirst({
+        where: { id: node.environmentId, ...orgFilter },
         select: { teamId: true },
       });
       return env?.teamId ?? null;
@@ -66,32 +69,32 @@ async function resolveTeamId(
   }
 
   if (inputData.id && entityType === "AlertRule") {
-    const rule = await prisma.alertRule.findUnique({
-      where: { id: inputData.id as string },
+    const rule = await prisma.alertRule.findFirst({
+      where: { id: inputData.id as string, ...orgFilter },
       select: { teamId: true },
     });
     return rule?.teamId ?? null;
   }
 
   if (inputData.id && entityType === "NotificationChannel") {
-    const channel = await prisma.notificationChannel.findUnique({
-      where: { id: inputData.id as string },
+    const channel = await prisma.notificationChannel.findFirst({
+      where: { id: inputData.id as string, ...orgFilter },
       select: { environment: { select: { teamId: true } } },
     });
     return channel?.environment.teamId ?? null;
   }
 
   if (inputData.id && entityType === "VrlSnippet") {
-    const snippet = await prisma.vrlSnippet.findUnique({
-      where: { id: inputData.id as string },
+    const snippet = await prisma.vrlSnippet.findFirst({
+      where: { id: inputData.id as string, ...orgFilter },
       select: { teamId: true },
     });
     return snippet?.teamId ?? null;
   }
 
   if (inputData.id && entityType === "ServiceAccount") {
-    const sa = await prisma.serviceAccount.findUnique({
-      where: { id: inputData.id as string },
+    const sa = await prisma.serviceAccount.findFirst({
+      where: { id: inputData.id as string, ...orgFilter },
       select: { environment: { select: { teamId: true } } },
     });
     return sa?.environment.teamId ?? null;
@@ -99,8 +102,8 @@ async function resolveTeamId(
 
   // Resolve requestId → DeployRequest → pipeline → environment.teamId
   if (inputData.requestId && entityType === "DeployRequest") {
-    const deployReq = await prisma.deployRequest.findUnique({
-      where: { id: inputData.requestId as string },
+    const deployReq = await prisma.deployRequest.findFirst({
+      where: { id: inputData.requestId as string, ...orgFilter },
       select: { pipeline: { select: { environment: { select: { teamId: true } } } } },
     });
     return deployReq?.pipeline.environment.teamId ?? null;
@@ -167,14 +170,16 @@ async function assertEnvironmentBelongsToOrg(
 async function resolveEnvironmentId(
   inputData: Record<string, unknown> | undefined,
   entityType: string,
+  organizationId?: string | null,
 ): Promise<string | null> {
   if (!inputData) return null;
+  const orgFilter = organizationId != null ? { organizationId } : {};
 
   if (inputData.environmentId) return inputData.environmentId as string;
 
   if (inputData.pipelineId) {
-    const pipeline = await prisma.pipeline.findUnique({
-      where: { id: inputData.pipelineId as string },
+    const pipeline = await prisma.pipeline.findFirst({
+      where: { id: inputData.pipelineId as string, ...orgFilter },
       select: { environmentId: true },
     });
     return pipeline?.environmentId ?? null;
@@ -186,56 +191,56 @@ async function resolveEnvironmentId(
   }
 
   if (inputData.id && entityType === "Pipeline") {
-    const pipeline = await prisma.pipeline.findUnique({
-      where: { id: inputData.id as string },
+    const pipeline = await prisma.pipeline.findFirst({
+      where: { id: inputData.id as string, ...orgFilter },
       select: { environmentId: true },
     });
     return pipeline?.environmentId ?? null;
   }
 
   if (inputData.id && entityType === "VectorNode") {
-    const node = await prisma.vectorNode.findUnique({
-      where: { id: inputData.id as string },
+    const node = await prisma.vectorNode.findFirst({
+      where: { id: inputData.id as string, ...orgFilter },
       select: { environmentId: true },
     });
     return node?.environmentId ?? null;
   }
 
   if (inputData.id && entityType === "Secret") {
-    const secret = await prisma.secret.findUnique({
-      where: { id: inputData.id as string },
+    const secret = await prisma.secret.findFirst({
+      where: { id: inputData.id as string, ...orgFilter },
       select: { environmentId: true },
     });
     return secret?.environmentId ?? null;
   }
 
   if (inputData.id && entityType === "Certificate") {
-    const cert = await prisma.certificate.findUnique({
-      where: { id: inputData.id as string },
+    const cert = await prisma.certificate.findFirst({
+      where: { id: inputData.id as string, ...orgFilter },
       select: { environmentId: true },
     });
     return cert?.environmentId ?? null;
   }
 
   if (inputData.id && entityType === "AlertRule") {
-    const rule = await prisma.alertRule.findUnique({
-      where: { id: inputData.id as string },
+    const rule = await prisma.alertRule.findFirst({
+      where: { id: inputData.id as string, ...orgFilter },
       select: { environmentId: true },
     });
     return rule?.environmentId ?? null;
   }
 
   if (inputData.id && entityType === "NotificationChannel") {
-    const channel = await prisma.notificationChannel.findUnique({
-      where: { id: inputData.id as string },
+    const channel = await prisma.notificationChannel.findFirst({
+      where: { id: inputData.id as string, ...orgFilter },
       select: { environmentId: true },
     });
     return channel?.environmentId ?? null;
   }
 
   if (inputData.id && entityType === "ServiceAccount") {
-    const sa = await prisma.serviceAccount.findUnique({
-      where: { id: inputData.id as string },
+    const sa = await prisma.serviceAccount.findFirst({
+      where: { id: inputData.id as string, ...orgFilter },
       select: { environmentId: true },
     });
     return sa?.environmentId ?? null;
@@ -243,8 +248,8 @@ async function resolveEnvironmentId(
 
   // Resolve requestId → DeployRequest → environmentId
   if (inputData.requestId && entityType === "DeployRequest") {
-    const deployReq = await prisma.deployRequest.findUnique({
-      where: { id: inputData.requestId as string },
+    const deployReq = await prisma.deployRequest.findFirst({
+      where: { id: inputData.requestId as string, ...orgFilter },
       select: { environmentId: true },
     });
     return deployReq?.environmentId ?? null;
@@ -352,6 +357,7 @@ export function withAudit(action: string, entityType: string) {
     const preloadId = input?.id ?? input?.pipelineId ?? input?.userId;
 
     const ctxTeamId = (ctx as Record<string, unknown>).teamId as string | null ?? null;
+    const callerOrgId = (ctx as Record<string, unknown>).organizationId as string | undefined;
     let resolvedTeamId: string | null = ctxTeamId;
     let resolvedEnvironmentId: string | null = null;
     if (action.includes("deleted")) {
@@ -360,11 +366,13 @@ export function withAudit(action: string, entityType: string) {
           resolvedTeamId = await resolveTeamId(
             inputData as Record<string, unknown> | undefined,
             entityType,
+            callerOrgId,
           );
         }
         resolvedEnvironmentId = await resolveEnvironmentId(
           inputData as Record<string, unknown> | undefined,
           entityType,
+          callerOrgId,
         );
       } catch { /* ignore */ }
     }
@@ -411,6 +419,7 @@ export function withAudit(action: string, entityType: string) {
             teamId = await resolveTeamId(
               inputData as Record<string, unknown> | undefined,
               entityType,
+              callerOrgId,
             );
           } catch { /* ignore */ }
         }
@@ -421,15 +430,13 @@ export function withAudit(action: string, entityType: string) {
             environmentId = await resolveEnvironmentId(
               inputData as Record<string, unknown> | undefined,
               entityType,
+              callerOrgId,
             );
           } catch { /* ignore */ }
         }
 
         // Defense-in-depth org-belongs check on the
         // resolved IDs before they hit the audit log.
-        const callerOrgId = (ctx as Record<string, unknown>).organizationId as
-          | string
-          | undefined;
         const verifiedTeamId = await assertTeamBelongsToOrg(teamId, callerOrgId);
         const verifiedEnvironmentId = await assertEnvironmentBelongsToOrg(
           environmentId,

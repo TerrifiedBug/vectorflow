@@ -117,3 +117,60 @@ describe("webauthnProvider", () => {
     expect(result).toBeNull();
   });
 });
+
+describe("module-init production guard", () => {
+  it("throws when NODE_ENV=production and VF_WEBAUTHN_RP_ID is not set", async () => {
+    const savedRpId = process.env.VF_WEBAUTHN_RP_ID;
+    try {
+      delete process.env.VF_WEBAUTHN_RP_ID;
+      vi.stubEnv("NODE_ENV", "production");
+      vi.resetModules();
+      await expect(import("../webauthn-provider")).rejects.toThrow(
+        "VF_WEBAUTHN_RP_ID must be set in production",
+      );
+    } finally {
+      vi.unstubAllEnvs();
+      if (savedRpId !== undefined) {
+        process.env.VF_WEBAUTHN_RP_ID = savedRpId;
+      } else {
+        delete process.env.VF_WEBAUTHN_RP_ID;
+      }
+      vi.resetModules();
+    }
+  });
+
+  it("does not throw when NODE_ENV=production and VF_WEBAUTHN_RP_ID is set", async () => {
+    const savedRpId = process.env.VF_WEBAUTHN_RP_ID;
+    try {
+      process.env.VF_WEBAUTHN_RP_ID = "example.com";
+      vi.stubEnv("NODE_ENV", "production");
+      vi.resetModules();
+      await expect(import("../webauthn-provider")).resolves.toBeDefined();
+    } finally {
+      vi.unstubAllEnvs();
+      if (savedRpId !== undefined) {
+        process.env.VF_WEBAUTHN_RP_ID = savedRpId;
+      } else {
+        delete process.env.VF_WEBAUTHN_RP_ID;
+      }
+      vi.resetModules();
+    }
+  });
+
+  it("does not throw in dev when VF_WEBAUTHN_RP_ID is not set", async () => {
+    const savedRpId = process.env.VF_WEBAUTHN_RP_ID;
+    // NODE_ENV=test is the vitest default — same guard applies (not production)
+    try {
+      delete process.env.VF_WEBAUTHN_RP_ID;
+      vi.resetModules();
+      await expect(import("../webauthn-provider")).resolves.toBeDefined();
+    } finally {
+      if (savedRpId !== undefined) {
+        process.env.VF_WEBAUTHN_RP_ID = savedRpId;
+      } else {
+        delete process.env.VF_WEBAUTHN_RP_ID;
+      }
+      vi.resetModules();
+    }
+  });
+});

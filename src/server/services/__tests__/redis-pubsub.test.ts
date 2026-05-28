@@ -208,13 +208,11 @@ describe("redis-pubsub", () => {
       publishSSE(event, "env-123");
 
       // Wait for the catch handler to execute
+      // JSON logger emits one arg (JSON record); substring match.
       await vi.waitFor(() => {
-        expect(console.error).toHaveBeenCalledWith(
-          "%s [%s] %s",
-          expect.any(String),
-          "redis-pubsub",
-          "Publish SSE error: Connection lost",
-        );
+        expect(console.error).toHaveBeenCalled();
+        const errorCalls = (console.error as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+        expect(errorCalls.some((c) => String(c[0]).includes("Publish SSE error: Connection lost"))).toBe(true);
       });
     });
   });
@@ -381,12 +379,12 @@ describe("redis-pubsub", () => {
 
       expect(mockBroadcast).not.toHaveBeenCalled();
       expect(mockMergeSample).not.toHaveBeenCalled();
-      expect(console.warn).toHaveBeenCalledWith(
-        "%s [%s] %s",
-        expect.any(String),
-        "redis-pubsub",
-        expect.stringContaining("Malformed message"),
-      );
+      // JSON logger emits one arg (JSON-stringified record); substring
+      // match instead of printf-style positional assertion.
+      expect(console.warn).toHaveBeenCalled();
+      const warnCalls = (console.warn as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      expect(warnCalls.some((c) => String(c[0]).includes("Malformed message"))).toBe(true);
+      expect(warnCalls.some((c) => String(c[0]).includes("redis-pubsub"))).toBe(true);
     });
 
     it("delivers push messages to pushRegistry.send() with correct nodeId and message", () => {
