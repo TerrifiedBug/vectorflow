@@ -1,0 +1,82 @@
+name: Verify RLS
+
+# Drift-resistant gate: every public tenant table (any table with an
+# `organizationId` column) must have RLS enabled and at least one policy.
+# Enumerated from the live schema at runtime — a newly-added table without
+# policies fails on the first CI run.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "prisma/migrations/**"
+      - "prisma/schema.prisma"
+      - "scripts/verify-rls.sh"
+      - ".github/workflows/verify-rls.yml"
+  pull_request:
+    paths:
+      - "prisma/migrations/**"
+      - "prisma/schema.prisma"
+      - "scripts/verify-rls.sh"
+      - ".github/workflows/verify-rls.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify-rls:
+    name: RLS policy coverage
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # TimescaleDB image so the compressed-hypertable carve-out the RLS
+        # migration relies on is exercised — vanilla Postgres would let a
+        # regression in that carve-out logic slip through silently.
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_DB: vectorflow
+          POSTGRES_USER: vectorflow
+          POSTGRES_PASSWORD: verify-rls-test
+        options: >-
+          --health-cmd "pg_isready -U vectorflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://vectorflow:verify-rls-test@localhost:5432/vectorflow
+
+      - name: Verify RLS coverage
+        run: ./scripts/verify-rls.sh
+        env:
+          DATABASE_URL: postgresql://vectorflow:verify-rls-test@localhost:5432/vectorflow

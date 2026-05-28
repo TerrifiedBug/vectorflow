@@ -2,7 +2,8 @@ name: DR Verification
 
 on:
   workflow_dispatch:
-  # Schedule disabled — see commit message. Trigger via workflow_dispatch.
+  schedule:
+    - cron: "0 4 * * *"
 
 permissions:
   contents: read

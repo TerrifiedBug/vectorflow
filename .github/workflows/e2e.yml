@@ -3,7 +3,8 @@ name: E2E Tests
 on:
   push:
     tags: ["v*"]
-  # Schedule disabled — see commit message. Trigger via workflow_dispatch.
+  schedule:
+    - cron: "0 5 * * 1"
   workflow_dispatch:
 
 concurrency:

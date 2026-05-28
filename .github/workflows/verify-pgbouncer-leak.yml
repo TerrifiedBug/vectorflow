@@ -1,0 +1,82 @@
+name: Verify PgBouncer Leak
+
+# Asserts that the `withOrgTx` GUC scoping pattern (`set_config(..., true)`)
+# does not leak across connections under a PgBouncer transaction-pooling
+# deployment. Catches regressions where someone drops the `true` argument or
+# issues a session-level SET outside a transaction.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "prisma/migrations/**"
+      - "prisma/schema.prisma"
+      - "scripts/verify-pgbouncer-leak.sh"
+      - ".github/workflows/verify-pgbouncer-leak.yml"
+  pull_request:
+    paths:
+      - "prisma/migrations/**"
+      - "prisma/schema.prisma"
+      - "scripts/verify-pgbouncer-leak.sh"
+      - ".github/workflows/verify-pgbouncer-leak.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify-pgbouncer-leak:
+    name: PgBouncer GUC isolation
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_DB: vectorflow
+          POSTGRES_USER: vectorflow
+          POSTGRES_PASSWORD: verify-pgbouncer-test
+        options: >-
+          --health-cmd "pg_isready -U vectorflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://vectorflow:verify-pgbouncer-test@localhost:5432/vectorflow
+
+      - name: Verify withOrgTx GUC isolation
+        run: ./scripts/verify-pgbouncer-leak.sh
+        env:
+          # Verify against direct Postgres (no PgBouncer) — catches the
+          # SET LOCAL regression case described in the script's header.
+          # Adding a PgBouncer sidecar service is a follow-up.
+          DATABASE_URL: postgresql://vectorflow:verify-pgbouncer-test@localhost:5432/vectorflow
