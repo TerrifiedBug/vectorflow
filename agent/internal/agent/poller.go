@@ -2,7 +2,6 @@ package agent
 
 import (
 	"encoding/base64"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -29,6 +28,7 @@ type poller struct {
 	client         configFetcher
 	mu             sync.Mutex
 	known          map[string]pipelineState // pipelineId -> last known state
+	configErrors   map[string]string        // pipelineId -> last config-validation error
 	sampleRequests []client.SampleRequestMsg
 	pendingAction  *client.PendingAction
 	pollIntervalMs int // server-provided poll interval from last response
@@ -37,9 +37,10 @@ type poller struct {
 
 func newPoller(cfg *config.Config, c configFetcher) *poller {
 	return &poller{
-		cfg:    cfg,
-		client: c,
-		known:  make(map[string]pipelineState),
+		cfg:          cfg,
+		client:       c,
+		known:        make(map[string]pipelineState),
+		configErrors: make(map[string]string),
 	}
 }
 
@@ -69,6 +70,10 @@ type PipelineAction struct {
 func (p *poller) Poll() ([]PipelineAction, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	if p.configErrors == nil {
+		p.configErrors = make(map[string]string)
+	}
 
 	resp, err := p.client.GetConfig()
 	if err != nil {
@@ -110,9 +115,15 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 		if !exists {
 			// New pipeline — validate config and start. The active file is
 			// replaced only by the apply path once the supervisor is ready.
+			// A single invalid config must NOT abort the whole poll cycle:
+			// skip just this pipeline (it is retried next cycle once the config
+			// is fixed) so every other pipeline on the node still reconciles.
 			if err := validateVectorYAML(pc.ConfigYaml); err != nil {
-				return nil, fmt.Errorf("validate config for pipeline %s: %w", pc.PipelineID, err)
+				p.configErrors[pc.PipelineID] = err.Error()
+				slog.Error("skipping pipeline with invalid config", "pipeline", pc.PipelineID, "error", err)
+				continue
 			}
+			delete(p.configErrors, pc.PipelineID)
 			actions = append(actions, PipelineAction{
 				Action:     ActionStart,
 				PipelineID: pc.PipelineID,
@@ -127,9 +138,14 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 		} else if prev.checksum != pc.Checksum {
 			// Config changed — validate config and restart. Known state is
 			// advanced after the restart succeeds so failed applies are retried.
+			// On invalid config, skip the restart (the currently-running version
+			// keeps serving) and retry next cycle rather than aborting the cycle.
 			if err := validateVectorYAML(pc.ConfigYaml); err != nil {
-				return nil, fmt.Errorf("validate config for pipeline %s: %w", pc.PipelineID, err)
+				p.configErrors[pc.PipelineID] = err.Error()
+				slog.Error("skipping config change with invalid config", "pipeline", pc.PipelineID, "error", err)
+				continue
 			}
+			delete(p.configErrors, pc.PipelineID)
 			actions = append(actions, PipelineAction{
 				Action:     ActionRestart,
 				PipelineID: pc.PipelineID,
@@ -166,6 +182,14 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 			delete(p.known, id)
 			// Clean up config file
 			os.Remove(filepath.Join(pipelinesDir, id+".yaml"))
+		}
+	}
+
+	// Drop tracked config errors for pipelines no longer present in the config
+	// (e.g. an invalid-config pipeline that was undeployed before being fixed).
+	for id := range p.configErrors {
+		if !seen[id] {
+			delete(p.configErrors, id)
 		}
 	}
 
@@ -249,6 +273,18 @@ func (p *poller) PendingAction() *client.PendingAction {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.pendingAction
+}
+
+// ConfigErrors returns a copy of the most recent per-pipeline config-validation
+// errors (pipelineId -> message) for pipelines that were skipped this cycle.
+func (p *poller) ConfigErrors() map[string]string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make(map[string]string, len(p.configErrors))
+	for id, msg := range p.configErrors {
+		out[id] = msg
+	}
+	return out
 }
 
 // PollIntervalMs returns the server-provided poll interval from the last response.

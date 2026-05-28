@@ -150,8 +150,17 @@ func TestPoll_InvalidConfigDoesNotReplaceActiveConfigOrAdvanceKnownState(t *test
 		},
 	}
 
-	if _, err := p.Poll(); err == nil {
-		t.Fatal("expected invalid YAML error")
+	// An invalid config must NOT abort the poll cycle: Poll returns no error,
+	// the active config is left untouched, known state is not advanced (so the
+	// pipeline is retried next cycle), and no restart action is emitted.
+	actions, err := p.Poll()
+	if err != nil {
+		t.Fatalf("Poll should not error on a single invalid config: %v", err)
+	}
+	for _, a := range actions {
+		if a.PipelineID == "pipeline-a" {
+			t.Fatalf("expected no action for invalid-config pipeline, got %v", a.Action)
+		}
 	}
 
 	data, err := os.ReadFile(configPath)
@@ -163,6 +172,56 @@ func TestPoll_InvalidConfigDoesNotReplaceActiveConfigOrAdvanceKnownState(t *test
 	}
 	if got := p.known["pipeline-a"]; got.checksum != "old-checksum" || got.version != 1 {
 		t.Fatalf("known state advanced after validation failure: %+v", got)
+	}
+	if msg := p.ConfigErrors()["pipeline-a"]; msg == "" {
+		t.Fatal("expected the invalid config to be recorded in ConfigErrors()")
+	}
+}
+
+// TestPoll_InvalidConfigDoesNotBlockOtherPipelines verifies that one pipeline
+// with an invalid config is skipped without preventing the reconciliation of
+// other, valid pipelines in the same poll cycle.
+func TestPoll_InvalidConfigDoesNotBlockOtherPipelines(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	p := newPoller(&config.Config{DataDir: tmpDir}, &mockConfigFetcher{resp: &client.ConfigResponse{
+		Pipelines: []client.PipelineConfig{
+			{
+				PipelineID:   "bad",
+				PipelineName: "Bad",
+				ConfigYaml:   "sources: [",
+				Checksum:     "bad-1",
+				Version:      1,
+			},
+			{
+				PipelineID:   "good",
+				PipelineName: "Good",
+				ConfigYaml:   "sources:\n  demo:\n    type: demo_logs\nsinks: {}\n",
+				Checksum:     "good-1",
+				Version:      1,
+			},
+		},
+	}})
+
+	actions, err := p.Poll()
+	if err != nil {
+		t.Fatalf("Poll errored: %v", err)
+	}
+
+	var startedGood bool
+	for _, a := range actions {
+		if a.PipelineID == "bad" {
+			t.Fatalf("invalid-config pipeline should not produce an action, got %v", a.Action)
+		}
+		if a.PipelineID == "good" && a.Action == ActionStart {
+			startedGood = true
+		}
+	}
+	if !startedGood {
+		t.Fatal("valid pipeline was not started despite a sibling invalid config")
+	}
+	if msg := p.ConfigErrors()["bad"]; msg == "" {
+		t.Fatal("expected the invalid config to be recorded in ConfigErrors()")
 	}
 }
 

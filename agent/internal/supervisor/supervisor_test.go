@@ -410,13 +410,10 @@ func TestCrashStatus(t *testing.T) {
 	}
 }
 
-// TestMultipleCrashRestarts verifies that backoffFunc is called for each crash.
-//
-// Note: each crash creates a fresh ProcessInfo (restarts starts at 0 and
-// increments to 1 before calling backoffFunc). The restart counter therefore
-// does not accumulate across the chain of crashes — backoffFunc always receives
-// restarts=1. This is the documented current behaviour of the supervisor's
-// per-ProcessInfo restart tracking.
+// TestMultipleCrashRestarts verifies that the consecutive-crash counter
+// accumulates across the chain of crashes so the exponential backoff actually
+// escalates (1, 2, 3, ...) rather than resetting to 1 on every crash. The
+// counter is persisted on the Supervisor, not the per-crash ProcessInfo.
 func TestMultipleCrashRestarts(t *testing.T) {
 	var (
 		mu           sync.Mutex
@@ -425,6 +422,9 @@ func TestMultipleCrashRestarts(t *testing.T) {
 
 	s, procs := newTestSupervisor(nil)
 	cfg := tempConfig(t)
+	// Force the "rapid crash" path: a huge stable threshold means no crash is
+	// ever treated as a one-off, so the counter must escalate.
+	s.stableThreshold = time.Hour
 	s.backoffFunc = func(restarts int) time.Duration {
 		mu.Lock()
 		backoffCalls = append(backoffCalls, restarts)
@@ -458,12 +458,95 @@ func TestMultipleCrashRestarts(t *testing.T) {
 		t.Errorf("expected at least %d backoff calls, got %d: %v", crashes, len(got), got)
 		return
 	}
-	// Each call receives restarts=1 because each restart creates a fresh
-	// ProcessInfo beginning at restarts=0.
-	for i, v := range got[:crashes] {
-		if v != 1 {
-			t.Errorf("backoff call %d: expected restarts=1 (fresh ProcessInfo), got %d", i, v)
+	// The counter accumulates: crash 1 → 1, crash 2 → 2, crash 3 → 3.
+	for i := 0; i < crashes; i++ {
+		if got[i] != i+1 {
+			t.Errorf("backoff call %d: expected escalating restarts=%d, got %d (all: %v)", i, i+1, got[i], got)
 		}
+	}
+}
+
+// TestStableRunResetsBackoff verifies that a process which stayed up past the
+// stable threshold has its consecutive-crash counter reset, so an occasional
+// crash after a long healthy run does not inherit a high backoff.
+func TestStableRunResetsBackoff(t *testing.T) {
+	var (
+		mu           sync.Mutex
+		backoffCalls []int
+	)
+
+	s, procs := newTestSupervisor(nil)
+	cfg := tempConfig(t)
+	// Zero threshold: every crash is treated as following a stable run, so the
+	// counter resets to 0 then increments to 1 every time.
+	s.stableThreshold = 0
+	s.backoffFunc = func(restarts int) time.Duration {
+		mu.Lock()
+		backoffCalls = append(backoffCalls, restarts)
+		mu.Unlock()
+		return 0
+	}
+	t.Cleanup(func() { s.ShutdownAll(); drainProcs(procs) })
+
+	if err := s.Start("pipe1", cfg, 1, "", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	const crashes = 3
+	for i := 0; i < crashes; i++ {
+		proc := <-procs
+		proc.exit(errors.New("crash"))
+	}
+	select {
+	case proc := <-procs:
+		proc.exit(nil)
+	case <-time.After(500 * time.Millisecond):
+	}
+
+	mu.Lock()
+	got := append([]int(nil), backoffCalls...)
+	mu.Unlock()
+
+	if len(got) < crashes {
+		t.Errorf("expected at least %d backoff calls, got %d: %v", crashes, len(got), got)
+		return
+	}
+	for i := 0; i < crashes; i++ {
+		if got[i] != 1 {
+			t.Errorf("backoff call %d: expected restarts=1 after a stable run, got %d (all: %v)", i, got[i], got)
+		}
+	}
+}
+
+// TestCrashLoopGivesUp verifies the circuit breaker: after maxRestarts rapid
+// crashes the supervisor stops restarting and marks the pipeline CRASH_LOOP
+// instead of thrashing forever.
+func TestCrashLoopGivesUp(t *testing.T) {
+	s, procs := newTestSupervisor(nil)
+	cfg := tempConfig(t)
+	s.stableThreshold = time.Hour // every crash counts toward the loop
+	s.maxRestarts = 3
+	t.Cleanup(func() { s.ShutdownAll(); drainProcs(procs) })
+
+	if err := s.Start("pipe1", cfg, 1, "", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// maxRestarts crashes each spawn a replacement (counts 1..3); the next
+	// crash (count 4 > maxRestarts) trips the breaker and spawns nothing.
+	for i := 0; i < s.maxRestarts+1; i++ {
+		proc := <-procs
+		proc.exit(errors.New("crash"))
+	}
+
+	waitForStatus(t, s, "pipe1", "CRASH_LOOP", time.Second)
+
+	// No further process should be started after the breaker trips.
+	select {
+	case proc := <-procs:
+		proc.exit(nil)
+		t.Errorf("supervisor restarted a crash-looping pipeline past maxRestarts")
+	case <-time.After(100 * time.Millisecond):
 	}
 }
 

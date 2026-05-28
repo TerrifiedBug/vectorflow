@@ -59,7 +59,7 @@ type ProcessInfo struct {
 	PipelineID     string
 	Version        int
 	PID            int
-	Status         string // RUNNING, STARTING, STOPPED, CRASHED
+	Status         string // RUNNING, STARTING, STOPPED, CRASHED, CRASH_LOOP
 	StartedAt      time.Time
 	MetricsPort    int
 	APIPort        int
@@ -77,23 +77,35 @@ type Supervisor struct {
 	vectorBin    string
 	mu           sync.Mutex
 	processes    map[string]*ProcessInfo // pipelineId -> process
-	basePort     int
-	portSeq      int
-	mkProc       procFactory
-	startupDelay time.Duration
-	backoffFunc  func(restarts int) time.Duration
-	stopTimeout  time.Duration
+	// restartCounts persists the consecutive crash count per pipeline across
+	// process replacements. Each crash replaces the ProcessInfo via
+	// startProcess (which starts at restarts=0), so the count cannot live on
+	// ProcessInfo — otherwise the backoff would reset to ~1s on every crash
+	// and a crash-looping pipeline would restart roughly once per second
+	// forever. Reset to 0 after a process stays up past stableThreshold.
+	restartCounts   map[string]int
+	basePort        int
+	portSeq         int
+	mkProc          procFactory
+	startupDelay    time.Duration
+	backoffFunc     func(restarts int) time.Duration
+	stopTimeout     time.Duration
+	stableThreshold time.Duration // uptime above which a crash is treated as a one-off, not a loop
+	maxRestarts     int           // consecutive rapid crashes before giving up (CRASH_LOOP)
 }
 
 func New(vectorBin string) *Supervisor {
 	return &Supervisor{
-		vectorBin:    vectorBin,
-		processes:    make(map[string]*ProcessInfo),
-		basePort:     8687, // prometheus_exporter ports start at 8688 (portSeq increments before use)
-		mkProc:       defaultProcFactory,
-		startupDelay: 2 * time.Second,
-		backoffFunc:  defaultBackoffFunc,
-		stopTimeout:  30 * time.Second,
+		vectorBin:       vectorBin,
+		processes:       make(map[string]*ProcessInfo),
+		restartCounts:   make(map[string]int),
+		basePort:        8687, // prometheus_exporter ports start at 8688 (portSeq increments before use)
+		mkProc:          defaultProcFactory,
+		startupDelay:    2 * time.Second,
+		backoffFunc:     defaultBackoffFunc,
+		stopTimeout:     30 * time.Second,
+		stableThreshold: 60 * time.Second,
+		maxRestarts:     10,
 	}
 }
 
@@ -193,11 +205,28 @@ func (s *Supervisor) monitor(info *ProcessInfo, metricsPort, apiPort int) {
 		slog.Error("pipeline crashed", "pipeline", info.PipelineID, "pid", info.PID, "error", err)
 		info.Status = "CRASHED"
 
-		// Exponential backoff restart: 1s, 2s, 4s, 8s, ... max 60s
-		info.restarts++
-		backoff := s.backoffFunc(info.restarts)
+		// A process that stayed up past stableThreshold is treated as healthy:
+		// this crash is a one-off, so reset the consecutive-crash counter.
+		if time.Since(info.StartedAt) >= s.stableThreshold {
+			s.restartCounts[info.PipelineID] = 0
+		}
+		s.restartCounts[info.PipelineID]++
+		count := s.restartCounts[info.PipelineID]
+		info.restarts = count
 
-		slog.Info("restarting crashed pipeline", "pipeline", info.PipelineID, "backoff", backoff, "restarts", info.restarts)
+		// Circuit breaker: after too many rapid crashes, stop thrashing and
+		// surface a terminal CRASH_LOOP state. A later config push (Restart)
+		// clears the counter and gives the pipeline another chance.
+		if count > s.maxRestarts {
+			info.Status = "CRASH_LOOP"
+			slog.Error("pipeline crash-looping, giving up until next config change",
+				"pipeline", info.PipelineID, "restarts", count, "max", s.maxRestarts)
+			return
+		}
+
+		// Exponential backoff restart: 1s, 2s, 4s, 8s, ... max 60s.
+		backoff := s.backoffFunc(count)
+		slog.Info("restarting crashed pipeline", "pipeline", info.PipelineID, "backoff", backoff, "restarts", count)
 
 		go func() {
 			time.Sleep(backoff)
@@ -212,6 +241,7 @@ func (s *Supervisor) monitor(info *ProcessInfo, metricsPort, apiPort int) {
 	} else {
 		slog.Info("pipeline exited cleanly", "pipeline", info.PipelineID, "pid", info.PID)
 		info.Status = "STOPPED"
+		delete(s.restartCounts, info.PipelineID)
 	}
 }
 
@@ -224,6 +254,7 @@ func (s *Supervisor) Stop(pipelineID string) error {
 		return nil
 	}
 	delete(s.processes, pipelineID)
+	delete(s.restartCounts, pipelineID)
 	s.mu.Unlock()
 
 	return s.stopProcess(info)
@@ -282,6 +313,7 @@ func (s *Supervisor) RestartInPlace(pipelineID string) error {
 	logLevel := info.LogLevel
 	secrets := info.Secrets
 	delete(s.processes, pipelineID)
+	delete(s.restartCounts, pipelineID)
 	s.mu.Unlock()
 
 	s.stopProcess(info)
