@@ -1,0 +1,191 @@
+# VectorFlow SLO — error-budget burn-rate alert rules
+#
+# Methodology: Google SRE Workbook chapter 4, multi-window burn-rate alerts.
+#
+# SLO target: 99.9% availability per route over a rolling 30-day window.
+# Error budget: 0.1% of requests (43.2 minutes of downtime per 30 days).
+#
+# Monitored SLIs (per-route HTTP success rate):
+#   /                              — page load (marketing + app shell)
+#   /api/signup                    — account creation
+#   /api/billing/webhook           — Stripe webhook ingestion
+#   /api/v1/agent/enroll           — agent fleet enrollment
+#   /api/auth/callback/magic-link  — magic-link redemption
+#
+# Alert tiers:
+#   Fast burn (14.4×): error ratio > 1.44% — exhausts budget in ~2 days.
+#                       Long window 1h, short window 5m. Severity: critical (page).
+#   Slow burn  (6×):   error ratio > 0.6%  — exhausts budget in ~5 days.
+#                       Long window 6h, short window 30m. Severity: warning (ticket).
+#
+# Source metric assumed: vectorflow_http_requests_total{route, status_class}
+#   status_class="5xx"  — server errors counted against the error budget
+#   status_class="2xx"|"3xx"|"4xx" — not counted (4xx are client errors)
+#
+# If your instrumentation uses a different label/metric name, update the
+# `record` expressions below; the alert expressions reference these names.
+
+groups:
+
+  # -------------------------------------------------------------------------
+  # Recording rules — pre-aggregate error ratios at the required windows.
+  # These feed the alert expressions and prevent repeated full-range scans.
+  # -------------------------------------------------------------------------
+  - name: vectorflow.slo.recording
+    interval: 30s
+    rules:
+
+      # ── 5-minute window (fast-burn short guard) ─────────────────────────
+      - record: vectorflow:slo_route_error_ratio:rate5m
+        expr: |
+          sum by (route) (
+            rate(vectorflow_http_requests_total{status_class="5xx"}[5m])
+          )
+          /
+          sum by (route) (
+            rate(vectorflow_http_requests_total[5m])
+          )
+
+      # ── 1-hour window (fast-burn long window) ───────────────────────────
+      - record: vectorflow:slo_route_error_ratio:rate1h
+        expr: |
+          sum by (route) (
+            rate(vectorflow_http_requests_total{status_class="5xx"}[1h])
+          )
+          /
+          sum by (route) (
+            rate(vectorflow_http_requests_total[1h])
+          )
+
+      # ── 30-minute window (slow-burn short guard) ────────────────────────
+      - record: vectorflow:slo_route_error_ratio:rate30m
+        expr: |
+          sum by (route) (
+            rate(vectorflow_http_requests_total{status_class="5xx"}[30m])
+          )
+          /
+          sum by (route) (
+            rate(vectorflow_http_requests_total[30m])
+          )
+
+      # ── 6-hour window (slow-burn long window) ───────────────────────────
+      - record: vectorflow:slo_route_error_ratio:rate6h
+        expr: |
+          sum by (route) (
+            rate(vectorflow_http_requests_total{status_class="5xx"}[6h])
+          )
+          /
+          sum by (route) (
+            rate(vectorflow_http_requests_total[6h])
+          )
+
+      # ── Error-budget consumed this calendar month (informational) ────────
+      # Useful for dashboards; not directly used by alerts.
+      - record: vectorflow:slo_error_budget_consumed:ratio30d
+        expr: |
+          (
+            sum by (route) (
+              increase(vectorflow_http_requests_total{status_class="5xx"}[30d])
+            )
+            /
+            sum by (route) (
+              increase(vectorflow_http_requests_total[30d])
+            )
+          ) / 0.001
+
+  # -------------------------------------------------------------------------
+  # Alerting rules — multi-window burn-rate guards per Google SRE workbook.
+  #
+  # Route filter: only fire for the 5 SLI-covered routes. Other routes are
+  # still tracked via recording rules for dashboards, but do not page.
+  # -------------------------------------------------------------------------
+  - name: vectorflow.slo.alerts
+    rules:
+
+      # ── FAST BURN — 14.4× (1h long + 5m short) ─────────────────────────
+      #
+      # Fires when both windows show error ratio > 0.0144.
+      # The 1h window proves the burn is sustained; the 5m window proves it
+      # is still ongoing (not a historical artifact that already resolved).
+      # At this rate: 30-day error budget exhausted in ≈ 2 days.
+      - alert: VectorFlowSLOFastBurn
+        expr: |
+          (
+            vectorflow:slo_route_error_ratio:rate1h{
+              route=~"^(/|/api/signup|/api/billing/webhook|/api/v1/agent/enroll|/api/auth/callback/magic-link)$"
+            } > 0.0144
+          )
+          and
+          (
+            vectorflow:slo_route_error_ratio:rate5m{
+              route=~"^(/|/api/signup|/api/billing/webhook|/api/v1/agent/enroll|/api/auth/callback/magic-link)$"
+            } > 0.0144
+          )
+        for: 2m
+        labels:
+          severity: critical
+          slo: availability_99_9
+          burn_type: fast
+          # organization_id is NOT set here — this alert fires at the
+          # platform level, across all traffic to the route. Per-org
+          # routing is handled by the Alertmanager route-template.yml.
+        annotations:
+          summary: "SLO fast burn on {{ $labels.route }}: error rate {{ printf \"%.2f\" (mul $value 100) }}%"
+          description: >
+            Route {{ $labels.route }} is consuming error budget at 14.4× the sustainable
+            rate. Current error ratio (1h window): {{ printf "%.4f" $value }}; threshold:
+            0.0144 (14.4 × 0.001). At this rate the 30-day error budget will be exhausted
+            in approximately 2 days. Immediate incident response required.
+
+      # ── SLOW BURN — 6× (6h long + 30m short) ───────────────────────────
+      #
+      # Fires when both windows show error ratio > 0.006.
+      # At this rate: 30-day error budget exhausted in ≈ 5 days.
+      - alert: VectorFlowSLOSlowBurn
+        expr: |
+          (
+            vectorflow:slo_route_error_ratio:rate6h{
+              route=~"^(/|/api/signup|/api/billing/webhook|/api/v1/agent/enroll|/api/auth/callback/magic-link)$"
+            } > 0.006
+          )
+          and
+          (
+            vectorflow:slo_route_error_ratio:rate30m{
+              route=~"^(/|/api/signup|/api/billing/webhook|/api/v1/agent/enroll|/api/auth/callback/magic-link)$"
+            } > 0.006
+          )
+        for: 15m
+        labels:
+          severity: warning
+          slo: availability_99_9
+          burn_type: slow
+        annotations:
+          summary: "SLO slow burn on {{ $labels.route }}: error rate {{ printf \"%.2f\" (mul $value 100) }}%"
+          description: >
+            Route {{ $labels.route }} is consuming error budget at 6× the sustainable
+            rate. Current error ratio (6h window): {{ printf "%.4f" $value }}; threshold:
+            0.006 (6 × 0.001). At this rate the 30-day error budget will be exhausted
+            in approximately 5 days. Create a P2 ticket; monitor for escalation to fast burn.
+
+      # ── ERROR BUDGET NEAR EXHAUSTION ─────────────────────────────────────
+      #
+      # Independent of burn rate: fires when >90% of the 30-day budget has
+      # been consumed regardless of current rate. Catches lingering tails
+      # of a burn that slowed but never fully resolved.
+      - alert: VectorFlowSLOBudgetNearExhaustion
+        expr: |
+          vectorflow:slo_error_budget_consumed:ratio30d{
+            route=~"^(/|/api/signup|/api/billing/webhook|/api/v1/agent/enroll|/api/auth/callback/magic-link)$"
+          } > 0.9
+        for: 30m
+        labels:
+          severity: warning
+          slo: availability_99_9
+          burn_type: budget_consumed
+        annotations:
+          summary: "SLO error budget > 90% consumed on {{ $labels.route }}"
+          description: >
+            Route {{ $labels.route }} has consumed {{ printf "%.1f" (mul $value 100) }}%
+            of its 30-day error budget. Less than 10% remains. Any further degradation
+            will breach the SLO before the budget window resets. Review recent incidents
+            and consider a change freeze for this route.

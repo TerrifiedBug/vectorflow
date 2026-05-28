@@ -65,6 +65,28 @@ export interface JwtKeyResult {
 }
 
 /**
+ * Custom payload claims included in every VectorFlow-issued JWT.
+ * NextAuth extends its standard set (iat, exp, sub, jti) with these fields.
+ * Documented here alongside the key-derivation logic so the two concerns
+ * stay co-located: a claim that is enforced by the signing key (org binding)
+ * is also visible in the type that describes the payload.
+ */
+export interface VfJwtPayload {
+  /** Opaque user id (`User.id`). */
+  id?: string;
+  /** Auth provider used on sign-in (`credentials`, `oidc`, `webauthn`). */
+  provider?: string;
+  /**
+   * Organisation id this token was issued for. Mirrors the per-org
+   * signing key binding so env-fallback orgs (sharing `NEXTAUTH_SECRET`)
+   * get a claim-level guard in addition to the signature check.
+   * Absent on tokens minted before H7 was deployed — those tokens are
+   * treated as invalid by the cross-org guard in auth.ts.
+   */
+  org_id: string;
+}
+
+/**
  * Resolve the JWT signing secret(s) for an org. Returns a typed result
  * indicating the source so auth.ts can decide how to pass the value to
  * NextAuth and whether to cache the resulting auth instance.

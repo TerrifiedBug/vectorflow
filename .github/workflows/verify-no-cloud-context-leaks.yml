@@ -1,0 +1,32 @@
+name: Verify No Cloud Context Leaks
+
+# Security gate: assert that no closed-source cloud references have leaked
+# into the OSS source tree. Flags Stripe env-var names, vectorflow-cloud/
+# path references, @cloud/ imports, and plan-section annotations (§16b,
+# cloud-N) that should only ever appear in the private repository.
+#
+# Runs on every push and pull_request — path scoping would create a blind
+# spot since the leak could appear in any source file.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify-no-cloud-context-leaks:
+    name: Cloud-context leak scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Scan for cloud-only references
+        run: bash scripts/verify-no-cloud-context-leaks.sh

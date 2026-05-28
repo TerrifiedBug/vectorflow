@@ -1,0 +1,19 @@
+{{- if .Values.grafana.dashboards.enabled }}
+{{- $dashboard := .Files.Get "files/dashboards/vectorflow-overview.json" }}
+{{- if not $dashboard }}
+  {{- fail "files/dashboards/vectorflow-overview.json not found in chart — ensure the symlink from charts/vectorflow-server/files/dashboards/ to monitoring/grafana/ is present" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "vectorflow-server.fullname" . }}-grafana-dashboard
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "vectorflow-server.labels" . | nindent 4 }}
+    # The Grafana sidecar (grafana.sidecar.dashboards.enabled=true) watches
+    # for ConfigMaps carrying this label and auto-provisions the dashboard.
+    grafana_dashboard: "1"
+data:
+  vectorflow-overview.json: |
+    {{- $dashboard | nindent 4 }}
+{{- end }}

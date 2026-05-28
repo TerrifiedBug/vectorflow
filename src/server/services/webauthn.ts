@@ -108,8 +108,8 @@ export async function startRegistration(opts: {
     })),
     authenticatorSelection: {
       userVerification: "preferred",
-      residentKey: "preferred",
-      requireResidentKey: false,
+      residentKey: "required",
+      requireResidentKey: true,
     },
   });
 

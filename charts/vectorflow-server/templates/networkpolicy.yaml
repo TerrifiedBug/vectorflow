@@ -1,0 +1,69 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "vectorflow-server.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vectorflow-server.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "vectorflow-server.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+
+  # ── Ingress ──────────────────────────────────────────────────────────
+  # Default-deny all ingress; allow only from the ingress controller
+  # namespace(s). Each rule is an independent OR-branch.
+  ingress:
+    # nginx-based ingress controller (ingress.className: nginx)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 3000
+          protocol: TCP
+    # AWS ALB controller (target-type: ip)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-alb
+      ports:
+        - port: 3000
+          protocol: TCP
+
+  # ── Egress ───────────────────────────────────────────────────────────
+  # Default-deny all egress; allow only the services the app legitimately
+  # reaches. Note: vanilla Kubernetes NetworkPolicy has no FQDN selector;
+  # further restriction of the :443 rule to specific hosts requires
+  # Calico GlobalNetworkPolicy or Cilium NetworkPolicy.
+  egress:
+    # DNS — mandatory for in-cluster service discovery and external hostname
+    # resolution.
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+    # PostgreSQL — bundled bitnami/postgresql subchart or external managed DB
+    - ports:
+        - port: 5432
+          protocol: TCP
+
+    # Redis — bundled bitnami/redis subchart or external ElastiCache /
+    # Redis-compatible store (used for session coordination in HA deployments)
+    - ports:
+        - port: 6379
+          protocol: TCP
+
+    # HTTPS egress: telemetry, external integrations, and package checks.
+    # To enforce FQDN-level isolation install Calico or Cilium and replace
+    # this rule with a CNI-native egress policy targeting specific FQDNs.
+    - ports:
+        - port: 443
+          protocol: TCP
+{{- end }}

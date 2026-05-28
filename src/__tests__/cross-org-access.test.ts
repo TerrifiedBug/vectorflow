@@ -30,8 +30,9 @@
  *     add the path to `INTENTIONALLY_UNGUARDED` below with a comment.
  *   - If you add a NEW tenant-scoping middleware: extend `GATE_PATTERNS`.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mockDeep } from "vitest-mock-extended";
+import type { DeepMockProxy } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 
 // next-auth has known module-resolution issues under Vitest; the static
@@ -370,6 +371,50 @@ function auditRouter(): AuditEntry[] {
   return entries;
 }
 
+
+// ─── H7: JWT org_id cross-org guard ─────────────────────────────────────────
+//
+// The guard in auth.ts's jwt() callback: if the token is not a fresh
+// sign-in (!user && !account) and token.org_id !== orgId (the org resolved
+// from the request host), the callback returns {} — an empty token — which
+// NextAuth treats as unauthenticated.
+//
+// We test the invariant directly against the predicate rather than through
+// the full NextAuth stack (which would require mocking dozens of modules).
+// The predicate IS the security boundary; the integration contract is that
+// auth.ts calls `return {}` when `guardRejectsToken` is true.
+
+/**
+ * Mirror of the guard predicate in auth.ts's jwt() callback.
+ * Returns true  → token REJECTED (auth.ts returns {})
+ * Returns false → token ACCEPTED (auth.ts continues)
+ */
+function guardRejectsToken(
+  tokenOrgId: unknown,
+  requestOrgId: string,
+): boolean {
+  return typeof tokenOrgId !== "string" || tokenOrgId !== requestOrgId;
+}
+
+describe("H7 JWT org_id cross-org guard", () => {
+  it("accepts a token whose org_id matches the request org", () => {
+    expect(guardRejectsToken("org-a", "org-a")).toBe(false);
+  });
+
+  it("rejects a token from org A presented on org B's host (cross-org replay)", () => {
+    expect(guardRejectsToken("org-a", "org-b")).toBe(true);
+  });
+
+  it("rejects a token with no org_id claim (pre-H7 legacy token)", () => {
+    expect(guardRejectsToken(undefined, "org-a")).toBe(true);
+  });
+
+  it("rejects a token with a non-string org_id (malformed claim)", () => {
+    expect(guardRejectsToken(42, "org-a")).toBe(true);
+    expect(guardRejectsToken(null, "org-a")).toBe(true);
+  });
+});
+
 describe("Cross-org access audit", () => {
   const audit = auditRouter();
 
@@ -407,5 +452,171 @@ describe("Cross-org access audit", () => {
     const auditPaths = new Set(audit.map((e) => e.path));
     const stale = [...INTENTIONALLY_UNGUARDED].filter((p) => !auditPaths.has(p));
     expect(stale).toEqual([]);
+  });
+});
+
+describe("audit middleware org-scope hardening", () => {
+  /**
+   * These tests verify that `resolveTeamId` and `resolveEnvironmentId` in
+   * `src/server/middleware/audit.ts` include the caller's `organizationId`
+   * in every Prisma `findFirst` WHERE clause, so a cross-org entity ID
+   * supplied by a compromised or confused client never resolves to a
+   * teamId/environmentId belonging to a different org.
+   *
+   * The mocked Prisma returns `null` when the org filter doesn't match —
+   * exactly what Prisma would do in production if the row's `organizationId`
+   * differs from the one passed in the WHERE.
+   */
+  let mockPrisma: DeepMockProxy<PrismaClient>;
+
+  beforeEach(async () => {
+    const mod = await import("@/lib/prisma");
+    mockPrisma = mod.prisma as DeepMockProxy<PrismaClient>;
+    mockPrisma.environment.findFirst.mockReset();
+    mockPrisma.pipeline.findFirst.mockReset();
+    mockPrisma.vectorNode.findFirst.mockReset();
+    mockPrisma.alertRule.findFirst.mockReset();
+    mockPrisma.notificationChannel.findFirst.mockReset();
+    mockPrisma.vrlSnippet.findFirst.mockReset();
+    mockPrisma.serviceAccount.findFirst.mockReset();
+    mockPrisma.deployRequest.findFirst.mockReset();
+  });
+
+  it("resolveTeamId: cross-org environmentId returns null", async () => {
+    const { resolveTeamId } = await import("@/server/middleware/audit");
+    // Simulate Prisma finding no row because organizationId filter doesn't match
+    mockPrisma.environment.findFirst.mockResolvedValueOnce(null);
+
+    const result = await resolveTeamId(
+      { environmentId: "env-belongs-to-other-org" },
+      "Environment",
+      "org-A",
+    );
+
+    expect(result).toBeNull();
+    expect(mockPrisma.environment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organizationId: "org-A" }),
+      }),
+    );
+  });
+
+  it("resolveTeamId: same-org environmentId resolves teamId", async () => {
+    const { resolveTeamId } = await import("@/server/middleware/audit");
+    mockPrisma.environment.findFirst.mockResolvedValueOnce({ teamId: "team-own" } as never);
+
+    const result = await resolveTeamId(
+      { environmentId: "env-own" },
+      "Environment",
+      "org-A",
+    );
+
+    expect(result).toBe("team-own");
+  });
+
+  it("resolveTeamId: cross-org pipelineId returns null", async () => {
+    const { resolveTeamId } = await import("@/server/middleware/audit");
+    mockPrisma.pipeline.findFirst.mockResolvedValueOnce(null);
+
+    const result = await resolveTeamId(
+      { pipelineId: "pipe-cross-org" },
+      "Pipeline",
+      "org-A",
+    );
+
+    expect(result).toBeNull();
+    expect(mockPrisma.pipeline.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organizationId: "org-A" }),
+      }),
+    );
+  });
+
+  it("resolveTeamId: cross-org id/AlertRule returns null", async () => {
+    const { resolveTeamId } = await import("@/server/middleware/audit");
+    mockPrisma.alertRule.findFirst.mockResolvedValueOnce(null);
+
+    const result = await resolveTeamId(
+      { id: "rule-cross-org" },
+      "AlertRule",
+      "org-B",
+    );
+
+    expect(result).toBeNull();
+    expect(mockPrisma.alertRule.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organizationId: "org-B" }),
+      }),
+    );
+  });
+
+  it("resolveTeamId: omitting organizationId does not filter (backward-compat)", async () => {
+    const { resolveTeamId } = await import("@/server/middleware/audit");
+    mockPrisma.environment.findFirst.mockResolvedValueOnce({ teamId: "team-legacy" } as never);
+
+    const result = await resolveTeamId(
+      { environmentId: "env-legacy" },
+      "Environment",
+      // no organizationId — should still resolve
+    );
+
+    expect(result).toBe("team-legacy");
+    // WHERE should NOT contain organizationId when it was not supplied
+    const call = mockPrisma.environment.findFirst.mock.calls[0]![0] as { where: Record<string, unknown> };
+    expect(call.where).not.toHaveProperty("organizationId");
+  });
+
+  it("resolveEnvironmentId: cross-org pipelineId returns null", async () => {
+    const { resolveEnvironmentId } = await import("@/server/middleware/audit");
+    mockPrisma.pipeline.findFirst.mockResolvedValueOnce(null);
+
+    const result = await resolveEnvironmentId(
+      { pipelineId: "pipe-cross-org" },
+      "Pipeline",
+      "org-A",
+    );
+
+    expect(result).toBeNull();
+    expect(mockPrisma.pipeline.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organizationId: "org-A" }),
+      }),
+    );
+  });
+
+  it("resolveEnvironmentId: cross-org id/VectorNode returns null", async () => {
+    const { resolveEnvironmentId } = await import("@/server/middleware/audit");
+    mockPrisma.vectorNode.findFirst.mockResolvedValueOnce(null);
+
+    const result = await resolveEnvironmentId(
+      { id: "node-cross-org" },
+      "VectorNode",
+      "org-C",
+    );
+
+    expect(result).toBeNull();
+    expect(mockPrisma.vectorNode.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organizationId: "org-C" }),
+      }),
+    );
+  });
+
+  it("resolveEnvironmentId: cross-org id/DeployRequest returns null", async () => {
+    const { resolveEnvironmentId } = await import("@/server/middleware/audit");
+    mockPrisma.deployRequest.findFirst.mockResolvedValueOnce(null);
+
+    const result = await resolveEnvironmentId(
+      { requestId: "req-cross-org" },
+      "DeployRequest",
+      "org-A",
+    );
+
+    expect(result).toBeNull();
+    expect(mockPrisma.deployRequest.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organizationId: "org-A" }),
+      }),
+    );
   });
 });

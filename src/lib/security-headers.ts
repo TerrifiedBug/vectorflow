@@ -4,17 +4,24 @@
  * Two CSP profiles:
  *
  *   - **OSS / self-hosted (default).** `'unsafe-eval'` + `'unsafe-inline'`
- *     are tolerated in `script-src` because the OSS bundle still relies
- *     on inline boot scripts injected by Next's pages router and
- *     dev-time tooling. Self-hosted deployments are single-tenant; the
- *     blast radius of an XSS bug is contained to one tenant.
+ *     are tolerated in `script-src` and `style-src` because the OSS bundle
+ *     still relies on inline boot scripts injected by Next's pages router,
+ *     dev-time tooling, and React element-level `style=""` attributes that
+ *     have no equivalent Tailwind class. Self-hosted deployments are
+ *     single-tenant; the blast radius of an XSS bug is contained to one
+ *     tenant.
  *
-  *   - **Strict CSP with per-request nonces.** `'unsafe-eval'` and
-  *     `'unsafe-inline'` are removed; every inline `<script>` MUST carry
-  *     a `nonce="<value>"` attribute that matches the nonce in the CSP.
-  *     When enabled via configuration, the request/response middleware
-  *     issues a fresh 16-byte nonce per request and integrates it with
-  *     the CSP header for multi-tenant isolation.
+ *   - **Strict CSP with per-request nonces.** `'unsafe-eval'` and
+ *     `'unsafe-inline'` are removed from `script-src`; every inline
+ *     `<script>` MUST carry a `nonce="<value>"` attribute that matches the
+ *     nonce in the CSP.  `style-src` likewise drops `'unsafe-inline'` in
+ *     favour of `'nonce-<value>'` so Next.js-emitted `<style>` blocks are
+ *     permitted.  React element-level `style=""` attributes produced during
+ *     SSR are re-applied by React's hydration pass via `element.style`
+ *     DOM-property assignments, which are not subject to `style-src`
+ *     restrictions.  When enabled via configuration, the request/response
+ *     middleware issues a fresh 16-byte nonce per request and integrates it
+ *     with the CSP header for multi-tenant isolation.
  */
 
 export interface SecurityHeader {
@@ -35,7 +42,8 @@ export function isStrictMultiTenantMode(): boolean {
  *
  *   - No nonce supplied -> OSS-default (permissive) CSP.
  *   - Nonce supplied   -> strict-multi-tenant CSP (drops `unsafe-eval` /
- *     `unsafe-inline` from `script-src`; allows the supplied nonce).
+ *     `unsafe-inline` from `script-src` and `style-src`; allows the
+ *     supplied nonce).
  *
  * The caller is responsible for picking the right call — the
  * middleware uses the nonce form; `next.config.ts`'s static `headers()`
@@ -47,13 +55,15 @@ export function contentSecurityPolicy(nonce?: string): string {
     ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`
     : "script-src 'self' 'unsafe-eval' 'unsafe-inline'";
 
-  // style-src: inline styles are widely used (Tailwind JIT classes,
-  // shadcn component props). Strict multi-tenant mode keeps 'unsafe-inline'
-  // on style-src for now — style-based XSS is materially harder to
-  // weaponise than script-based XSS, and removing it would require a
-  // full Tailwind v4 cutover with hashed style chunks. Tracked as a
-  // follow-up; do NOT widen script-src to compensate.
-  const styleSrc = "style-src 'self' 'unsafe-inline'";
+  // style-src: 'unsafe-inline' on the OSS/no-nonce path (Tailwind JIT
+  // and React element-level style="" attributes).  In strict multi-tenant
+  // mode the same per-request nonce used for script-src is also supplied
+  // here so Next.js-emitted <style> blocks are allowed.  React's SSR
+  // element-level style="" attributes are re-applied via DOM property
+  // assignments during client hydration, which bypass style-src entirely.
+  const styleSrc = nonce
+    ? `style-src 'self' 'nonce-${nonce}'`
+    : "style-src 'self' 'unsafe-inline'";
 
   return [
     "default-src 'self'",

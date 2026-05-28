@@ -14,8 +14,6 @@ describe("contentSecurityPolicy", () => {
   it("Strict multi-tenant mode (with nonce): removes 'unsafe-eval' and 'unsafe-inline' from script-src", () => {
     const csp = contentSecurityPolicy("abc123nonceXYZ==");
     expect(csp).not.toMatch(/'unsafe-eval'/);
-    // unsafe-inline should be gone from script-src but stays on
-    // style-src (documented carve-out for Tailwind / shadcn).
     const scriptDirective = csp
       .split(";")
       .map((d) => d.trim())
@@ -23,6 +21,27 @@ describe("contentSecurityPolicy", () => {
     expect(scriptDirective).toBeDefined();
     expect(scriptDirective).not.toMatch(/'unsafe-inline'/);
     expect(scriptDirective).not.toMatch(/'unsafe-eval'/);
+  });
+
+  it("Strict multi-tenant mode (with nonce): removes 'unsafe-inline' from style-src and uses nonce", () => {
+    const csp = contentSecurityPolicy("abc123nonceXYZ==");
+    const styleDirective = csp
+      .split(";")
+      .map((d) => d.trim())
+      .find((d) => d.startsWith("style-src"));
+    expect(styleDirective).toBeDefined();
+    expect(styleDirective).not.toMatch(/'unsafe-inline'/);
+    expect(styleDirective).toMatch(/'nonce-abc123nonceXYZ=='/);
+  });
+
+  it("OSS default: keeps 'unsafe-inline' in style-src", () => {
+    const csp = contentSecurityPolicy();
+    const styleDirective = csp
+      .split(";")
+      .map((d) => d.trim())
+      .find((d) => d.startsWith("style-src"));
+    expect(styleDirective).toBeDefined();
+    expect(styleDirective).toMatch(/'unsafe-inline'/);
   });
 
   it("Strict multi-tenant mode: embeds the supplied nonce + 'strict-dynamic'", () => {

@@ -519,4 +519,76 @@ export const pipelineCrudRouter = router({
 
       return { created };
     }),
+
+  /**
+   * Pause a deployed pipeline. The agent will stop running it within
+   * one poll cycle (the config endpoint excludes pausedAt != null rows).
+   * ADMIN+ only — this is a destructive operational action.
+   */
+  pausePipeline: protectedProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        reason: z.string().min(3).max(1000),
+      }),
+    )
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("pipeline.paused", "Pipeline"))
+    .mutation(async ({ input, ctx }) => {
+      const existing = await prisma.pipeline.findUnique({
+        where: { id: input.id },
+        select: { id: true, isDraft: true, deployedAt: true, pausedAt: true },
+      });
+      if (!existing) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
+      }
+      if (existing.isDraft || !existing.deployedAt) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Only deployed pipelines can be paused",
+        });
+      }
+      if (existing.pausedAt) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Pipeline is already paused" });
+      }
+      return prisma.pipeline.update({
+        where: { id: input.id },
+        data: {
+          pausedAt: new Date(),
+          pausedBy: ctx.session.user?.id ?? null,
+          updatedById: ctx.session.user?.id,
+        },
+        select: { id: true, pausedAt: true, pausedBy: true },
+      });
+    }),
+
+  /**
+   * Resume a previously paused pipeline. The agent will pick it up on
+   * the next poll cycle.
+   */
+  resumePipeline: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("pipeline.resumed", "Pipeline"))
+    .mutation(async ({ input, ctx }) => {
+      const existing = await prisma.pipeline.findUnique({
+        where: { id: input.id },
+        select: { id: true, pausedAt: true },
+      });
+      if (!existing) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
+      }
+      if (!existing.pausedAt) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Pipeline is not paused" });
+      }
+      return prisma.pipeline.update({
+        where: { id: input.id },
+        data: {
+          pausedAt: null,
+          pausedBy: null,
+          updatedById: ctx.session.user?.id,
+        },
+        select: { id: true, pausedAt: true },
+      });
+    }),
 });

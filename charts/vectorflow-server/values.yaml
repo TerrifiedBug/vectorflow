@@ -90,6 +90,12 @@ topologySpreadConstraints: []
 #   topologyKey: kubernetes.io/hostname
 #   whenUnsatisfiable: DoNotSchedule
 
+# -- PriorityClass for the server pods.
+# Recommended: "high-priority" (PriorityClass value: 1000) to prevent
+# the server from being preempted by lower-priority batch workloads.
+# Leave empty ("") to omit the field and use the namespace default.
+priorityClassName: ""
+
 # ------------------------------------------------------------------
 # Application configuration
 # ------------------------------------------------------------------
@@ -201,3 +207,25 @@ redis:
       requests:
         cpu: 50m
         memory: 64Mi
+
+# ------------------------------------------------------------------
+# NetworkPolicy
+# Requires a CNI that enforces NetworkPolicy (Calico, Cilium). The default
+# CNIs shipped with many managed Kubernetes clusters (flannel, kubenet, VPC-CNI
+# without Calico) silently ignore NetworkPolicy objects — enabling this without
+# a policy-enforcing CNI provides no security isolation.
+# ------------------------------------------------------------------
+networkPolicy:
+  enabled: false
+
+# ------------------------------------------------------------------
+# Grafana dashboard provisioning
+# Requires the Grafana kube-prometheus-stack (or standalone Grafana)
+# with sidecar.dashboards.enabled=true. When enabled, this chart
+# creates a ConfigMap labelled grafana_dashboard="1" that the Grafana
+# sidecar picks up and auto-provisions.
+# Source JSON: monitoring/grafana/vectorflow-overview.json
+# ------------------------------------------------------------------
+grafana:
+  dashboards:
+    enabled: false
