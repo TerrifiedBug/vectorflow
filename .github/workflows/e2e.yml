@@ -1,6 +1,17 @@
 name: E2E Tests
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "agent/**"
+      - "prisma/**"
+      - "e2e/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "playwright.config.ts"
+      - ".github/workflows/e2e.yml"
   push:
     tags: ["v*"]
   schedule:
@@ -8,8 +19,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: e2e-${{ github.ref }}
-  cancel-in-progress: true
+  group: e2e-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || 'push' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   e2e:

@@ -89,6 +89,12 @@ jobs:
         working-directory: agent
         run: go mod verify
 
+      - name: Test Go agent
+        # The agent is half the product; its 100+ tests previously ran only via
+        # an honor-system PR-template checkbox. Gate every PR/push on them.
+        working-directory: agent
+        run: go test -race ./...
+
       - name: Lint
         # `--cache --cache-location` lets ESLint skip files whose
         # contents + config haven't changed since the cached run.
@@ -234,6 +240,22 @@ jobs:
           cosign sign --yes \
             ghcr.io/terrifiedbug/vectorflow-server@${{ steps.build.outputs.digest }}
 
+      - name: Generate image SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: ghcr.io/terrifiedbug/vectorflow-server@${{ steps.build.outputs.digest }}
+          format: cyclonedx-json
+          output-file: server-image.sbom.cdx.json
+          upload-artifact: false
+
+      - name: Attest SBOM
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign attest --yes --type cyclonedx \
+            --predicate server-image.sbom.cdx.json \
+            ghcr.io/terrifiedbug/vectorflow-server@${{ steps.build.outputs.digest }}
+
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v1
         with:
@@ -315,6 +337,22 @@ jobs:
           COSIGN_EXPERIMENTAL: "1"
         run: |
           cosign sign --yes \
+            ghcr.io/terrifiedbug/vectorflow-agent@${{ steps.build.outputs.digest }}
+
+      - name: Generate image SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: ghcr.io/terrifiedbug/vectorflow-agent@${{ steps.build.outputs.digest }}
+          format: cyclonedx-json
+          output-file: agent-image.sbom.cdx.json
+          upload-artifact: false
+
+      - name: Attest SBOM
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign attest --yes --type cyclonedx \
+            --predicate agent-image.sbom.cdx.json \
             ghcr.io/terrifiedbug/vectorflow-agent@${{ steps.build.outputs.digest }}
 
       - name: Attest build provenance
@@ -402,6 +440,14 @@ jobs:
       - name: Generate checksums
         run: sha256sum vf-agent-linux-* > checksums.txt
 
+      - name: Generate source SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+          upload-artifact: false
+
       - name: Package release assets
         run: |
           mkdir -p release-assets
@@ -418,6 +464,8 @@ jobs:
             --app-version "${GITHUB_REF_NAME}"
           tar -czf "release-assets/vectorflow-compose-${GITHUB_REF_NAME}.tar.gz" docker/server docker/agent
           tar -czf "release-assets/vectorflow-dr-${GITHUB_REF_NAME}.tar.gz" scripts/dr-verify.sh docs/e2e-release-gate.md
+          # Attach the CycloneDX SBOM to the release.
+          cp sbom.cdx.json "release-assets/vectorflow-sbom-${GITHUB_REF_NAME}.cdx.json"
           sha256sum release-assets/* >> checksums.txt
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

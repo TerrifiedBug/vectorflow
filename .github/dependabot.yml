@@ -8,3 +8,34 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: gomod
+    directory: /agent
+    schedule:
+      interval: weekly
+    groups:
+      gomod:
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker
+    directories:
+      - /docker/server
+      - /agent
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        patterns:
+          - "*"
