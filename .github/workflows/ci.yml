@@ -94,7 +94,7 @@ jobs:
         # contents + config haven't changed since the cached run.
         # Cache is restored above; on a hit the lint step drops from
         # ~65s to ~15-20s for typical PR-sized diffs.
-        run: pnpm lint -- --cache --cache-location node_modules/.cache/eslint/
+        run: pnpm exec eslint --cache --cache-location node_modules/.cache/eslint/
 
       - name: Type check
         # `--incremental` is already set in tsconfig; this step only
