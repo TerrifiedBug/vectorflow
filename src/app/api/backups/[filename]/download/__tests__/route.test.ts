@@ -41,9 +41,12 @@ describe("GET /api/backups/[filename]/download", () => {
   });
 
   it("returns 410 with a storage removal message for orphaned backup records", async () => {
-    prismaMock.backupRecord.findFirst
-      .mockResolvedValueOnce(null) // no success record
-      .mockResolvedValueOnce({ id: "backup-1" } as never); // orphaned record found
+    prismaMock.backupRecord.findFirst.mockResolvedValueOnce({
+      id: "backup-1",
+      organizationId: "default",
+      storageLocation: null,
+      status: "orphaned",
+    } as never);
 
     const response = await GET(new Request("http://localhost"), {
       params: Promise.resolve({ filename: "vectorflow-orphaned.dump" }),
@@ -53,16 +56,10 @@ describe("GET /api/backups/[filename]/download", () => {
     await expect(response.json()).resolves.toEqual({
       error: "This backup's file has been removed from storage. The record is marked as orphaned.",
     });
-    expect(prismaMock.backupRecord.findFirst).toHaveBeenNthCalledWith(2, {
-      where: { filename: "vectorflow-orphaned.dump", status: "orphaned" },
-      select: { id: true },
-    });
   });
 
   it("returns 404 for unknown missing backup files", async () => {
-    prismaMock.backupRecord.findFirst
-      .mockResolvedValueOnce(null) // no success record
-      .mockResolvedValueOnce(null); // no orphaned record
+    prismaMock.backupRecord.findFirst.mockResolvedValueOnce(null);
 
     const response = await GET(new Request("http://localhost"), {
       params: Promise.resolve({ filename: "unknown.dump" }),
@@ -72,11 +69,33 @@ describe("GET /api/backups/[filename]/download", () => {
     await expect(response.json()).resolves.toEqual({ error: "Backup not found" });
   });
 
+  it("returns 403 when the caller is not an admin of the backup's organisation", async () => {
+    // Backup belongs to org "tenant-b"; caller is not a member there.
+    prismaMock.backupRecord.findFirst.mockResolvedValueOnce({
+      id: "backup-b",
+      organizationId: "tenant-b",
+      storageLocation: "/backups/tenant-b.dump",
+      status: "success",
+    } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null as never);
+
+    const response = await GET(new Request("http://localhost"), {
+      params: Promise.resolve({ filename: "tenant-b.dump" }),
+    });
+
+    expect(response.status).toBe(403);
+    // Must not touch the filesystem or mutate the record on a denied request.
+    expect(fsMock.access).not.toHaveBeenCalled();
+    expect(prismaMock.backupRecord.update).not.toHaveBeenCalled();
+  });
+
   it("marks success record as orphaned and returns 410 when local file is missing", async () => {
     // Record exists with status=success but file is gone
     prismaMock.backupRecord.findFirst.mockResolvedValueOnce({
       id: "backup-success",
+      organizationId: "default",
       storageLocation: "/backups/vectorflow-gone.dump",
+      status: "success",
     } as never);
     prismaMock.backupRecord.update.mockResolvedValue({} as never);
 
