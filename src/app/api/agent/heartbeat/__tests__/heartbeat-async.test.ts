@@ -22,6 +22,7 @@ vi.mock("@/server/services/alert-evaluator", () => ({
 
 vi.mock("@/server/services/fleet-health", () => ({
   checkNodeHealth: vi.fn().mockResolvedValue(undefined),
+  checkOrgNodeHealth: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/server/services/metrics-ingest", () => ({
@@ -65,7 +66,7 @@ vi.mock("@/app/api/_lib/ip-rate-limit", () => ({
 import { prisma } from "@/lib/prisma";
 import { authenticateAgentInOrg } from "@/server/services/agent-auth";
 import { evaluateAlerts } from "@/server/services/alert-evaluator";
-import { checkNodeHealth } from "@/server/services/fleet-health";
+import { checkOrgNodeHealth } from "@/server/services/fleet-health";
 import { batchUpsertPipelineStatuses } from "@/server/services/heartbeat-batch";
 import { ingestMetrics } from "@/server/services/metrics-ingest";
 import { ingestLogs } from "@/server/services/log-ingest";
@@ -74,7 +75,7 @@ import { POST } from "../route";
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const authenticateAgentInOrgMock = authenticateAgentInOrg as ReturnType<typeof vi.fn>;
 const evaluateAlertsMock = evaluateAlerts as ReturnType<typeof vi.fn>;
-const checkNodeHealthMock = checkNodeHealth as ReturnType<typeof vi.fn>;
+const checkNodeHealthMock = checkOrgNodeHealth as ReturnType<typeof vi.fn>;
 const batchUpsertMock = batchUpsertPipelineStatuses as ReturnType<typeof vi.fn>;
 const ingestMetricsMock = ingestMetrics as ReturnType<typeof vi.fn>;
 const ingestLogsMock = ingestLogs as ReturnType<typeof vi.fn>;
