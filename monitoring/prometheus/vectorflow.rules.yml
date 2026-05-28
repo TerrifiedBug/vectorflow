@@ -55,19 +55,6 @@ groups:
 
   # ---------------------------------------------------------------------------
   # Alerting rules — actionable conditions operators should know about.
-  #
-  # Per-tenant rules carry two routing labels (§O2):
-  #   organization_id — opaque UUID from the originating metric label.
-  #                     Used by Alertmanager to route per-customer.
-  #   org_tier        — "enterprise" | "pro" | "free" from the metric label.
-  #                     Determines whether to page PagerDuty or dashboard-only.
-  #
-  # IMPORTANT: annotations MUST NOT include customer-readable data such as
-  # org name, domain, email, or IP addresses. organization_id is opaque
-  # and safe; pipeline_id and node_id are internal infra identifiers.
-  #
-  # System-wide alerts (e.g. MetricStoreMemoryHigh) do NOT carry these
-  # labels because they have no org context.
   # ---------------------------------------------------------------------------
   - name: vectorflow.alerts
     rules:
@@ -77,8 +64,6 @@ groups:
         for: 2m
         labels:
           severity: critical
-          organization_id: '{{ $labels.organization_id }}'
-          org_tier: '{{ $labels.org_tier }}'
         annotations:
           summary: "VectorFlow node {{ $labels.node_name }} is UNREACHABLE"
           description: >
@@ -92,8 +77,6 @@ groups:
         for: 5m
         labels:
           severity: warning
-          organization_id: '{{ $labels.organization_id }}'
-          org_tier: '{{ $labels.org_tier }}'
         annotations:
           summary: "VectorFlow node {{ $labels.node_name }} is DEGRADED"
           description: >
@@ -107,8 +90,6 @@ groups:
         for: 1m
         labels:
           severity: critical
-          organization_id: '{{ $labels.organization_id }}'
-          org_tier: '{{ $labels.org_tier }}'
         annotations:
           summary: "VectorFlow pipeline {{ $labels.pipeline_id }} CRASHED on {{ $labels.node_id }}"
           description: >
@@ -122,8 +103,6 @@ groups:
         for: 5m
         labels:
           severity: warning
-          organization_id: '{{ $labels.organization_id }}'
-          org_tier: '{{ $labels.org_tier }}'
         annotations:
           summary: "High error rate on pipeline {{ $labels.pipeline_id }}"
           description: >
@@ -137,8 +116,6 @@ groups:
         for: 10m
         labels:
           severity: warning
-          organization_id: '{{ $labels.organization_id }}'
-          org_tier: '{{ $labels.org_tier }}'
         annotations:
           summary: "Error ratio > 5% on pipeline {{ $labels.pipeline_id }}"
           description: >
@@ -151,8 +128,6 @@ groups:
         for: 5m
         labels:
           severity: warning
-          organization_id: '{{ $labels.organization_id }}'
-          org_tier: '{{ $labels.org_tier }}'
         annotations:
           summary: "High latency on pipeline {{ $labels.pipeline_id }}"
           description: >
@@ -166,8 +141,6 @@ groups:
         for: 10m
         labels:
           severity: warning
-          organization_id: '{{ $labels.organization_id }}'
-          org_tier: '{{ $labels.org_tier }}'
         annotations:
           summary: "Pipeline {{ $labels.pipeline_id }} utilization > 90%"
           description: >
@@ -176,7 +149,6 @@ groups:
             or reducing ingest volume.
 
       # MetricStore memory pressure (> 100 MiB)
-      # NOTE: system-wide metric — no organization_id label (not per-tenant).
       - alert: VectorFlowMetricStoreMemoryHigh
         expr: vectorflow_metric_store_memory_bytes > 104857600
         for: 5m

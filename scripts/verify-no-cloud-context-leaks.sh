@@ -32,11 +32,33 @@ cd "$REPO_ROOT"
 # Patterns that must NOT appear in OSS source files.
 # Keep this list in sync with the header comment above.
 PATTERNS=(
+  # Plan-section annotations referencing closed-source planning docs.
   '§16b'
   'cloud-[0-9]+'
+
+  # Stripe billing env-var references.
   'STRIPE_'
+
+  # Path / import references into the closed-source repo.
   'vectorflow-cloud/'
   '@cloud/'
+
+  # SaaS tier vocabulary — OSS has no plan tiers (Free/Pro/Enterprise
+  # is the cloud business model). Catch label additions, alert routing,
+  # and tier-keyed configuration before they ship in OSS.
+  'org_tier'
+  'pagerduty-enterprise'
+  '"enterprise"\s*\|\s*"pro"\s*\|\s*"free"'
+
+  # PagerDuty receiver / Alertmanager routing for paid customers —
+  # OSS users self-route alerts via their own Alertmanager config.
+  'pagerduty_url'
+  'pagerduty_configs'
+
+  # Cloud-only product surfaces. OSS users do not have an operator
+  # console route group; the phrase in OSS source code (not docs)
+  # indicates a closed-surface leak.
+  '\(cloud-operator\)'
 )
 
 GREP_OPTS=(
@@ -48,6 +70,10 @@ GREP_OPTS=(
   --exclude-dir=.next
   --exclude-dir=docs
   --exclude="$SCRIPT_NAME"
+  # The workflow that invokes this script (.github/workflows/...yml)
+  # documents the pattern names in its own docstring — exclude to avoid
+  # a self-referential false positive.
+  --exclude=verify-no-cloud-context-leaks.yml
 )
 
 # Combine all patterns into a single alternation for one grep pass
