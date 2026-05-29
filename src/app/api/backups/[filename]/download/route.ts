@@ -4,7 +4,6 @@ import { auth } from "@/auth";
 import { isOrgWideAdmin } from "@/lib/org-admin";
 import { prisma } from "@/lib/prisma";
 import { getOrgSettings } from "@/lib/org-settings";
-import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 import { parseS3StorageLocation } from "@/server/services/storage-backend";
 import fs from "fs/promises";
 import path from "path";
@@ -39,11 +38,6 @@ export async function GET(
     return jsonError("Unauthorized", 401);
   }
 
-  const isOrgAdmin = await isOrgWideAdmin(session.user.id);
-  if (!isOrgAdmin) {
-    return jsonError("Forbidden", 403);
-  }
-
   const { filename } = await params;
   let safe: string;
   try {
@@ -56,30 +50,36 @@ export async function GET(
     return jsonError("Invalid backup filename", 400);
   }
 
-  // Look up BackupRecord to determine storage location
+  // Look up the BackupRecord (any non-failed status) so we can authorize the
+  // caller against the OWNING organisation. Previously this route authorized
+  // against DEFAULT_ORG_ID and looked the record up by filename alone, so an
+  // admin of one tenant could download (and orphan) another tenant's backup
+  // and read it through the wrong org's S3 credentials.
   const record = await prisma.backupRecord.findFirst({
-    where: { filename: safe, status: { in: ["success", "pre_restore"] } },
-    select: { id: true, storageLocation: true },
+    where: { filename: safe, status: { in: ["success", "pre_restore", "orphaned"] } },
+    select: { id: true, organizationId: true, storageLocation: true, status: true },
   });
   if (!record) {
-    // Check if an orphaned record exists to give a better error
-    const orphaned = await prisma.backupRecord.findFirst({
-      where: { filename: safe, status: "orphaned" },
-      select: { id: true },
-    });
-    if (orphaned) {
-      return jsonError(
-        "This backup's file has been removed from storage. The record is marked as orphaned.",
-        410
-      );
-    }
     return jsonError("Backup not found", 404);
+  }
+
+  // Authorize against the backup's own organisation — not a fixed default org.
+  const isOrgAdmin = await isOrgWideAdmin(session.user.id, record.organizationId);
+  if (!isOrgAdmin) {
+    return jsonError("Forbidden", 403);
+  }
+
+  if (record.status === "orphaned") {
+    return jsonError(
+      "This backup's file has been removed from storage. The record is marked as orphaned.",
+      410
+    );
   }
 
   if (record.storageLocation?.startsWith("s3://")) {
     // Serve from S3 using direct streaming (no temp file)
     const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
-    const settings = await getOrgSettings(DEFAULT_ORG_ID);
+    const settings = await getOrgSettings(record.organizationId);
 
     if (!settings.s3Bucket || !settings.s3AccessKeyId || !settings.s3SecretAccessKey) {
       return jsonError("S3 not configured", 500);

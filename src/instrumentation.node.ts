@@ -198,6 +198,15 @@ export async function registerNodeInstrumentation() {
     }
 
     try {
+      const { initFleetHealthScheduler } = await import(
+        "@/server/services/fleet-health-scheduler"
+      );
+      initFleetHealthScheduler();
+    } catch (error) {
+      errorLog("instrumentation", "Failed to initialize fleet health scheduler", error);
+    }
+
+    try {
       const { initGitSyncRetryService } = await import(
         "@/server/services/git-sync-retry"
       );

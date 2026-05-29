@@ -1,20 +1,23 @@
 # VectorFlow — core stack
 # PostgreSQL + VectorFlow server + vf-agent on a single host.
 #
-# Quick start:
-#   cp .env.example .env   # fill in secrets
-#   docker compose up -d
+# Quick start (two phases — the agent needs a token that only exists after first login):
 #
-# On first boot the server runs database migrations automatically.
-# After setup, generate an enrollment token in the VectorFlow UI
-# (Settings → Agent Tokens → Generate Enrollment Token), add it to .env
-# as VF_ENROLLMENT_TOKEN, then restart the agent:
-#   docker compose up -d vf-agent
+#   1. Start Postgres + server:
+#        cp .env.example .env   # set POSTGRES_PASSWORD and NEXTAUTH_SECRET
+#        docker compose up -d
+#      The server runs database migrations automatically on first boot.
+#
+#   2. Enroll the agent: open the UI, finish setup, then generate a token in
+#      Settings → Agent Tokens → Generate Enrollment Token. Put it in .env as
+#      VF_ENROLLMENT_TOKEN and start the agent (it lives behind the "agent" profile
+#      so step 1 does not require the token):
+#        docker compose --profile agent up -d
 #
 # Required env vars:
 #   POSTGRES_PASSWORD   — PostgreSQL password
 #   NEXTAUTH_SECRET     — NextAuth session signing secret
-#   VF_ENROLLMENT_TOKEN — Agent enrollment token (from VectorFlow UI)
+#   VF_ENROLLMENT_TOKEN — Agent enrollment token (phase 2 only; from VectorFlow UI)
 #
 # Optional:
 #   VF_VERSION   — Image tag (default: latest)
@@ -73,12 +76,21 @@ services:
   vf-agent:
     container_name: vectorflow-agent
     image: ghcr.io/terrifiedbug/vectorflow-agent:${VF_VERSION:-latest}
+    # Behind a profile so the default `docker compose up -d` starts only
+    # Postgres + server. The agent needs an enrollment token that can only be
+    # generated after first login; start it in phase 2 with `--profile agent`.
+    profiles: ["agent"]
     depends_on:
       vectorflow:
         condition: service_healthy
     environment:
       VF_URL: http://vectorflow:3000
-      VF_TOKEN: ${VF_ENROLLMENT_TOKEN:?VF_ENROLLMENT_TOKEN must be set to an enrollment token from the VectorFlow UI}
+      # Empty default (not `:?`) so `docker compose up -d` never aborts before
+      # the token exists. The agent requires VF_TOKEN only for first enrollment;
+      # afterwards the node token is persisted in the agent-data volume and this
+      # can be left unset. If unset AND not yet enrolled, the agent exits with a
+      # clear "VF_TOKEN is not set — cannot enroll" error.
+      VF_TOKEN: ${VF_ENROLLMENT_TOKEN:-}
     volumes:
       - agent-data:/var/lib/vf-agent
       - vector-data:/var/lib/vector

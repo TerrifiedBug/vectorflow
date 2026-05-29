@@ -87,6 +87,27 @@ function validateEnv(): Env {
       `Environment validation failed:\n${formatted}\n\nCheck your .env file or environment variables.`
     );
   }
+  // Loud boot warning: without a dedicated encryption root, the master key is
+  // derived from NEXTAUTH_SECRET. That couples secret-at-rest to the session
+  // signing secret — rotating NEXTAUTH_SECRET would make every encrypted secret
+  // (DB creds, OIDC/git/AI keys, TOTP) permanently undecryptable. Surface this
+  // explicitly instead of failing silently; we don't hard-fail because existing
+  // deployments already hold data encrypted under the NEXTAUTH_SECRET-derived
+  // key (set VF_ENCRYPTION_KEY_V2 to that value to migrate without data loss).
+  if (
+    !isBuildPhase &&
+    result.data.NODE_ENV === "production" &&
+    !result.data.VF_ENCRYPTION_KEY_V2
+  ) {
+    // Boot-time warning emitted before the structured logger is wired.
+    console.warn(
+      "[vectorflow] VF_ENCRYPTION_KEY_V2 is not set: the encryption-at-rest master key " +
+        "is derived from NEXTAUTH_SECRET. Do NOT rotate NEXTAUTH_SECRET or all encrypted " +
+        "secrets become unrecoverable. Set VF_ENCRYPTION_KEY_V2 to a dedicated 32+ char " +
+        "secret (use your current NEXTAUTH_SECRET value to migrate existing data without loss)."
+    );
+  }
+
   return {
     ...result.data,
     VF_LOG_LEVEL: result.data.VF_LOG_LEVEL ?? "info",

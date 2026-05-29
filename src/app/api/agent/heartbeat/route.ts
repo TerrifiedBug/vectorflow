@@ -3,7 +3,7 @@ import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgentInOrg } from "@/server/services/agent-auth";
 import { resolveAgentOrg } from "@/server/services/agent-org-binding";
-import { checkNodeHealth } from "@/server/services/fleet-health";
+import { checkOrgNodeHealth } from "@/server/services/fleet-health";
 import { ingestMetrics } from "@/server/services/metrics-ingest";
 import { ingestLogs } from "@/server/services/log-ingest";
 import { cleanupOldMetrics } from "@/server/services/metrics-cleanup";
@@ -467,8 +467,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check fleet-wide node health
-    checkNodeHealth().catch((err) =>
+    // Opportunistically sweep this org's fleet on heartbeat for fast detection.
+    // A leader-gated scheduler also sweeps every org periodically so a fully
+    // silent fleet (no heartbeats arriving) is still marked unreachable.
+    checkOrgNodeHealth(orgResult.orgId).catch((err) =>
       errorLog("agent-heartbeat", "Node health check error", err),
     );
 

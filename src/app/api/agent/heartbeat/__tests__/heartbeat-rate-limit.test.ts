@@ -66,6 +66,7 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/server/services/fleet-health", () => ({
   checkNodeHealth: vi.fn(() => Promise.resolve()),
+  checkOrgNodeHealth: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("@/server/services/metrics-ingest", () => ({

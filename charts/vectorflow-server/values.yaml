@@ -145,11 +145,18 @@ secret:
 # ------------------------------------------------------------------
 # Persistence
 # ------------------------------------------------------------------
+# NOTE on multi-replica (replicaCount > 1 or autoscaling): the volumes below are
+# shared across pods. A ReadWriteOnce claim only attaches to one node, so extra
+# replicas get stuck in FailedAttachVolume. For HA either set accessMode to
+# ReadWriteMany (with an RWX storageClass), supply a ReadWriteMany existingClaim,
+# or disable these volumes (keep encryption keys in env via VF_ENCRYPTION_KEY_V2
+# and use S3 for backups). The chart fails the render if you scale out on RWO.
 persistence:
   # -- Persistent volume for /app/.vectorflow (encryption keys, uploads).
   data:
     enabled: true
     storageClass: ""
+    # ReadWriteOnce is fine for a single replica. Use ReadWriteMany for HA.
     accessMode: ReadWriteOnce
     size: 1Gi
     existingClaim: ""
@@ -157,6 +164,8 @@ persistence:
   backups:
     enabled: false
     storageClass: ""
+    # ReadWriteOnce is fine for a single replica. Use ReadWriteMany for HA,
+    # or prefer S3 backup storage when running multiple replicas.
     accessMode: ReadWriteOnce
     size: 10Gi
     existingClaim: ""

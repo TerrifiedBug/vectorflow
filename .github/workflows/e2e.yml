@@ -1,6 +1,17 @@
 name: E2E Tests
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "agent/**"
+      - "prisma/**"
+      - "e2e/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "playwright.config.ts"
+      - ".github/workflows/e2e.yml"
   push:
     tags: ["v*"]
   schedule:
@@ -8,13 +19,15 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: e2e-${{ github.ref }}
-  cancel-in-progress: true
+  group: e2e-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || 'push' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Build + Playwright install + full suite exceeds 15m on PR runs; the
+    # previous limit cancelled the job mid-run. 30m gives headroom.
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -36,6 +49,10 @@ jobs:
       NEXTAUTH_SECRET: e2e-test-secret-key-at-least-32-chars
       NEXTAUTH_URL: http://localhost:3000
       ENCRYPTION_KEY: e2e-test-encryption-key-32chars!!
+      # `next build` runs in production mode and the WebAuthn provider hard-fails
+      # at module load if VF_WEBAUTHN_RP_ID is unset. The e2e server runs on
+      # localhost, so localhost is the correct RP id (origins derive to :3000).
+      VF_WEBAUTHN_RP_ID: localhost
 
     steps:
       - uses: actions/checkout@v6

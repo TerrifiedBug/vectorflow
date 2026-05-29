@@ -121,3 +121,25 @@ Redis URL env var — only injected when Redis is configured.
       optional: true
 {{- end }}
 {{- end }}
+
+{{/*
+Guard against scaling out onto a ReadWriteOnce volume. The server mounts shared
+PVCs for /app/.vectorflow and /backups; with more than one replica a single
+ReadWriteOnce claim leaves every pod past the first stuck in FailedAttachVolume.
+Fail loudly at render time instead. existingClaim is exempt (the operator may
+supply a ReadWriteMany volume the chart can't introspect).
+*/}}
+{{- define "vectorflow-server.validatePersistence" -}}
+{{- $replicas := .Values.replicaCount | int -}}
+{{- if .Values.autoscaling.enabled -}}
+{{- $replicas = max $replicas (.Values.autoscaling.maxReplicas | int) -}}
+{{- end -}}
+{{- if gt $replicas 1 -}}
+{{- if and .Values.persistence.data.enabled (not .Values.persistence.data.existingClaim) (eq .Values.persistence.data.accessMode "ReadWriteOnce") -}}
+{{- fail "replicaCount/maxReplicas > 1 with persistence.data.accessMode=ReadWriteOnce: a shared RWO volume cannot attach to multiple pods. Set persistence.data.accessMode=ReadWriteMany (with a RWX storageClass), supply a RWX persistence.data.existingClaim, or disable persistence.data and keep encryption keys in env." -}}
+{{- end -}}
+{{- if and .Values.persistence.backups.enabled (not .Values.persistence.backups.existingClaim) (eq .Values.persistence.backups.accessMode "ReadWriteOnce") -}}
+{{- fail "replicaCount/maxReplicas > 1 with persistence.backups.accessMode=ReadWriteOnce: a shared RWO volume cannot attach to multiple pods. Set persistence.backups.accessMode=ReadWriteMany, supply a RWX existingClaim, or disable persistence.backups and use S3 backup storage." -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
