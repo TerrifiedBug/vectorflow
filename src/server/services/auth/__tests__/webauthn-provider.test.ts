@@ -139,6 +139,29 @@ describe("module-init production guard", () => {
     }
   });
 
+  it("does not throw during next build even without VF_WEBAUTHN_RP_ID", async () => {
+    // Regression: `next build` statically imports server modules under
+    // NODE_ENV=production but without runtime env, so VF_WEBAUTHN_RP_ID is
+    // legitimately absent. The guard must defer to runtime startup instead of
+    // breaking page-data collection (CI failure on /api/auth/oidc-status).
+    const savedRpId = process.env.VF_WEBAUTHN_RP_ID;
+    try {
+      delete process.env.VF_WEBAUTHN_RP_ID;
+      vi.stubEnv("NODE_ENV", "production");
+      vi.stubEnv("NEXT_PHASE", "phase-production-build");
+      vi.resetModules();
+      await expect(import("../webauthn-provider")).resolves.toBeDefined();
+    } finally {
+      vi.unstubAllEnvs();
+      if (savedRpId !== undefined) {
+        process.env.VF_WEBAUTHN_RP_ID = savedRpId;
+      } else {
+        delete process.env.VF_WEBAUTHN_RP_ID;
+      }
+      vi.resetModules();
+    }
+  });
+
   it("does not throw when NODE_ENV=production and VF_WEBAUTHN_RP_ID is set", async () => {
     const savedRpId = process.env.VF_WEBAUTHN_RP_ID;
     try {

@@ -31,6 +31,7 @@ import Credentials from "next-auth/providers/credentials";
 import type { AuthenticationResponseJSON } from "@simplewebauthn/server";
 
 import { prisma } from "@/lib/prisma";
+import { isBuildPhase } from "@/lib/env";
 import { finishAuthentication } from "@/server/services/webauthn";
 import { writeAuditLog } from "@/server/services/audit";
 import { warnLog, infoLog } from "@/lib/logger";
@@ -43,7 +44,16 @@ const RP_NAME = process.env.VF_WEBAUTHN_RP_NAME ?? "VectorFlow";
 // on startup, not on the first user sign-in attempt. An attacker who reaches
 // the server via the loopback (side-channel or mis-routed traffic) could
 // otherwise complete a WebAuthn ceremony bound to localhost.
-if (process.env.NODE_ENV === "production" && !process.env.VF_WEBAUTHN_RP_ID) {
+//
+// Exempt the `next build` phase: server modules are statically imported for
+// page-data collection under NODE_ENV=production but without runtime env, so
+// VF_WEBAUTHN_RP_ID is legitimately absent then. The guard still fires at real
+// runtime startup. Mirrors the VF_ENCRYPTION_KEY_V2 build-phase skip in env.ts.
+if (
+  !isBuildPhase &&
+  process.env.NODE_ENV === "production" &&
+  !process.env.VF_WEBAUTHN_RP_ID
+) {
   throw new Error(
     "[webauthn-provider] VF_WEBAUTHN_RP_ID must be set in production. " +
       "WebAuthn refuses the localhost fallback to prevent credential acceptance " +
