@@ -1,13 +1,18 @@
 package agent
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/TerrifiedBug/vectorflow/agent/internal/client"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/config"
 )
 
 func TestUpdateHTTPClientHasExplicitTimeouts(t *testing.T) {
@@ -31,6 +36,71 @@ func TestUpdateHTTPClientHasExplicitTimeouts(t *testing.T) {
 	if transport.Proxy == nil {
 		t.Fatal("expected proxy support via environment variables")
 	}
+}
+
+func TestHandleSelfUpdateRejectsNonHTTPS(t *testing.T) {
+	a := &Agent{cfg: &config.Config{}}
+	err := a.handleSelfUpdate(&client.PendingAction{
+		Type:          "self_update",
+		TargetVersion: "v1.2.3",
+		DownloadURL:   "http://example.com/vf-agent",
+		Checksum:      "sha256:deadbeef",
+	})
+	if err == nil {
+		t.Fatal("expected self-update over http:// to be refused")
+	}
+	if !strings.Contains(err.Error(), "https is required") {
+		t.Fatalf("expected an https-required error, got: %v", err)
+	}
+}
+
+func TestVerifyUpdateSignature(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubB64 := base64.StdEncoding.EncodeToString(pub)
+	msg := []byte("the binary digest")
+	sigB64 := base64.StdEncoding.EncodeToString(ed25519.Sign(priv, msg))
+
+	t.Run("valid signature verifies", func(t *testing.T) {
+		if err := verifyUpdateSignature(pubB64, sigB64, msg); err != nil {
+			t.Fatalf("expected valid signature to verify, got: %v", err)
+		}
+	})
+
+	t.Run("wrong message is rejected", func(t *testing.T) {
+		if err := verifyUpdateSignature(pubB64, sigB64, []byte("tampered")); err == nil {
+			t.Fatal("expected signature over a different message to be rejected")
+		}
+	})
+
+	t.Run("missing signature is rejected when key is set", func(t *testing.T) {
+		if err := verifyUpdateSignature(pubB64, "", msg); err == nil {
+			t.Fatal("expected a missing signature to be rejected")
+		}
+	})
+
+	t.Run("malformed public key is rejected", func(t *testing.T) {
+		if err := verifyUpdateSignature("not-base64!!", sigB64, msg); err == nil {
+			t.Fatal("expected a malformed public key to be rejected")
+		}
+	})
+
+	t.Run("wrong-size key is rejected", func(t *testing.T) {
+		short := base64.StdEncoding.EncodeToString([]byte("too-short"))
+		if err := verifyUpdateSignature(short, sigB64, msg); err == nil {
+			t.Fatal("expected a wrong-size key to be rejected")
+		}
+	})
+
+	t.Run("signature from a different key is rejected", func(t *testing.T) {
+		_, priv2, _ := ed25519.GenerateKey(rand.Reader)
+		otherSig := base64.StdEncoding.EncodeToString(ed25519.Sign(priv2, msg))
+		if err := verifyUpdateSignature(pubB64, otherSig, msg); err == nil {
+			t.Fatal("expected a signature from a different key to be rejected")
+		}
+	})
 }
 
 func TestHandlePendingActionRetriesFailedUpdateAfterBackoff(t *testing.T) {
