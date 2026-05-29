@@ -25,7 +25,9 @@ concurrency:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Build + Playwright install + full suite exceeds 15m on PR runs; the
+    # previous limit cancelled the job mid-run. 30m gives headroom.
+    timeout-minutes: 30
 
     services:
       postgres:
