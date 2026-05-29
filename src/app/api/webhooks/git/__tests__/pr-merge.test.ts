@@ -12,6 +12,21 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/server/services/crypto", () => ({
   decrypt: vi.fn((val: string) => `decrypted-${val}`),
   encrypt: vi.fn(),
+  ENCRYPTION_DOMAINS: {
+    SECRETS: "secrets",
+    CERTIFICATES: "certificates",
+    TOTP: "totp",
+    SESSIONS: "sessions",
+    GENERIC: "generic",
+  },
+}));
+
+// The route reads gitWebhookSecret / gitToken via the v3-or-v2 wrapper so
+// migrated (v3) secrets are readable. Mock it to mirror the legacy decrypt
+// shape used by the HMAC fixtures (`decrypted-<ciphertext>`).
+vi.mock("@/server/services/crypto-v3-callsite", () => ({
+  decryptForOrgOrFallback: vi.fn(async (ct: string) => `decrypted-${ct}`),
+  loadOrgDataKeyCiphertext: vi.fn(async () => null),
 }));
 
 vi.mock("@/server/services/config-crypto", () => ({
@@ -60,6 +75,7 @@ function makeEnvironment(overrides: Record<string, unknown> = {}) {
   return {
     id: "env-1",
     name: "Production",
+    organizationId: "org-1",
     teamId: "team-1",
     gitOpsMode: "promotion",
     gitWebhookSecret: ENCRYPTED_SECRET,

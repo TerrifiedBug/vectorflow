@@ -100,6 +100,49 @@ describe("sanitizeSentryEvent — headers", () => {
   });
 });
 
+describe("sanitizeSentryEvent — cookies", () => {
+  it("redacts every value in event.request.cookies (session + csrf)", () => {
+    const e = blankEvent();
+    // Sentry's requestDataIntegration parses the Cookie header into this
+    // separate field even after the Cookie header itself is dropped.
+    e.request = {
+      cookies: {
+        "__Host-vf-session": "eyJ-live-session-jwe",
+        "authjs.csrf-token": "csrf-value",
+        "non-secret": "whatever",
+      },
+    } as unknown as ErrorEvent["request"];
+    sanitizeSentryEvent(e);
+    const c = e.request!.cookies as Record<string, string>;
+    // No cookie value survives — names are kept for diagnostics.
+    expect(c["__Host-vf-session"]).toBe("[REDACTED]");
+    expect(c["authjs.csrf-token"]).toBe("[REDACTED]");
+    expect(c["non-secret"]).toBe("[REDACTED]");
+  });
+
+  it("leaves cookies untouched when not present", () => {
+    const e = blankEvent();
+    e.request = { url: "https://x.local/path" };
+    sanitizeSentryEvent(e);
+    expect(e.request.cookies).toBeUndefined();
+  });
+
+  it("redacts the session cookie even when the Cookie header is also dropped", () => {
+    const e = blankEvent();
+    e.request = {
+      headers: { cookie: "__Host-vf-session=eyJ-live" },
+      cookies: { "__Host-vf-session": "eyJ-live" },
+    } as unknown as ErrorEvent["request"];
+    sanitizeSentryEvent(e);
+    expect((e.request!.headers as Record<string, string>).cookie).toBe(
+      "[REDACTED]",
+    );
+    expect(
+      (e.request!.cookies as Record<string, string>)["__Host-vf-session"],
+    ).toBe("[REDACTED]");
+  });
+});
+
 describe("sanitizeSentryEvent — recursive value-key scrub", () => {
   it("redacts secret-shaped keys in event.extra", () => {
     const e = blankEvent();

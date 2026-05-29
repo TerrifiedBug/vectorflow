@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { importVectorConfig } from "@/lib/config-generator";
-import { decrypt, ENCRYPTION_DOMAINS } from "@/server/services/crypto";
+import { ENCRYPTION_DOMAINS } from "@/server/services/crypto";
 import {
   decryptForOrgOrFallback,
   loadOrgDataKeyCiphertext,
@@ -38,7 +38,27 @@ export async function POST(req: NextRequest) {
     const provider = getProvider(env);
     if (!provider) continue;
 
-    const webhookSecret = decrypt(env.gitWebhookSecret);
+    // gitWebhookSecret may be stored as v2 (legacy) or v3 (after the
+    // envelope-encryption migration). Use the v3-or-v2 wrapper with the
+    // same AAD context the migration writes (domain GENERIC, rowId = env id).
+    // A single undecryptable row must not abort verification for the rest.
+    let webhookSecret: string;
+    try {
+      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(
+        prisma,
+        env.organizationId,
+      );
+      webhookSecret = await decryptForOrgOrFallback(env.gitWebhookSecret, {
+        orgId: env.organizationId,
+        dataKeyCiphertext,
+        domain: ENCRYPTION_DOMAINS.GENERIC,
+        rowTable: "Environment",
+        rowId: env.id,
+      });
+    } catch (err) {
+      errorLog("gitops", "Failed to decrypt gitWebhookSecret", err);
+      continue;
+    }
     if (provider.verifyWebhookSignature(req.headers, body, webhookSecret)) {
       matchedEnv = env;
       break;

@@ -226,6 +226,7 @@ export async function buildOrgDataExport(
       "gitToken",
       "gitWebhookSecret",
       "enrollmentTokenHash",
+      "enrollmentTokenId",
       "secretBackendConfig",
     ]),
   );

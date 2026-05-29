@@ -86,11 +86,16 @@ async function main(): Promise<void> {
   }
 
   // ─── Secret.encryptedValue (per env, env.organizationId is the tenancy) ──
+  // AAD/domain MUST match every runtime reader (secret-resolver.ts,
+  // secret.ts, agent/config/route.ts): domain GENERIC, rowId
+  // `${environmentId}:${name}`. Using anything else makes the migrated v3
+  // ciphertext undecryptable at runtime.
   log("\n── Secret.encryptedValue ──");
   const secrets = await prisma.secret.findMany({
     select: {
       id: true,
       name: true,
+      environmentId: true,
       encryptedValue: true,
       environment: { select: { organizationId: true } },
     },
@@ -108,9 +113,9 @@ async function main(): Promise<void> {
       {
         orgId,
         dataKeyCiphertext: d,
-        domain: ENCRYPTION_DOMAINS.SECRETS,
+        domain: ENCRYPTION_DOMAINS.GENERIC,
         rowTable: "Secret",
-        rowId: row.id,
+        rowId: `${row.environmentId}:${row.name}`,
       },
       (v) => prisma.secret.update({ where: { id: row.id }, data: { encryptedValue: v } }),
       counters,
@@ -201,27 +206,33 @@ async function main(): Promise<void> {
       log(`  [error] Environment(${row.name}) — no DEK for org ${row.organizationId}`);
       continue;
     }
+    // gitToken AAD/domain MUST match the runtime readers (environment.ts,
+    // git-sync.ts, gitops-promotion.ts, webhooks/git/route.ts) and
+    // rotate-org-dek.ts: domain GENERIC, rowId = the bare environment id.
     await migrateOne(
       row.gitToken,
       {
         orgId: row.organizationId,
         dataKeyCiphertext: d,
-        domain: ENCRYPTION_DOMAINS.SECRETS,
+        domain: ENCRYPTION_DOMAINS.GENERIC,
         rowTable: "Environment",
-        rowId: `${row.id}.gitToken`,
+        rowId: row.id,
       },
       (v) => prisma.environment.update({ where: { id: row.id }, data: { gitToken: v } }),
       counters,
       `Environment(${row.name}).gitToken`,
     );
+    // gitWebhookSecret AAD/domain MUST match its runtime reader
+    // (webhooks/git/route.ts decryptForOrgOrFallback): domain GENERIC,
+    // rowId = the bare environment id.
     await migrateOne(
       row.gitWebhookSecret,
       {
         orgId: row.organizationId,
         dataKeyCiphertext: d,
-        domain: ENCRYPTION_DOMAINS.SECRETS,
+        domain: ENCRYPTION_DOMAINS.GENERIC,
         rowTable: "Environment",
-        rowId: `${row.id}.gitWebhookSecret`,
+        rowId: row.id,
       },
       (v) =>
         prisma.environment.update({

@@ -134,6 +134,9 @@ describe("happy path", () => {
     const secret1Pt = "super-secret-value-1";
     const secret2Pt = "super-secret-value-2";
 
+    // Runtime Secret AAD binds rowId to `${environmentId}:${name}`, NOT the
+    // cuid — encrypt the fixtures the same way the app does so the rotation's
+    // Phase-A decrypt matches.
     const makeCtx = (rowId: string) => ({
       orgId: ORG_ID,
       dataKeyCiphertext: oldCt,
@@ -143,8 +146,8 @@ describe("happy path", () => {
     });
 
     const [secret1OldCt, secret2OldCt] = await Promise.all([
-      encryptForOrg(secret1Pt, makeCtx("sec-1")),
-      encryptForOrg(secret2Pt, makeCtx("sec-2")),
+      encryptForOrg(secret1Pt, makeCtx("env-1:DB_PASSWORD")),
+      encryptForOrg(secret2Pt, makeCtx("env-1:API_KEY")),
     ]);
 
     // Reset global cache so the service's decrypt calls go fresh.
@@ -156,8 +159,8 @@ describe("happy path", () => {
       dataKeyCiphertext: oldCt,
     } as never);
     prisma.secret.findMany.mockResolvedValue([
-      { id: "sec-1", encryptedValue: secret1OldCt },
-      { id: "sec-2", encryptedValue: secret2OldCt },
+      { id: "sec-1", environmentId: "env-1", name: "DB_PASSWORD", encryptedValue: secret1OldCt },
+      { id: "sec-2", environmentId: "env-1", name: "API_KEY", encryptedValue: secret2OldCt },
     ] as never);
     prisma.organizationSettings.findUnique.mockResolvedValue(null);
     prisma.environment.findMany.mockResolvedValue([]);
@@ -189,7 +192,8 @@ describe("happy path", () => {
     expect(newCt1).not.toBe(secret1OldCt);
     expect(newCt2).not.toBe(secret2OldCt);
 
-    // New ciphertexts must decrypt to the original plaintext under the new DEK.
+    // New ciphertexts must decrypt to the original plaintext under the new DEK,
+    // using the same `${environmentId}:${name}` AAD the runtime readers use.
     const newDekCt = result.newDataKeyCiphertext;
     await expect(
       decryptForOrg(newCt1!, {
@@ -197,7 +201,7 @@ describe("happy path", () => {
         dataKeyCiphertext: newDekCt,
         domain: ENCRYPTION_DOMAINS.GENERIC,
         rowTable: "Secret",
-        rowId: "sec-1",
+        rowId: "env-1:DB_PASSWORD",
       }),
     ).resolves.toBe(secret1Pt);
 
@@ -207,7 +211,7 @@ describe("happy path", () => {
         dataKeyCiphertext: newDekCt,
         domain: ENCRYPTION_DOMAINS.GENERIC,
         rowTable: "Secret",
-        rowId: "sec-2",
+        rowId: "env-1:API_KEY",
       }),
     ).resolves.toBe(secret2Pt);
   });
@@ -251,7 +255,7 @@ describe("happy path", () => {
     const [secCt, oidcCt, gitCt, aiCt, hookCt] = await Promise.all([
       encryptForOrg(plaintexts.sec, {
         orgId: ORG_ID, dataKeyCiphertext: oldCt, domain: ENCRYPTION_DOMAINS.GENERIC,
-        rowTable: "Secret", rowId: "s1",
+        rowTable: "Secret", rowId: "env-1:S1",
       }),
       encryptForOrg(plaintexts.oidc, {
         orgId: ORG_ID, dataKeyCiphertext: oldCt, domain: ENCRYPTION_DOMAINS.GENERIC,
@@ -278,7 +282,9 @@ describe("happy path", () => {
     prisma.organization.findUnique.mockResolvedValue({
       id: ORG_ID, dataKeyCiphertext: oldCt,
     } as never);
-    prisma.secret.findMany.mockResolvedValue([{ id: "s1", encryptedValue: secCt }] as never);
+    prisma.secret.findMany.mockResolvedValue([
+      { id: "s1", environmentId: "env-1", name: "S1", encryptedValue: secCt },
+    ] as never);
     prisma.organizationSettings.findUnique.mockResolvedValue({
       id: "os1", oidcClientSecret: oidcCt,
     } as never);
@@ -327,7 +333,7 @@ describe("happy path", () => {
     await expect(
       decryptForOrg(newSecCt, {
         orgId: ORG_ID, dataKeyCiphertext: newDekCt, domain: ENCRYPTION_DOMAINS.GENERIC,
-        rowTable: "Secret", rowId: "s1",
+        rowTable: "Secret", rowId: "env-1:S1",
       }),
     ).resolves.toBe(plaintexts.sec);
   });
