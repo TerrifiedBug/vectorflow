@@ -40,47 +40,56 @@ export async function correlateEvent(
 ): Promise<AlertCorrelationGroup> {
   const windowStart = new Date(event.firedAt.getTime() - CORRELATION_WINDOW_MS);
 
-  // Look for an open group in the same environment within the time window
-  const existingGroup = await prisma.alertCorrelationGroup.findFirst({
-    where: {
-      environmentId: rule.environmentId,
-      status: "firing",
-      openedAt: { gte: windowStart },
-    },
-    orderBy: { openedAt: "desc" },
-  });
+  // The find-or-create must be atomic per environment, otherwise two events for
+  // the same environment processed concurrently both see "no open group" and
+  // each create one, splitting a single incident into two. We serialize per
+  // environment with a Postgres advisory transaction lock (mirroring the
+  // audit-chain lock in audit.ts); the lock auto-releases on commit/abort.
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`correlation:${rule.environmentId}`}))`;
 
-  if (existingGroup) {
-    // Add this event to the existing group
-    await prisma.alertCorrelationGroup.update({
-      where: { id: existingGroup.id },
-      data: { eventCount: { increment: 1 } },
+    // Look for an open group in the same environment within the time window
+    const existingGroup = await tx.alertCorrelationGroup.findFirst({
+      where: {
+        environmentId: rule.environmentId,
+        status: "firing",
+        openedAt: { gte: windowStart },
+      },
+      orderBy: { openedAt: "desc" },
     });
 
-    await prisma.alertEvent.update({
+    if (existingGroup) {
+      // Add this event to the existing group
+      await tx.alertCorrelationGroup.update({
+        where: { id: existingGroup.id },
+        data: { eventCount: { increment: 1 } },
+      });
+
+      await tx.alertEvent.update({
+        where: { id: event.id },
+        data: { correlationGroupId: existingGroup.id },
+      });
+
+      return { ...existingGroup, eventCount: existingGroup.eventCount + 1 };
+    }
+
+    // Create a new correlation group with this event as the initial root cause
+    const newGroup = await tx.alertCorrelationGroup.create({
+      data: {
+        environmentId: rule.environmentId,
+        status: "firing",
+        rootCauseEventId: event.id,
+        eventCount: 1,
+      },
+    });
+
+    await tx.alertEvent.update({
       where: { id: event.id },
-      data: { correlationGroupId: existingGroup.id },
+      data: { correlationGroupId: newGroup.id },
     });
 
-    return { ...existingGroup, eventCount: existingGroup.eventCount + 1 };
-  }
-
-  // Create a new correlation group with this event as the initial root cause
-  const newGroup = await prisma.alertCorrelationGroup.create({
-    data: {
-      environmentId: rule.environmentId,
-      status: "firing",
-      rootCauseEventId: event.id,
-      eventCount: 1,
-    },
+    return newGroup;
   });
-
-  await prisma.alertEvent.update({
-    where: { id: event.id },
-    data: { correlationGroupId: newGroup.id },
-  });
-
-  return newGroup;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,44 +107,51 @@ export async function correlateAnomalyEvent(
 ): Promise<AlertCorrelationGroup> {
   const windowStart = new Date(event.detectedAt.getTime() - CORRELATION_WINDOW_MS);
 
-  const existingGroup = await prisma.alertCorrelationGroup.findFirst({
-    where: {
-      environmentId: event.environmentId,
-      status: "firing",
-      openedAt: { gte: windowStart },
-    },
-    orderBy: { openedAt: "desc" },
-  });
+  // Serialize find-or-create per environment with an advisory transaction lock
+  // so concurrent detections cannot create duplicate correlation groups for the
+  // same window (see correlateEvent above).
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`correlation:${event.environmentId}`}))`;
 
-  if (existingGroup) {
-    await prisma.alertCorrelationGroup.update({
-      where: { id: existingGroup.id },
-      data: { eventCount: { increment: 1 } },
+    const existingGroup = await tx.alertCorrelationGroup.findFirst({
+      where: {
+        environmentId: event.environmentId,
+        status: "firing",
+        openedAt: { gte: windowStart },
+      },
+      orderBy: { openedAt: "desc" },
     });
 
-    await prisma.anomalyEvent.update({
+    if (existingGroup) {
+      await tx.alertCorrelationGroup.update({
+        where: { id: existingGroup.id },
+        data: { eventCount: { increment: 1 } },
+      });
+
+      await tx.anomalyEvent.update({
+        where: { id: event.id },
+        data: { correlationGroupId: existingGroup.id },
+      });
+
+      return { ...existingGroup, eventCount: existingGroup.eventCount + 1 };
+    }
+
+    const newGroup = await tx.alertCorrelationGroup.create({
+      data: {
+        environmentId: event.environmentId,
+        status: "firing",
+        rootCauseEventId: null,
+        eventCount: 1,
+      },
+    });
+
+    await tx.anomalyEvent.update({
       where: { id: event.id },
-      data: { correlationGroupId: existingGroup.id },
+      data: { correlationGroupId: newGroup.id },
     });
 
-    return { ...existingGroup, eventCount: existingGroup.eventCount + 1 };
-  }
-
-  const newGroup = await prisma.alertCorrelationGroup.create({
-    data: {
-      environmentId: event.environmentId,
-      status: "firing",
-      rootCauseEventId: null,
-      eventCount: 1,
-    },
+    return newGroup;
   });
-
-  await prisma.anomalyEvent.update({
-    where: { id: event.id },
-    data: { correlationGroupId: newGroup.id },
-  });
-
-  return newGroup;
 }
 
 // ---------------------------------------------------------------------------

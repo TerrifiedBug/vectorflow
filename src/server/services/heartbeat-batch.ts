@@ -32,7 +32,18 @@ export async function batchUpsertPipelineStatuses(
 ): Promise<void> {
   if (pipelines.length === 0) return;
 
-  const values = pipelines.map((ps) => Prisma.sql`(
+  // De-duplicate by pipelineId, keeping the last entry per id. Postgres rejects
+  // an INSERT...ON CONFLICT DO UPDATE that targets the same conflict key
+  // ("nodeId","pipelineId") twice ("cannot affect row a second time"), so a
+  // heartbeat carrying two entries for one pipeline would abort the whole
+  // statement and 500 the hot, untrusted heartbeat path.
+  const dedupedByPipelineId = new Map<string, PipelineStatusInput>();
+  for (const ps of pipelines) {
+    dedupedByPipelineId.set(ps.pipelineId, ps);
+  }
+  const dedupedPipelines = Array.from(dedupedByPipelineId.values());
+
+  const values = dedupedPipelines.map((ps) => Prisma.sql`(
     ${crypto.randomUUID()},
     ${nodeId},
     ${ps.pipelineId},

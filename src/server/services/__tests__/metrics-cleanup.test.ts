@@ -56,9 +56,10 @@ describe("cleanupOldMetrics", () => {
       // Expect 4 drop_chunks calls: PipelineMetric, NodeMetric (7d), PipelineLog, NodeStatusEvent (3d/7d)
       expect(mockQueryRaw).toHaveBeenCalledTimes(4);
 
-      // Verify PipelineMetric drop_chunks
+      // Verify PipelineMetric drop_chunks (SQL text + bound day-count arg)
       expect(mockQueryRaw).toHaveBeenCalledWith(
-        expect.stringContaining("drop_chunks")
+        expect.stringContaining("drop_chunks"),
+        expect.any(Number),
       );
 
       expect(result).toEqual({ method: "drop_chunks", tablesProcessed: 4 });
@@ -75,24 +76,50 @@ describe("cleanupOldMetrics", () => {
 
       await cleanupOldMetrics();
 
-      // Check that the interval values match settings
+      // The retention window is bound as a parameter (make_interval(days => $1))
+      // rather than interpolated into the SQL text — verify the table name is
+      // interpolated and the day count is passed as the bound argument.
       const calls = mockQueryRaw.mock.calls;
 
       // PipelineMetric — 14 days
       expect(calls[0][0]).toContain("PipelineMetric");
-      expect(calls[0][0]).toContain("14 days");
+      expect(calls[0][0]).toContain("make_interval(days => $1)");
+      expect(calls[0][1]).toBe(14);
 
       // NodeMetric — 14 days
       expect(calls[1][0]).toContain("NodeMetric");
-      expect(calls[1][0]).toContain("14 days");
+      expect(calls[1][1]).toBe(14);
 
       // PipelineLog — 5 days
       expect(calls[2][0]).toContain("PipelineLog");
-      expect(calls[2][0]).toContain("5 days");
+      expect(calls[2][1]).toBe(5);
 
       // NodeStatusEvent — 14 days
       expect(calls[3][0]).toContain("NodeStatusEvent");
-      expect(calls[3][0]).toContain("14 days");
+      expect(calls[3][1]).toBe(14);
+    });
+
+    it("coerces a non-integer retention value to a safe integer (defense-in-depth)", async () => {
+      vi.mocked(prisma.organizationSettings.findUnique).mockResolvedValue(
+        mockOrgSettings({
+          // Simulate a value that escaped the Int guard — must be coerced.
+          metricsRetentionDays: 7.9 as unknown as number,
+          logsRetentionDays: 0 as unknown as number,
+        })
+      );
+      mockQueryRaw.mockResolvedValue([]);
+
+      await cleanupOldMetrics();
+
+      const calls = mockQueryRaw.mock.calls;
+      // 7.9 -> trunc 7; never interpolated, always a bound integer arg.
+      expect(calls[0][1]).toBe(7);
+      // 0 -> clamped to minimum 1.
+      expect(calls[2][1]).toBe(1);
+      // No call SQL text should contain a raw "days" literal interpolation.
+      for (const call of calls) {
+        expect(call[0]).not.toMatch(/INTERVAL '/);
+      }
     });
   });
 
@@ -128,8 +155,8 @@ describe("cleanupOldMetrics", () => {
       await cleanupOldMetrics();
 
       const calls = mockQueryRaw.mock.calls;
-      expect(calls[0][0]).toContain("7 days");
-      expect(calls[2][0]).toContain("3 days");
+      expect(calls[0][1]).toBe(7);
+      expect(calls[2][1]).toBe(3);
     });
   });
 });

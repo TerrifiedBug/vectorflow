@@ -6,6 +6,7 @@ import { isDevAuthBypassRequestAllowed } from "@/lib/dev-auth-bypass";
 import { expireLegacyAuthCookies } from "@/lib/strict-cookies";
 import {
   contentSecurityPolicy,
+  CSP_NONCE_HEADER,
   isStrictMultiTenantMode,
 } from "@/lib/security-headers";
 
@@ -34,7 +35,7 @@ import {
  * response header and this middleware will leave it in place.
  */
 
-const NONCE_HEADER = "x-vf-csp-nonce";
+const NONCE_HEADER = CSP_NONCE_HEADER;
 
 function generateNonce(): string {
   // 16 bytes = 128 bits of entropy; base64 fits in 24 chars sans padding.

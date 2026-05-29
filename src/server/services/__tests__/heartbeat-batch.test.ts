@@ -88,6 +88,32 @@ describe("batchUpsertPipelineStatuses", () => {
     expect(prismaMock.$executeRaw).toHaveBeenCalledOnce();
   });
 
+  // ── De-duplicates repeated pipelineId in one request (VF-22) ────────────
+
+  it("de-duplicates duplicate pipelineIds so ON CONFLICT cannot target a row twice", async () => {
+    // Two entries for the same pipelineId would make Postgres reject the whole
+    // INSERT...ON CONFLICT DO UPDATE ("cannot affect row a second time").
+    const pipelines = [
+      makePipeline({ pipelineId: "dup", status: "STARTING", version: 1 }),
+      makePipeline({ pipelineId: "dup", status: "RUNNING", version: 2 }),
+      makePipeline({ pipelineId: "other", status: "RUNNING", version: 1 }),
+    ];
+
+    await batchUpsertPipelineStatuses(NODE_ID, pipelines, NOW);
+
+    expect(prismaMock.$executeRaw).toHaveBeenCalledOnce();
+
+    const call = prismaMock.$executeRaw.mock.calls[0]!;
+    const innerSql = call[1] as { values: unknown[] };
+    // Only 2 distinct pipelineIds survive → 2 rows × 17 fields = 34 values.
+    expect(innerSql.values).toHaveLength(2 * 17);
+    // The last entry for the duplicated id wins (status RUNNING, version 2).
+    expect(innerSql.values).toContain("dup");
+    expect(innerSql.values).toContain(2);
+    // The superseded STARTING status must not be present.
+    expect(innerSql.values).not.toContain("STARTING");
+  });
+
   // ── SQL contains the ProcessStatus enum cast ────────────────────────────
 
   it("includes ProcessStatus cast in the generated SQL", async () => {

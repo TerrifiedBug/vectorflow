@@ -120,6 +120,13 @@ function makeAnomalyEvent(overrides: Partial<AnomalyEvent> = {}): AnomalyEvent {
 describe("correlateEvent", () => {
   beforeEach(() => {
     mockReset(prismaMock);
+    // correlateEvent now wraps its find-or-create in $transaction with an
+    // advisory lock (VF-39). Run the callback against the same mock so the
+    // tx.* calls resolve to the mocked client.
+    prismaMock.$transaction.mockImplementation((cb) =>
+      (cb as (tx: typeof prismaMock) => Promise<unknown>)(prismaMock),
+    );
+    prismaMock.$executeRaw.mockResolvedValue(0 as never);
   });
 
   it("creates a new correlation group when no open group exists within the window", async () => {
@@ -192,11 +199,38 @@ describe("correlateEvent", () => {
   it("uses the correct 5-minute correlation window", () => {
     expect(CORRELATION_WINDOW_MS).toBe(5 * 60 * 1000);
   });
+
+  it("serializes find-or-create with an advisory transaction lock (VF-39)", async () => {
+    const event = makeAlertEvent({ id: "evt-lock" });
+    const rule = makeAlertRule({ environmentId: "env-lock" });
+
+    prismaMock.alertCorrelationGroup.findFirst.mockResolvedValue(null);
+    prismaMock.alertCorrelationGroup.create.mockResolvedValue(
+      makeCorrelationGroup({ id: "group-lock" }),
+    );
+    prismaMock.alertEvent.update.mockResolvedValue({
+      ...event,
+      correlationGroupId: "group-lock",
+    });
+
+    await correlateEvent(event, rule);
+
+    // The whole read+create must run inside $transaction, guarded by a
+    // pg_advisory_xact_lock keyed on the environment.
+    expect(prismaMock.$transaction).toHaveBeenCalledOnce();
+    expect(prismaMock.$executeRaw).toHaveBeenCalled();
+  });
 });
 
 describe("correlateAnomalyEvent", () => {
   beforeEach(() => {
     mockReset(prismaMock);
+    // correlateAnomalyEvent now wraps its find-or-create in $transaction with
+    // an advisory lock (VF-39); run the callback against the same mock.
+    prismaMock.$transaction.mockImplementation((cb) =>
+      (cb as (tx: typeof prismaMock) => Promise<unknown>)(prismaMock),
+    );
+    prismaMock.$executeRaw.mockResolvedValue(0 as never);
   });
 
   it("assigns anomaly to an existing open correlation group within the 5-min window", async () => {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -155,6 +156,16 @@ func (a *Agent) Run() error {
 	a.immediateHeartbeatCh = make(chan struct{}, 1)
 	pushURL := a.poller.PushURL()
 	derivedURL := strings.TrimRight(a.cfg.URL, "/") + "/api/agent/push"
+	// The push URL is server-supplied (derived from request headers server-side)
+	// and we send the node Bearer token to it. Reject it unless it shares the
+	// scheme+host of the configured VF_URL, so a misconfigured proxy or spoofed
+	// header can't leak the token over cleartext or to an unintended host. On
+	// rejection fall back to the derived URL built from the trusted VF_URL.
+	if pushURL != "" && !pushURLMatchesConfigured(pushURL, a.cfg.URL) {
+		slog.Warn("push: server-supplied push URL rejected (scheme/host mismatch with VF_URL), using derived URL",
+			"pushUrl", pushURL, "vfUrl", a.cfg.URL)
+		pushURL = ""
+	}
 	if pushURL == "" {
 		pushURL = derivedURL
 		derivedURL = "" // no fallback needed when already using derived
@@ -503,6 +514,70 @@ func (a *Agent) runLogFlusher(ctx context.Context) {
 	}
 }
 
+// pushURLMatchesConfigured reports whether a server-supplied push URL is safe
+// to send the node Bearer token to. It must parse, use the same scheme as the
+// configured VF_URL (so https stays https — no cleartext downgrade), and target
+// the same host:port as VF_URL (so the token can't be redirected to an
+// unintended host).
+func pushURLMatchesConfigured(pushURL, configuredURL string) bool {
+	pu, err := url.Parse(pushURL)
+	if err != nil {
+		return false
+	}
+	cu, err := url.Parse(configuredURL)
+	if err != nil {
+		return false
+	}
+	if pu.Host == "" || !strings.EqualFold(pu.Host, cu.Host) {
+		return false
+	}
+	if !strings.EqualFold(pu.Scheme, cu.Scheme) {
+		return false
+	}
+	return true
+}
+
+const (
+	// maxComponentKeysPerSample caps how many `vector tap` subprocesses a single
+	// sample request may fan out to. The server is trusted, but the agent must
+	// defend its host against a buggy/compromised control plane sending a huge
+	// componentKeys array (the long-lived tap path already bounds itself — see
+	// tapper.maxConcurrentTaps).
+	maxComponentKeysPerSample = 16
+	// maxConcurrentSampleTaps bounds the total number of concurrent sample
+	// subprocesses across ALL in-flight sample requests (poll + SSE push).
+	maxConcurrentSampleTaps = 4
+	// maxSampleLimit clamps req.Limit before it is passed to the subprocess.
+	maxSampleLimit = 1000
+)
+
+// sampleTapSem is a global semaphore bounding concurrent `vector tap` sample
+// subprocesses. A buffered channel acts as a counting semaphore: a send
+// acquires a slot (blocking when full), a receive releases it.
+var sampleTapSem = make(chan struct{}, maxConcurrentSampleTaps)
+
+// clampSampleLimit clamps a server-supplied sample limit to a sane range so a
+// huge value can't make a single tap collect an unbounded number of events.
+func clampSampleLimit(limit int) int {
+	if limit <= 0 {
+		return 1
+	}
+	if limit > maxSampleLimit {
+		return maxSampleLimit
+	}
+	return limit
+}
+
+// boundComponentKeys caps the number of component keys processed per request.
+func boundComponentKeys(keys []string) []string {
+	if len(keys) > maxComponentKeysPerSample {
+		slog.Warn("sample request exceeds component-key cap, truncating",
+			"requested", len(keys), "cap", maxComponentKeysPerSample)
+		return keys[:maxComponentKeysPerSample]
+	}
+	return keys
+}
+
 // processSampleRequests launches goroutines to run vector tap for each sample request.
 // Results are appended to a.sampleResults under mutex and sent in the next heartbeat.
 func (a *Agent) processSampleRequests(requests []client.SampleRequestMsg) {
@@ -515,10 +590,12 @@ func (a *Agent) processSampleRequests(requests []client.SampleRequestMsg) {
 	}
 
 	for _, req := range requests {
+		componentKeys := boundComponentKeys(req.ComponentKeys)
+		limit := clampSampleLimit(req.Limit)
 		s, found := statusMap[req.PipelineID]
 		if !found || s.Status != "RUNNING" || s.APIPort == 0 {
 			// Pipeline not running or no API port — record error results immediately
-			for _, key := range req.ComponentKeys {
+			for _, key := range componentKeys {
 				errMsg := "pipeline not running"
 				if !found {
 					errMsg = "pipeline not found"
@@ -537,9 +614,12 @@ func (a *Agent) processSampleRequests(requests []client.SampleRequestMsg) {
 		}
 
 		// Launch sampling goroutines — one per component key so they don't block
-		// the main poll/heartbeat loop.
-		for _, key := range req.ComponentKeys {
+		// the main poll/heartbeat loop. A global semaphore (sampleTapSem) bounds
+		// the total number of concurrent `vector tap` subprocesses.
+		for _, key := range componentKeys {
 			go func(reqID string, apiPort int, componentKey string, limit int) {
+				sampleTapSem <- struct{}{}
+				defer func() { <-sampleTapSem }()
 				slog.Debug("sampling component", "requestId", reqID, "component", componentKey)
 				result := sampler.Sample(a.cfg.VectorBin, apiPort, componentKey, limit)
 				result.RequestID = reqID
@@ -564,7 +644,7 @@ func (a *Agent) processSampleRequests(requests []client.SampleRequestMsg) {
 				a.mu.Unlock()
 
 				slog.Debug("sample complete", "requestId", reqID, "component", componentKey, "events", len(result.Events))
-			}(req.RequestID, s.APIPort, key, req.Limit)
+			}(req.RequestID, s.APIPort, key, limit)
 		}
 	}
 }
@@ -666,6 +746,8 @@ func (a *Agent) processSampleRequestsAndSend(requests []client.SampleRequestMsg)
 	}
 
 	for _, req := range requests {
+		componentKeys := boundComponentKeys(req.ComponentKeys)
+		limit := clampSampleLimit(req.Limit)
 		s, found := statusMap[req.PipelineID]
 		if !found || s.Status != "RUNNING" || s.APIPort == 0 {
 			errMsg := "pipeline not running"
@@ -674,8 +756,8 @@ func (a *Agent) processSampleRequestsAndSend(requests []client.SampleRequestMsg)
 			} else if s.APIPort == 0 {
 				errMsg = "pipeline API port not available"
 			}
-			results := make([]client.SampleResultMsg, 0, len(req.ComponentKeys))
-			for _, key := range req.ComponentKeys {
+			results := make([]client.SampleResultMsg, 0, len(componentKeys))
+			for _, key := range componentKeys {
 				results = append(results, client.SampleResultMsg{
 					RequestID:    req.RequestID,
 					ComponentKey: key,
@@ -691,8 +773,10 @@ func (a *Agent) processSampleRequestsAndSend(requests []client.SampleRequestMsg)
 			continue
 		}
 
-		for _, key := range req.ComponentKeys {
+		for _, key := range componentKeys {
 			go func(reqID string, apiPort int, componentKey string, limit int) {
+				sampleTapSem <- struct{}{}
+				defer func() { <-sampleTapSem }()
 				result := sampler.Sample(a.cfg.VectorBin, apiPort, componentKey, limit)
 				result.RequestID = reqID
 
@@ -716,7 +800,7 @@ func (a *Agent) processSampleRequestsAndSend(requests []client.SampleRequestMsg)
 				} else {
 					slog.Debug("sample result sent via dedicated endpoint", "requestId", reqID, "component", componentKey)
 				}
-			}(req.RequestID, s.APIPort, key, req.Limit)
+			}(req.RequestID, s.APIPort, key, limit)
 		}
 	}
 }

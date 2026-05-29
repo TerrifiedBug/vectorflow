@@ -214,6 +214,14 @@ describe("evaluateAlerts", () => {
 
     expect(result).toEqual([]);
     expect(prismaMock.alertEvent.create).not.toHaveBeenCalled();
+
+    // VF-38: the open-event lookup must be scoped to this node so another
+    // node's open event cannot suppress this node's alert.
+    expect(prismaMock.alertEvent.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ nodeId: NODE_ID }),
+      }),
+    );
   });
 
   // ── Resolves when condition clears ──────────────────────────────────────
@@ -254,6 +262,14 @@ describe("evaluateAlerts", () => {
     expect(result[0]!.event.resolvedAt).toEqual(NOW);
     expect(prismaMock.alertEvent.update).toHaveBeenCalledOnce();
     expect(prismaMock.alertEvent.create).not.toHaveBeenCalled();
+
+    // VF-38: the resolve lookup must be scoped to this node so clearing the
+    // condition here cannot prematurely resolve another node's open event.
+    expect(prismaMock.alertEvent.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ nodeId: NODE_ID }),
+      }),
+    );
   });
 
   // ── Binary metric: node_unreachable ─────────────────────────────────────

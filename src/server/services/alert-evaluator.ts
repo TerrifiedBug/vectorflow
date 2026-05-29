@@ -324,10 +324,14 @@ export async function evaluateAlerts(
 
       // Only fire if the condition has persisted for the required duration
       if (elapsedSeconds >= (rule.durationSeconds ?? 0)) {
-        // Check if there is already an open (firing or acknowledged) event for this rule
+        // Check if there is already an open (firing or acknowledged) event for
+        // this rule ON THIS NODE. Scoping by nodeId (mirroring processRuleForNode)
+        // prevents one node's open event from suppressing another node's alert in
+        // shared-environment fleets.
         const existingEvent = await prisma.alertEvent.findFirst({
           where: {
             alertRuleId: rule.id,
+            nodeId,
             status: { in: ["firing", "acknowledged"] },
             resolvedAt: null,
           },
@@ -371,10 +375,13 @@ export async function evaluateAlerts(
       // Condition no longer met — clear duration tracking
       conditionFirstSeen.delete(`${rule.id}:${nodeId}`);
 
-      // Resolve any open firing or acknowledged event
+      // Resolve any open firing or acknowledged event FOR THIS NODE. Without the
+      // nodeId scope, this node clearing the condition could prematurely resolve
+      // another node's still-firing event for the same rule.
       const openEvent = await prisma.alertEvent.findFirst({
         where: {
           alertRuleId: rule.id,
+          nodeId,
           status: { in: ["firing", "acknowledged"] },
           resolvedAt: null,
         },

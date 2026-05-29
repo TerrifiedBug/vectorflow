@@ -30,6 +30,14 @@ export interface SecurityHeader {
 }
 
 /**
+ * Request/response header carrying the per-request CSP nonce in strict
+ * multi-tenant mode. Set by `src/proxy.ts` on the request so server
+ * components (via `headers()`) can read it and attach it to app-authored
+ * inline `<style>` / `<script>` content under the strict CSP.
+ */
+export const CSP_NONCE_HEADER = "x-vf-csp-nonce";
+
+/**
  * Whether the deployment runs in strict multi-tenant mode. Read at module
  * load — set the env var in the deployment image / CI matrix.
  */
@@ -51,6 +59,11 @@ export function isStrictMultiTenantMode(): boolean {
  * overrides per-request when strict multi-tenant mode is active.
  */
 export function contentSecurityPolicy(nonce?: string): string {
+  // VF-45 (Info, by-design): the no-nonce path KEEPS 'unsafe-eval' +
+  // 'unsafe-inline'. This is intentional for the single-tenant OSS bundle —
+  // Next's framework-injected inline boot scripts and React hydration require
+  // them, and removing them blindly breaks rendering. Strict isolation is opt-in
+  // via VF_STRICT_MULTI_TENANT (the nonce path below), not the default.
   const scriptSrc = nonce
     ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`
     : "script-src 'self' 'unsafe-eval' 'unsafe-inline'";

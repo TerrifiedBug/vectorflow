@@ -53,8 +53,15 @@ async function cleanupWithDropChunks(
   ];
 
   for (const { table, days } of tables) {
+    // Defense-in-depth: `days` is sourced from org settings (validated as a
+    // bounded Int today), but coerce to a safe integer and bind it as a
+    // parameter via make_interval() rather than interpolating it into the SQL
+    // text. The table name stays interpolated from the hardcoded allowlist
+    // above (it is never user-controlled).
+    const safeDays = Math.max(1, Math.trunc(Number(days)));
     await prisma.$queryRawUnsafe(
-      `SELECT drop_chunks('"${table}"', older_than => INTERVAL '${days} days')`
+      `SELECT drop_chunks('"${table}"', older_than => make_interval(days => $1))`,
+      safeDays,
     );
   }
 

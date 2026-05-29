@@ -95,6 +95,12 @@ function makeGroup(
 describe("Smart Alerting Integration", () => {
   beforeEach(() => {
     mockReset(prismaMock);
+    // correlateEvent now wraps find-or-create in $transaction with an advisory
+    // lock (VF-39); run the callback against the same mock.
+    prismaMock.$transaction.mockImplementation((cb) =>
+      (cb as (tx: typeof prismaMock) => Promise<unknown>)(prismaMock),
+    );
+    prismaMock.$executeRaw.mockResolvedValue(0 as never);
   });
 
   describe("deduplication + correlation flow", () => {
