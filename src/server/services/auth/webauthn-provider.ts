@@ -40,24 +40,45 @@ import { getRemainingLockSeconds } from "@/server/services/login-protection";
 const RP_ID = process.env.VF_WEBAUTHN_RP_ID ?? "localhost";
 const RP_NAME = process.env.VF_WEBAUTHN_RP_NAME ?? "VectorFlow";
 
-// Fail loudly at module load in production so a misconfigured stamp is caught
-// on startup, not on the first user sign-in attempt. An attacker who reaches
-// the server via the loopback (side-channel or mis-routed traffic) could
-// otherwise complete a WebAuthn ceremony bound to localhost.
-//
-// Exempt the `next build` phase: server modules are statically imported for
-// page-data collection under NODE_ENV=production but without runtime env, so
-// VF_WEBAUTHN_RP_ID is legitimately absent then. The guard still fires at real
-// runtime startup. Mirrors the VF_ENCRYPTION_KEY_V2 build-phase skip in env.ts.
-if (
-  !isBuildPhase &&
-  process.env.NODE_ENV === "production" &&
-  !process.env.VF_WEBAUTHN_RP_ID
-) {
-  throw new Error(
-    "[webauthn-provider] VF_WEBAUTHN_RP_ID must be set in production. " +
-      "WebAuthn refuses the localhost fallback to prevent credential acceptance " +
-      "via loopback access. Set VF_WEBAUTHN_RP_ID to your platform domain.",
+/**
+ * Whether WebAuthn / passkey login may run at all.
+ *
+ * In production we refuse the `localhost` RP_ID fallback: an attacker who
+ * reaches the server over the loopback (side-channel or mis-routed traffic)
+ * could otherwise complete a ceremony bound to localhost. A production
+ * deployment without an explicit `VF_WEBAUTHN_RP_ID` therefore has WebAuthn
+ * DISABLED.
+ *
+ * Crucially this is a *per-method* disable, NOT a module-load `throw`.
+ * `auth.ts` statically imports this module, so throwing here 500s the ENTIRE
+ * auth surface — password and OIDC included — turning a passkey-only
+ * misconfiguration into a full sign-in outage. Instead the provider stays
+ * importable, every ceremony is refused (`authorizeWebauthn` returns null),
+ * and the challenge endpoint refuses to issue options. Password + OIDC are
+ * unaffected.
+ *
+ * The `next build` phase always reports enabled: server modules are statically
+ * imported under NODE_ENV=production without runtime env during the build, and
+ * the real check runs per-request at runtime. Mirrors the VF_ENCRYPTION_KEY_V2
+ * build-phase skip in env.ts.
+ */
+export function isWebauthnEnabled(
+  processEnv: Record<string, string | undefined> = process.env,
+): boolean {
+  if (isBuildPhase) return true;
+  if (processEnv.NODE_ENV !== "production") return true;
+  return !!processEnv.VF_WEBAUTHN_RP_ID;
+}
+
+// Surface the disabled state once at module init so operators notice passkeys
+// are off — without breaking other sign-in methods.
+if (!isWebauthnEnabled()) {
+  warnLog(
+    "webauthn-provider",
+    "VF_WEBAUTHN_RP_ID is not set in production: WebAuthn/passkey login is " +
+      "DISABLED (refusing the localhost RP_ID fallback). Password and OIDC " +
+      "sign-in are unaffected. Set VF_WEBAUTHN_RP_ID to your platform domain " +
+      "to enable passkeys.",
   );
 }
 
@@ -85,9 +106,10 @@ function expectedOrigins(): string | string[] {
   if (rpId && rpId !== "localhost") {
     return [`https://${rpId}`, `http://${rpId}`];
   }
-  // Dev / OSS fallback: accept localhost on common dev ports.
-  // Production is guarded at module-init (throw above), so this branch
-  // is unreachable when NODE_ENV=production.
+  // Dev / OSS fallback: accept localhost on common dev ports. In production
+  // without an RP_ID, `authorizeWebauthn` refuses before reaching this code
+  // (isWebauthnEnabled() === false), so the localhost fallback is never used
+  // to verify a production ceremony.
   return [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -110,6 +132,15 @@ export async function authorizeWebauthn(
   image: string | null;
 } | null> {
   if (!credentials || typeof credentials.assertionJSON !== "string") {
+    return null;
+  }
+  // Production without an explicit RP_ID → WebAuthn is disabled. Refuse the
+  // ceremony rather than verify it against the localhost RP_ID fallback.
+  if (!isWebauthnEnabled()) {
+    warnLog(
+      "webauthn-provider",
+      "WebAuthn is disabled (VF_WEBAUTHN_RP_ID unset in production); denying login",
+    );
     return null;
   }
   // Honour operator SSO-only policy — disable all local auth paths including WebAuthn.
