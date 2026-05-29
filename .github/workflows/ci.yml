@@ -57,21 +57,22 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Incremental caches: ESLint, tsc, and the generated Prisma
-      # client. Keys composite the inputs each cache actually depends
-      # on (lockfile for deps, schema.prisma for the generated client,
-      # tsconfig for tsc) and the SHA forces every successful run to
-      # publish a fresh entry. Restore-keys progressively relax so a
-      # cache miss on the exact key still falls back to a recent one
-      # — first-load drops from ~60s to ~15s on typical PR commits
-      # that touch a handful of files.
-      - name: Restore incremental caches (eslint / tsc / prisma client)
+      # Incremental caches: ESLint and tsc only. We deliberately do NOT
+      # cache node_modules/.prisma or node_modules/@prisma/client — the
+      # generated client lives in src/generated/prisma and is regenerated
+      # by the postinstall `prisma generate` on every run. Restoring a
+      # stale cached @prisma/client over the fresh install corrupts
+      # node_modules whenever the Prisma version changes, because the
+      # restore-keys fallback matches across lockfile bumps. schema.prisma
+      # stays in the key so a schema change invalidates the tsc build-info
+      # cache (the regenerated client types feed tsc). The SHA suffix
+      # forces a fresh entry each run; restore-keys relax so a miss on the
+      # exact key still falls back to a recent one.
+      - name: Restore incremental caches (eslint / tsc)
         uses: actions/cache@v5
         with:
           path: |
             node_modules/.cache/eslint
-            node_modules/.prisma
-            node_modules/@prisma/client
             tsconfig.tsbuildinfo
             .tsbuildinfo
           key: ${{ runner.os }}-ci-incremental-${{ hashFiles('pnpm-lock.yaml', 'prisma/schema.prisma', 'tsconfig.json') }}-${{ github.sha }}
