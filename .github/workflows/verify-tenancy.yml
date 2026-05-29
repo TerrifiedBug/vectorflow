@@ -28,7 +28,8 @@ on:
       - "scripts/verify-rls.sh"
       - "scripts/verify-pgbouncer-leak.sh"
       - "scripts/verify-audit-chain.ts"
-      - "src/server/services/audit-export*"
+      - "src/server/services/**"
+      - "src/server/routers/**"
       - ".github/workflows/verify-tenancy.yml"
   pull_request:
     paths:
@@ -37,7 +38,8 @@ on:
       - "scripts/verify-rls.sh"
       - "scripts/verify-pgbouncer-leak.sh"
       - "scripts/verify-audit-chain.ts"
-      - "src/server/services/audit-export*"
+      - "src/server/services/**"
+      - "src/server/routers/**"
       - ".github/workflows/verify-tenancy.yml"
   workflow_dispatch:
 

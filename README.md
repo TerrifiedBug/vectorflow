@@ -94,6 +94,10 @@ docker compose up -d
 
 For high-availability, Helm charts, and production hardening, see the [deployment docs](https://vectorflow.sh/docs/operations/production-hardening). Alternative agent install methods (systemd, standalone binary, Kubernetes Helm) and all configuration options are covered in the [agent docs](https://vectorflow.sh/docs/reference/agent).
 
+## VectorFlow Cloud
+
+Prefer not to run the control plane yourself? **[VectorFlow Cloud](https://vectorflow.sh)** is a hosted, fully-managed version — same visual editor and fleet management, with the server, database, backups, and upgrades operated for you. Your agents still run on your own infrastructure and pull their config (no inbound ports). The self-hosted edition in this repo stays free and open source under AGPL-3.0.
+
 ## Contributing
 
 Contributions are welcome. See [SECURITY.md](SECURITY.md) for reporting security vulnerabilities.
