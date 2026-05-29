@@ -66,14 +66,46 @@ function isExemptPath(pathname: string): boolean {
 }
 
 /**
- * Session-cookie name resolution mirrors `authConfig.cookies` from
- * `src/auth.config.ts`. When strict-multi-tenant mode is on we use
- * the `__Host-vf-session` override; otherwise NextAuth's defaults
- * apply and `getToken()` will pick the right one (`__Secure-`
- * prefixed under HTTPS, bare otherwise).
+ * Default session-cookie base names Auth.js (@auth/core) uses when no
+ * explicit `cookies` override is configured. Over HTTPS it sets the
+ * `__Secure-` prefixed variant; over HTTP it sets the bare one. The
+ * encryption salt is derived from the same name.
  */
-function sessionCookieName(): string | undefined {
-  return authConfig.cookies?.sessionToken?.name;
+const AUTHJS_SESSION_COOKIE = "authjs.session-token";
+const AUTHJS_SESSION_COOKIE_SECURE = `__Secure-${AUTHJS_SESSION_COOKIE}`;
+
+/**
+ * Resolve the session-cookie name `getToken()` must read for THIS request.
+ *
+ * Strict-multi-tenant mode configures Auth.js with an explicit
+ * `__Host-vf-session` cookie (via `authConfig.cookies`); use that verbatim.
+ *
+ * Otherwise Auth.js named the cookie by the connection it served the
+ * sign-in over — `__Secure-authjs.session-token` for HTTPS, bare
+ * `authjs.session-token` for HTTP — and derived the JWE decryption salt
+ * from that same name. `getToken()` does NOT infer the `__Secure-` prefix:
+ * it defaults to `secureCookie: false` and therefore the BARE name, with
+ * no view of the request protocol. On any HTTPS deployment that mismatch
+ * means the gate never finds the cookie the browser is actually carrying,
+ * `getToken()` returns null, and every authenticated request is bounced
+ * back to /login — a redirect loop.
+ *
+ * We avoid protocol-sniffing (`nextUrl.protocol` is the internal http hop
+ * behind a TLS-terminating proxy) by reading the name that is actually
+ * present. Chunked cookies share the base name with a `.<n>` suffix, so a
+ * prefix match catches them too. Prefer the secure name when both exist.
+ * Returns `undefined` when no session cookie is present (unauthenticated).
+ */
+export function resolveSessionCookieName(
+  cookieNames: readonly string[],
+  override: string | undefined = authConfig.cookies?.sessionToken?.name,
+): string | undefined {
+  if (override) return override;
+  const present = (base: string) =>
+    cookieNames.some((n) => n === base || n.startsWith(`${base}.`));
+  if (present(AUTHJS_SESSION_COOKIE_SECURE)) return AUTHJS_SESSION_COOKIE_SECURE;
+  if (present(AUTHJS_SESSION_COOKIE)) return AUTHJS_SESSION_COOKIE;
+  return undefined;
 }
 
 async function hasValidSession(req: NextRequest): Promise<boolean> {
@@ -86,7 +118,9 @@ async function hasValidSession(req: NextRequest): Promise<boolean> {
     "";
   if (!secret) return false;
 
-  const cookieName = sessionCookieName();
+  const cookieName = resolveSessionCookieName(
+    req.cookies.getAll().map((c) => c.name),
+  );
   try {
     const token = await getToken({
       // next-auth/jwt's getToken expects a NextApiRequest-like shape;
@@ -95,7 +129,17 @@ async function hasValidSession(req: NextRequest): Promise<boolean> {
       // Both shapes are valid in v5; we pass the NextRequest as-is.
       req,
       secret,
-      ...(cookieName ? { cookieName } : {}),
+      // Pass both `cookieName` and `secureCookie` so getToken reads the
+      // exact cookie Auth.js set AND derives the matching decryption salt.
+      // `secureCookie` is implied by the `__Secure-` prefix; deriving it
+      // here keeps the two consistent if @auth/core ever uses the flag
+      // during reads.
+      ...(cookieName
+        ? {
+            cookieName,
+            secureCookie: cookieName.startsWith("__Secure-") || cookieName.startsWith("__Host-"),
+          }
+        : {}),
     });
     return !!token;
   } catch {
