@@ -81,6 +81,105 @@ describe("LoginAttemptTracker", () => {
   });
 });
 
+describe("LoginAttemptTracker — shared Redis-backed lockout (VF-17)", () => {
+  /**
+   * Minimal in-process fake of the ioredis surface used by the shared
+   * counter. A single store instance is shared between two trackers to
+   * simulate two app nodes pointing at the same Redis.
+   */
+  class FakeRedis {
+    private store = new Map<string, number>();
+    failOps = false;
+
+    async incr(key: string): Promise<number> {
+      if (this.failOps) throw new Error("redis down");
+      const next = (this.store.get(key) ?? 0) + 1;
+      this.store.set(key, next);
+      return next;
+    }
+    async pexpire(_key: string, _ms: number): Promise<number> {
+      if (this.failOps) throw new Error("redis down");
+      return 1;
+    }
+    async get(key: string): Promise<string | null> {
+      if (this.failOps) throw new Error("redis down");
+      const v = this.store.get(key);
+      return v === undefined ? null : String(v);
+    }
+    async del(key: string): Promise<number> {
+      if (this.failOps) throw new Error("redis down");
+      return this.store.delete(key) ? 1 : 0;
+    }
+  }
+
+  it("accumulates failures cluster-wide across two tracker instances (nodes)", async () => {
+    const shared = new FakeRedis();
+    const nodeA = new LoginAttemptTracker(() => shared as never);
+    const nodeB = new LoginAttemptTracker(() => shared as never);
+
+    // Spread guesses across both "nodes". Each call returns the shared count
+    // (max of local fast-path and shared), so the threshold is reached at the
+    // global total even though no single node saw all attempts locally.
+    let last = 0;
+    for (let i = 0; i < ACCOUNT_LOCKOUT_THRESHOLD; i++) {
+      const tracker = i % 2 === 0 ? nodeA : nodeB;
+      last = await tracker.recordFailureShared("victim@example.com");
+    }
+    expect(last).toBe(ACCOUNT_LOCKOUT_THRESHOLD);
+
+    // A fresh node sees the accumulated shared count, not its empty local map.
+    const nodeC = new LoginAttemptTracker(() => shared as never);
+    expect(await nodeC.getFailureCountShared("victim@example.com")).toBe(
+      ACCOUNT_LOCKOUT_THRESHOLD,
+    );
+  });
+
+  it("clearFailuresShared resets the authoritative shared counter", async () => {
+    const shared = new FakeRedis();
+    const nodeA = new LoginAttemptTracker(() => shared as never);
+    const nodeB = new LoginAttemptTracker(() => shared as never);
+
+    await nodeA.recordFailureShared("user@example.com");
+    await nodeB.recordFailureShared("user@example.com");
+    expect(await nodeB.getFailureCountShared("user@example.com")).toBe(2);
+
+    // A successful login clears the shared counter. The clearing node's own
+    // local fast-path is also reset; other nodes' stale local caches expire
+    // on their own, but the authoritative shared count is gone immediately —
+    // verified via a fresh node with no local state.
+    await nodeA.clearFailuresShared("user@example.com");
+    expect(await nodeA.getFailureCountShared("user@example.com")).toBe(0);
+
+    const freshNode = new LoginAttemptTracker(() => shared as never);
+    expect(await freshNode.getFailureCountShared("user@example.com")).toBe(0);
+  });
+
+  it("normalizes the email before keying the shared counter", async () => {
+    const shared = new FakeRedis();
+    const tracker = new LoginAttemptTracker(() => shared as never);
+
+    await tracker.recordFailureShared("User@Example.COM");
+    expect(await tracker.getFailureCountShared("user@example.com")).toBe(1);
+  });
+
+  it("falls back to the in-memory count when Redis is not configured", async () => {
+    const tracker = new LoginAttemptTracker(() => null);
+    expect(await tracker.recordFailureShared("user@example.com")).toBe(1);
+    expect(await tracker.recordFailureShared("user@example.com")).toBe(2);
+    expect(await tracker.getFailureCountShared("user@example.com")).toBe(2);
+  });
+
+  it("falls back to the in-memory count when a Redis command fails", async () => {
+    const shared = new FakeRedis();
+    shared.failOps = true;
+    const tracker = new LoginAttemptTracker(() => shared as never);
+
+    // Redis throws — the local fast-path still increments and is returned.
+    expect(await tracker.recordFailureShared("user@example.com")).toBe(1);
+    expect(await tracker.getFailureCountShared("user@example.com")).toBe(1);
+  });
+});
+
 describe("LoginAttemptTracker — TOTP separate counter (regression: CVE fix)", () => {
   let tracker: LoginAttemptTracker;
 
