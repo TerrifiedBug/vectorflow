@@ -382,7 +382,7 @@ export default function AnalyticsPage() {
                     <ChartTooltip
                       content={
                         <ChartTooltipContent
-                          labelFormatter={(_value: string, payload: Array<{ payload?: { t?: number } }>) => {
+                          labelFormatter={(_value, payload) => {
                             const timestamp = payload?.[0]?.payload?.t;
                             if (!timestamp) return "";
                             return new Date(Number(timestamp)).toLocaleString([], {
