@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { promotePipeline } from "@/server/services/pipeline-graph";
 import { writeAuditLog } from "@/server/services/audit";
 import { apiRoute, jsonResponse } from "../../../_lib/api-handler";
@@ -9,6 +10,17 @@ export const POST = apiRoute(
     const pipelineId = params?.id;
     if (!pipelineId) {
       return NextResponse.json({ error: "Missing pipeline id" }, { status: 400 });
+    }
+
+    // Verify the source pipeline belongs to the caller's environment before
+    // promoting. Without this check any service account could name an
+    // arbitrary pipeline id as the source (cross-tenant IDOR).
+    const sourcePipeline = await prisma.pipeline.findUnique({
+      where: { id: pipelineId, environmentId: ctx.environmentId },
+      select: { id: true },
+    });
+    if (!sourcePipeline) {
+      return NextResponse.json({ error: "Pipeline not found" }, { status: 404 });
     }
 
     let body: { targetEnvironmentId?: string; name?: string };

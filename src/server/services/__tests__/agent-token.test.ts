@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   generateEnrollmentToken,
   verifyEnrollmentToken,
+  getEnrollmentTokenIdentifier,
   generateNodeToken,
   getNodeTokenIdentifier,
   verifyNodeToken,
@@ -10,9 +11,11 @@ import {
 
 describe("agent-token", () => {
   describe("generateEnrollmentToken", () => {
-    it("returns token with vf_enroll_ prefix", async () => {
-      const { token, hash, hint } = await generateEnrollmentToken();
-      expect(token).toMatch(/^vf_enroll_default_[a-f0-9]{64}$/);
+    it("returns token with stable lookup identifier", async () => {
+      const { token, hash, hint, identifier } = await generateEnrollmentToken();
+      expect(token).toMatch(/^vf_enroll_default_[a-f0-9]{16}_[a-f0-9]{64}$/);
+      expect(identifier).toMatch(/^[a-f0-9]{16}$/);
+      expect(getEnrollmentTokenIdentifier(token)).toBe(identifier);
       expect(hash).toMatch(/^\$2[aby]\$/);
       expect(hint).toMatch(/^\*{4}.{4}$/);
     });
@@ -22,12 +25,39 @@ describe("agent-token", () => {
       const b = await generateEnrollmentToken();
       expect(a.token).not.toBe(b.token);
       expect(a.hash).not.toBe(b.hash);
+      expect(a.identifier).not.toBe(b.identifier);
     });
 
     it("throws on invalid org slug", async () => {
       await expect(generateEnrollmentToken("UPPER")).rejects.toThrow("invalid org slug");
       await expect(generateEnrollmentToken("has space")).rejects.toThrow("invalid org slug");
       await expect(generateEnrollmentToken("x")).rejects.toThrow("invalid org slug"); // too short
+    });
+  });
+
+  describe("getEnrollmentTokenIdentifier", () => {
+    it("extracts the stable lookup identifier from a current enrollment token", () => {
+      expect(
+        getEnrollmentTokenIdentifier(
+          "vf_enroll_default_0123456789abcdef_fedcba98765432100123456789abcdeffedcba98765432100123456789abcdef",
+        ),
+      ).toBe("0123456789abcdef");
+    });
+
+    it("returns null for legacy / no-id enrollment tokens", () => {
+      // legacy (no slug, no id)
+      expect(
+        getEnrollmentTokenIdentifier(
+          "vf_enroll_fedcba98765432100123456789abcdeffedcba98765432100123456789abcdef",
+        ),
+      ).toBeNull();
+      // slug but no embedded id (pre-VF-36)
+      expect(
+        getEnrollmentTokenIdentifier(
+          "vf_enroll_default_fedcba98765432100123456789abcdeffedcba98765432100123456789abcdef",
+        ),
+      ).toBeNull();
+      expect(getEnrollmentTokenIdentifier("vf_enroll_short")).toBeNull();
     });
   });
 

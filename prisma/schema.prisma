@@ -377,6 +377,11 @@ model User {
   totpSecret               String?
   totpEnabled              Boolean              @default(false)
   totpBackupCodes          String?
+  /// Highest TOTP time-step already consumed for this user. A code whose
+  /// absolute step is <= this value is rejected as a replay, making each
+  /// TOTP code single-use within its validation window. Null until the
+  /// first successful TOTP verification.
+  lastTotpStep             Int?
   scimExternalId           String?              @unique
   auditLogs                AuditLog[]
   pipelinesUpdated         Pipeline[]           @relation("PipelineUpdatedBy")
@@ -645,6 +650,7 @@ model Environment {
   auditLogs             AuditLog[]
   enrollmentTokenHash   String?
   enrollmentTokenHint   String?
+  enrollmentTokenId     String? // stable 16-hex lookup id embedded in the token, for O(1) enrollment verification (null for legacy tokens)
   secretBackend         SecretBackend           @default(BUILTIN)
   secretBackendConfig   Json?
   gitRepoUrl            String?
@@ -676,6 +682,7 @@ model Environment {
   createdAt             DateTime                @default(now())
 
   @@index([organizationId])
+  @@index([enrollmentTokenId])
 }
 
 model Variable {

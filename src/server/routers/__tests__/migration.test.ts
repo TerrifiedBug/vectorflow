@@ -328,6 +328,44 @@ describe("migration router", () => {
     });
   });
 
+  // ─── validate (VF-05 IDOR guard) ────────────────────────────────────────────
+
+  describe("validate", () => {
+    it("throws NOT_FOUND when project does not exist", async () => {
+      prismaMock.migrationProject.findUnique.mockResolvedValue(null);
+
+      await expect(
+        caller.validate({ id: "nonexistent", teamId: "team-1" }),
+      ).rejects.toThrow("Migration project not found");
+    });
+
+    it("throws FORBIDDEN when the project belongs to a different team (IDOR guard)", async () => {
+      // VF-05: validate previously loaded the project by id alone and never
+      // checked ownership, allowing cross-team write + info leak. The handler
+      // must reject a project owned by another team before mutating it.
+      prismaMock.migrationProject.findUnique.mockResolvedValue(
+        makeProject({ teamId: "team-2", translatedBlocks: { vectorYaml: "x" } }) as never,
+      );
+
+      await expect(
+        caller.validate({ id: "proj-1", teamId: "team-1" }),
+      ).rejects.toThrow("does not belong to this team");
+
+      // The cross-team project state must NOT be mutated.
+      expect(prismaMock.migrationProject.update).not.toHaveBeenCalled();
+    });
+
+    it("throws BAD_REQUEST when blocks have not been translated", async () => {
+      prismaMock.migrationProject.findUnique.mockResolvedValue(
+        makeProject({ translatedBlocks: null }) as never,
+      );
+
+      await expect(
+        caller.validate({ id: "proj-1", teamId: "team-1" }),
+      ).rejects.toThrow("Config must be translated before validation");
+    });
+  });
+
   // ─── generate ─────────────────────────────────────────────────────────────
 
   describe("generate", () => {

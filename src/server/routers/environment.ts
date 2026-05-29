@@ -554,12 +554,13 @@ export const environmentRouter = router({
         }
         orgSlug = org.slug;
       }
-      const { token, hash, hint } = await generateEnrollmentToken(orgSlug);
+      const { token, hash, hint, identifier } = await generateEnrollmentToken(orgSlug);
       await prisma.environment.update({
         where: { id: input.environmentId },
         data: {
           enrollmentTokenHash: hash,
           enrollmentTokenHint: hint,
+          enrollmentTokenId: identifier,
         },
       });
 
@@ -584,6 +585,7 @@ export const environmentRouter = router({
         data: {
           enrollmentTokenHash: null,
           enrollmentTokenHint: null,
+          enrollmentTokenId: null,
         },
       });
 

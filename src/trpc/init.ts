@@ -590,6 +590,41 @@ export const withTeamAccess = (minRole: Role) =>
       }
     }
 
+    // Resolve rolloutId → StagedRollout → environment.teamId
+    // (for stagedRollout.broaden / stagedRollout.rollback)
+    if (!teamId && rawInput?.rolloutId) {
+      const rollout = await prisma.stagedRollout.findUnique({
+        where: { id: rawInput.rolloutId as string },
+        select: { environment: { select: { teamId: true } } },
+      });
+      if (rollout) {
+        teamId = rollout.environment.teamId ?? undefined;
+      }
+    }
+
+    // Resolve jobId → GitSyncJob → environment.teamId (for gitSync.retryJob)
+    if (!teamId && rawInput?.jobId) {
+      const job = await prisma.gitSyncJob.findUnique({
+        where: { id: rawInput.jobId as string },
+        select: { environment: { select: { teamId: true } } },
+      });
+      if (job) {
+        teamId = job.environment.teamId ?? undefined;
+      }
+    }
+
+    // Resolve deliveryAttemptId → DeliveryAttempt → alertEvent → alertRule.teamId
+    // (for alert.retryDelivery)
+    if (!teamId && rawInput?.deliveryAttemptId) {
+      const attempt = await prisma.deliveryAttempt.findUnique({
+        where: { id: rawInput.deliveryAttemptId as string },
+        select: { alertEvent: { select: { alertRule: { select: { teamId: true } } } } },
+      });
+      if (attempt) {
+        teamId = attempt.alertEvent.alertRule.teamId ?? undefined;
+      }
+    }
+
     // Resolve id as ServiceAccount → environment.teamId
     if (!teamId && rawInput?.id) {
       const sa = await prisma.serviceAccount.findUnique({
@@ -664,7 +699,17 @@ export const withTeamAccess = (minRole: Role) =>
       }),
     ]);
 
-    // Org-boundary check: don't leak cross-org team existence
+    // Org-boundary check: don't leak cross-org team existence.
+    //
+    // NOTE (VF-44, by design): the boundary check is intentionally skipped when
+    // ctx.organizationId === DEFAULT_ORG_ID. This is the single-tenant OSS mode:
+    // users without a real OrgMember row keep the DEFAULT_ORG_ID context (see
+    // createContext), and every team in a single-tenant install lives under that
+    // default org. Skipping the check here keeps all teams reachable in OSS.
+    // Multi-tenant deployments assign a real organizationId, so the check is
+    // enforced for them. Do not remove this guard without re-evaluating the OSS
+    // single-tenant path — it is not a missing isolation check, it is the
+    // single-tenant default.
     if (
       ctx.organizationId !== DEFAULT_ORG_ID &&
       teamOrg?.organizationId !== ctx.organizationId

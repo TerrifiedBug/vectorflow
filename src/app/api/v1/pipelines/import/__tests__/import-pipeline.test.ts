@@ -107,6 +107,70 @@ describe("POST /api/v1/pipelines/import", () => {
     expect(res.status).toBe(201);
   });
 
+  it("returns 400 when groupId belongs to another environment (VF-35)", async () => {
+    // VF-35: import previously forwarded body.groupId without verifying the
+    // group belongs to the caller's environment, allowing a cross-environment
+    // PipelineGroup relation. The PUT route guard is now mirrored here.
+    importMock.mockReturnValue({ nodes: [], edges: [], globalConfig: null });
+    prismaMock.environment.findUnique.mockResolvedValue({ teamId: "team-1" } as never);
+    prismaMock.pipeline.findFirst.mockResolvedValue(null);
+    // Group exists but in a different environment.
+    prismaMock.pipelineGroup.findUnique.mockResolvedValue({ environmentId: "env-OTHER" } as never);
+
+    const req = new NextRequest("http://localhost/api/v1/pipelines/import", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer vf_test123",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "imported-pipe",
+        yaml: "sources:\n  file:\n    type: file\n",
+        groupId: "grp-foreign",
+      }),
+    });
+
+    const res = await POST(req, { params: Promise.resolve({}) });
+    expect(res.status).toBe(400);
+    // The pipeline must not be created when the group is cross-environment.
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("imports with a groupId that belongs to the caller's environment (VF-35)", async () => {
+    importMock.mockReturnValue({ nodes: [], edges: [], globalConfig: null });
+    prismaMock.environment.findUnique.mockResolvedValue({ teamId: "team-1" } as never);
+    prismaMock.pipeline.findFirst.mockResolvedValue(null);
+    prismaMock.pipelineGroup.findUnique.mockResolvedValue({ environmentId: "env-1" } as never);
+
+    const mockTx = {
+      pipeline: { create: vi.fn().mockResolvedValue({ id: "pipe-1", name: "imported-pipe" }) },
+      pipelineNode: { create: vi.fn() },
+      pipelineEdge: { create: vi.fn() },
+    };
+    prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
+      if (typeof fn === "function") return fn(mockTx);
+    });
+
+    const req = new NextRequest("http://localhost/api/v1/pipelines/import", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer vf_test123",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "imported-pipe",
+        yaml: "sources:\n  file:\n    type: file\n",
+        groupId: "grp-own",
+      }),
+    });
+
+    const res = await POST(req, { params: Promise.resolve({}) });
+    expect(res.status).toBe(201);
+    expect(mockTx.pipeline.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ groupId: "grp-own" }) }),
+    );
+  });
+
   it("returns 400 when yaml is missing", async () => {
     const req = new NextRequest("http://localhost/api/v1/pipelines/import", {
       method: "POST",

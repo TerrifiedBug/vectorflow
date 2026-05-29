@@ -57,6 +57,22 @@ export const POST = apiRoute(
       select: { teamId: true },
     });
 
+    // Validate that any referenced pipeline group belongs to the caller's
+    // environment, mirroring the PUT route guard. Without this an arbitrary
+    // (cross-environment) group id could be linked to the new pipeline.
+    if (body.groupId !== undefined && body.groupId !== null) {
+      const group = await prisma.pipelineGroup.findUnique({
+        where: { id: body.groupId },
+        select: { environmentId: true },
+      });
+      if (!group || group.environmentId !== ctx.environmentId) {
+        return NextResponse.json(
+          { error: "Pipeline group not found in this environment" },
+          { status: 400 },
+        );
+      }
+    }
+
     const pipeline = await prisma.$transaction(async (tx) => {
       const created = await tx.pipeline.create({
         data: {

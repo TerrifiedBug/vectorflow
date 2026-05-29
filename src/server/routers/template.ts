@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { Prisma } from "@/generated/prisma";
-import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess, roleLevel } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { isOrgWideAdmin } from "@/lib/org-admin";
@@ -189,7 +189,11 @@ export const templateRouter = router({
           where: { userId_teamId: { userId, teamId: existing.teamId } },
           select: { role: true },
         });
-        if (!membership) throw new TRPCError({ code: "FORBIDDEN" });
+        // Require EDITOR+ to delete a team template, mirroring template.create's
+        // withTeamAccess("EDITOR") gate. A VIEWER must not be able to delete.
+        if (!membership || roleLevel[membership.role] < roleLevel.EDITOR) {
+          throw new TRPCError({ code: "FORBIDDEN" });
+        }
       }
 
       return prisma.template.delete({

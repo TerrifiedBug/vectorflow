@@ -3,7 +3,11 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { verifyEnrollmentToken, generateNodeToken } from "@/server/services/agent-token";
+import {
+  verifyEnrollmentToken,
+  generateNodeToken,
+  getEnrollmentTokenIdentifier,
+} from "@/server/services/agent-token";
 import { resolveAgentOrg } from "@/server/services/agent-org-binding";
 import { fireEventAlert } from "@/server/services/event-alerts";
 import { debugLog, errorLog, warnLog } from "@/lib/logger";
@@ -64,33 +68,64 @@ export async function POST(request: Request) {
     const safeVersion = (agentVersion ?? "unknown").replace(/[\r\n\t"]/g, " ");
     debugLog("enroll", `attempt from hostname="${safeHostname}" agentVersion="${safeVersion}"`);
 
-    // Find all environments that have an enrollment token
-    const environments = await prisma.environment.findMany({
-      where: {
-        enrollmentTokenHash: { not: null },
-        isSystem: false,
-        organizationId: orgResult.orgId,
-      },
-      select: {
-        id: true,
-        name: true,
-        enrollmentTokenHash: true,
-        team: { select: { id: true } },
-      },
-    });
-    debugLog("enroll", `found ${environments.length} candidate environment(s)`);
+    // VF-36: when the token embeds a stable identifier, look up the single
+    // candidate environment by its indexed enrollmentTokenId so we bcrypt-verify
+    // exactly one row instead of fanning out over every environment in the org.
+    // Legacy / no-id tokens fall back to the per-environment scan below.
+    const tokenIdentifier = getEnrollmentTokenIdentifier(token);
 
-    // Try each environment's enrollment token
-    let matchedEnv: (typeof environments)[0] | null = null;
-    for (const env of environments) {
-      if (env.enrollmentTokenHash && await verifyEnrollmentToken(token, env.enrollmentTokenHash)) {
-        matchedEnv = env;
-        break;
+    const envSelect = {
+      id: true,
+      name: true,
+      enrollmentTokenHash: true,
+      team: { select: { id: true } },
+    } as const;
+
+    let matchedEnv:
+      | { id: string; name: string; enrollmentTokenHash: string | null; team: { id: string } | null }
+      | null = null;
+
+    if (tokenIdentifier) {
+      const candidate = await prisma.environment.findFirst({
+        where: {
+          enrollmentTokenId: tokenIdentifier,
+          enrollmentTokenHash: { not: null },
+          isSystem: false,
+          organizationId: orgResult.orgId,
+        },
+        select: envSelect,
+      });
+      if (
+        candidate?.enrollmentTokenHash &&
+        (await verifyEnrollmentToken(token, candidate.enrollmentTokenHash))
+      ) {
+        matchedEnv = candidate;
+      }
+    } else {
+      // Legacy / no-identifier token: scan every environment that has a token.
+      const environments = await prisma.environment.findMany({
+        where: {
+          enrollmentTokenHash: { not: null },
+          isSystem: false,
+          organizationId: orgResult.orgId,
+        },
+        select: envSelect,
+      });
+      debugLog("enroll", `found ${environments.length} candidate environment(s)`);
+
+      for (const env of environments) {
+        if (env.enrollmentTokenHash && await verifyEnrollmentToken(token, env.enrollmentTokenHash)) {
+          matchedEnv = env;
+          break;
+        }
       }
     }
 
     if (!matchedEnv) {
-      errorLog("enroll", `REJECTED -- no matching environment (checked ${environments.length})`);
+      errorLog(
+        "enroll",
+        `REJECTED -- no matching environment (lookup=${tokenIdentifier ? "by-id" : "scan"})`,
+      );
       return NextResponse.json(
         { error: "Invalid enrollment token" },
         { status: 401 },

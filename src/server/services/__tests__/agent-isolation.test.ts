@@ -50,7 +50,7 @@ beforeEach(() => {
 describe("token grammar", () => {
   it("enrollment token embeds org slug", async () => {
     const { token } = await generateEnrollmentToken("acme");
-    expect(token).toMatch(/^vf_enroll_acme_[a-f0-9]{64}$/);
+    expect(token).toMatch(/^vf_enroll_acme_[a-f0-9]{16}_[a-f0-9]{64}$/);
     expect(parseEnrollmentTokenSlug(token)).toBe("acme");
     expect(isLegacyEnrollmentToken(token)).toBe(false);
   });

@@ -356,6 +356,7 @@ describe("environment router", () => {
         token: "vfe_abc123",
         hash: "hashed-token",
         hint: "vfe_abc...",
+        identifier: "0123456789abcdef",
       });
       prismaMock.environment.update.mockResolvedValue({} as never);
 
@@ -368,6 +369,7 @@ describe("environment router", () => {
           data: {
             enrollmentTokenHash: "hashed-token",
             enrollmentTokenHint: "vfe_abc...",
+            enrollmentTokenId: "0123456789abcdef",
           },
         }),
       );
@@ -392,6 +394,7 @@ describe("environment router", () => {
         token: "vfe_acme_abc123",
         hash: "hashed-acme",
         hint: "vfe_acme_abc...",
+        identifier: "fedcba9876543210",
       });
       prismaMock.environment.update.mockResolvedValue({} as never);
 
@@ -442,6 +445,7 @@ describe("environment router", () => {
           data: {
             enrollmentTokenHash: null,
             enrollmentTokenHint: null,
+            enrollmentTokenId: null,
           },
         }),
       );

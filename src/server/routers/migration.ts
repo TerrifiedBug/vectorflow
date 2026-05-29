@@ -301,6 +301,7 @@ export const migrationRouter = router({
   validate: protectedProcedure
     .input(z.object({ id: z.string(), teamId: z.string() }))
     .use(withTeamAccess("EDITOR"))
+    .use(withAudit("migration.validated", "MigrationProject"))
     .mutation(async ({ input }) => {
       const project = await prisma.migrationProject.findUnique({
         where: { id: input.id },
@@ -310,6 +311,13 @@ export const migrationRouter = router({
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Migration project not found",
+        });
+      }
+
+      if (project.teamId !== input.teamId) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Migration project does not belong to this team",
         });
       }
 

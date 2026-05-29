@@ -18,9 +18,10 @@ export function isValidOrgSlug(slug: string): boolean {
 
 // ─── Token identifier constants ───────────────────────────────────────────────
 
-const NODE_TOKEN_IDENTIFIER_BYTES = 8;   // 16 hex chars
-const NODE_TOKEN_SECRET_BYTES = 32;      // 64 hex chars
-const ENROLLMENT_SECRET_BYTES = 32;      // 64 hex chars
+const NODE_TOKEN_IDENTIFIER_BYTES = 8;       // 16 hex chars
+const NODE_TOKEN_SECRET_BYTES = 32;          // 64 hex chars
+const ENROLLMENT_TOKEN_IDENTIFIER_BYTES = 8; // 16 hex chars
+const ENROLLMENT_SECRET_BYTES = 32;          // 64 hex chars
 
 // ─── Legacy patterns (no org slug) ───────────────────────────────────────────
 
@@ -31,8 +32,17 @@ const LEGACY_NODE_PATTERN = /^vf_node_([a-f0-9]{16})_([a-f0-9]{64})$/;
 
 // ─── Current patterns (org slug embedded) ────────────────────────────────────
 
-/** Current enrollment: vf_enroll_<slug>_<64hex> */
-const ENROLLMENT_PATTERN = /^vf_enroll_([a-z][a-z0-9-]{2,30})_([a-f0-9]{64})$/;
+/**
+ * Current enrollment: vf_enroll_<slug>_<16hex>_<64hex>
+ * The 16-hex identifier is indexed in Environment.enrollmentTokenId for O(1)
+ * lookup so enrollment does not bcrypt-compare against every candidate env.
+ */
+const ENROLLMENT_PATTERN = /^vf_enroll_([a-z][a-z0-9-]{2,30})_([a-f0-9]{16})_([a-f0-9]{64})$/;
+/**
+ * Slug-prefixed enrollment without an embedded identifier (tokens minted before
+ * VF-36). Still accepted; verified via the fan-out fallback in the enroll route.
+ */
+const ENROLLMENT_PATTERN_NO_ID = /^vf_enroll_([a-z][a-z0-9-]{2,30})_([a-f0-9]{64})$/;
 /** Current node:       vf_node_<slug>_<16hex>_<64hex> */
 const NODE_PATTERN = /^vf_node_([a-z][a-z0-9-]{2,30})_([a-f0-9]{16})_([a-f0-9]{64})$/;
 
@@ -41,23 +51,26 @@ const NODE_PATTERN = /^vf_node_([a-z][a-z0-9-]{2,30})_([a-f0-9]{16})_([a-f0-9]{6
 /**
  * Generate a slug-prefixed enrollment token.
  *
- * Format: `vf_enroll_<orgSlug>_<64hex>`
+ * Format: `vf_enroll_<orgSlug>_<16hex>_<64hex>`
  *
  * OSS / single-tenant deployments use slug "default". Multi-tenant
  * deployments use the org's slug so the token is tied to the org at
- * generation time.
+ * generation time. The 16-hex identifier is stored in
+ * Environment.enrollmentTokenId so the enroll endpoint can verify a single
+ * candidate row instead of bcrypt-comparing against every environment.
  */
 export async function generateEnrollmentToken(
   orgSlug: string = DEFAULT_ORG_SLUG,
-): Promise<{ token: string; hash: string; hint: string }> {
+): Promise<{ token: string; hash: string; hint: string; identifier: string }> {
   if (!isValidOrgSlug(orgSlug)) {
     throw new Error(`Cannot mint enrollment token: invalid org slug "${orgSlug}"`);
   }
+  const identifier = randomBytes(ENROLLMENT_TOKEN_IDENTIFIER_BYTES).toString("hex");
   const raw = randomBytes(ENROLLMENT_SECRET_BYTES).toString("hex");
-  const token = `${ENROLLMENT_PREFIX}${orgSlug}_${raw}`;
+  const token = `${ENROLLMENT_PREFIX}${orgSlug}_${identifier}_${raw}`;
   const hash = await bcrypt.hash(token, 12);
   const hint = `****${token.slice(-4)}`;
-  return { token, hash, hint };
+  return { token, hash, hint, identifier };
 }
 
 /**
@@ -73,12 +86,26 @@ export async function verifyEnrollmentToken(
 }
 
 /**
+ * Extract the stable indexed lookup identifier from an enrollment token.
+ *
+ * Returns the 16-hex id for current `vf_enroll_<slug>_<id>_<secret>` tokens,
+ * or null for legacy / no-id tokens (those fall back to the per-environment
+ * scan in the enroll route).
+ */
+export function getEnrollmentTokenIdentifier(token: string): string | null {
+  const match = ENROLLMENT_PATTERN.exec(token);
+  return match?.[2] ?? null; // group 2 = identifier
+}
+
+/**
  * Parse the org slug from an enrollment token.
  * Returns null for legacy tokens (no slug embedded).
  */
 export function parseEnrollmentTokenSlug(token: string): string | null {
-  const match = ENROLLMENT_PATTERN.exec(token);
-  return match?.[1] ?? null;
+  const withId = ENROLLMENT_PATTERN.exec(token);
+  if (withId) return withId[1];
+  const noId = ENROLLMENT_PATTERN_NO_ID.exec(token);
+  return noId?.[1] ?? null;
 }
 
 /**

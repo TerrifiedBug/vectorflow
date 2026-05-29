@@ -40,7 +40,9 @@ vi.mock("bcryptjs", () => ({
 
 vi.mock("@/server/services/totp", () => ({
   generateTotpSecret: vi.fn().mockReturnValue({ secret: "TOTP_SECRET", uri: "otpauth://totp/test" }),
-  verifyTotpCode: vi.fn().mockReturnValue(true),
+  // verifyTotpCode now returns the matched absolute time-step (a number) on
+  // success or null on failure (VF-16).
+  verifyTotpCode: vi.fn().mockReturnValue(1000),
   generateBackupCodes: vi.fn().mockReturnValue(["CODE1", "CODE2", "CODE3"]),
   hashBackupCode: vi.fn((code: string) => `hashed:${code}`),
   verifyBackupCode: vi.fn().mockReturnValue({ valid: false, remaining: [] }),
@@ -326,7 +328,7 @@ describe("userRouter", () => {
         totpSecret: "enc:TOTP_SECRET",
         totpEnabled: false,
       } as never);
-      vi.mocked(verifyTotpCode).mockReturnValueOnce(false);
+      vi.mocked(verifyTotpCode).mockReturnValueOnce(null);
 
       await expect(
         caller.verifyAndEnableTotp({ code: "000000" }),
@@ -361,7 +363,12 @@ describe("userRouter", () => {
       expect(result).toEqual({ disabled: true });
       expect(prismaMock.user.update).toHaveBeenCalledWith({
         where: { id: "user-1" },
-        data: { totpEnabled: false, totpSecret: null, totpBackupCodes: null },
+        data: {
+          totpEnabled: false,
+          totpSecret: null,
+          totpBackupCodes: null,
+          lastTotpStep: null,
+        },
       });
     });
 
@@ -373,7 +380,7 @@ describe("userRouter", () => {
       } as never);
       prismaMock.user.update.mockResolvedValue({} as never);
       // TOTP code invalid, backup code valid
-      vi.mocked(verifyTotpCode).mockReturnValueOnce(false);
+      vi.mocked(verifyTotpCode).mockReturnValueOnce(null);
       vi.mocked(verifyBackupCode).mockReturnValueOnce({ valid: true, remaining: ["hashed:CODE2"] });
 
       const result = await caller.disableTotp({ code: "BACKUP1" });
@@ -387,7 +394,7 @@ describe("userRouter", () => {
         totpEnabled: true,
         totpBackupCodes: 'enc:["hashed:CODE1"]',
       } as never);
-      vi.mocked(verifyTotpCode).mockReturnValueOnce(false);
+      vi.mocked(verifyTotpCode).mockReturnValueOnce(null);
       vi.mocked(verifyBackupCode).mockReturnValueOnce({ valid: false, remaining: [] });
 
       await expect(
