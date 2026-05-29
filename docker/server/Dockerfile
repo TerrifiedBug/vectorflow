@@ -3,7 +3,7 @@
 # ---- Stage 1: Install deps ----
 FROM node:26-alpine AS deps
 WORKDIR /app
-RUN corepack enable
+RUN npm install -g corepack && corepack enable
 COPY package.json pnpm-lock.yaml ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./prisma.config.ts
@@ -30,7 +30,7 @@ RUN apk add --no-cache curl && \
 # ---- Stage 3: Build app ----
 FROM node:26-alpine AS build
 WORKDIR /app
-RUN corepack enable
+RUN npm install -g corepack && corepack enable
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json pnpm-lock.yaml tsconfig.json next.config.ts postcss.config.mjs components.json ./
 COPY prisma ./prisma
