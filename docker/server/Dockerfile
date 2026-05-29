@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- Stage 1: Install deps ----
-FROM node:22-alpine AS deps
+FROM node:26-alpine AS deps
 WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml ./
@@ -12,7 +12,7 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 
 # ---- Stage 2: Download Vector binary for the target arch (cached unless VECTOR_VERSION changes) ----
 # Keep this default in sync with src/lib/vector-version.ts (canonical source).
-FROM alpine:3.21 AS vector
+FROM alpine:3.23 AS vector
 ARG VECTOR_VERSION=0.54.0
 ARG TARGETARCH
 RUN apk add --no-cache curl && \
@@ -28,7 +28,7 @@ RUN apk add --no-cache curl && \
     rm -rf /tmp/vector*
 
 # ---- Stage 3: Build app ----
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 RUN corepack enable
 COPY --from=deps /app/node_modules ./node_modules
@@ -47,7 +47,7 @@ RUN --mount=type=cache,target=/app/.next/cache \
 RUN node -e "console.log(require('./node_modules/@prisma/client/package.json').version)" > /tmp/prisma-version
 
 # ---- Stage 4: Production runner ----
-FROM node:22-alpine AS runner
+FROM node:26-alpine AS runner
 WORKDIR /app
 
 ARG VF_VERSION=dev
