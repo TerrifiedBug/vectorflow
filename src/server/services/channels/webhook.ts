@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import type { ChannelDriver, ChannelPayload, ChannelDeliveryResult } from "./types";
-import { validatePublicUrl } from "@/server/services/url-validation";
+import { fetchHardened } from "@/server/services/webhook-hardened-delivery";
 
 /**
  * Format a channel webhook payload as a human-readable message.
@@ -38,16 +38,6 @@ export const webhookDriver: ChannelDriver = {
       return { channelId: "", success: false, error: "Missing url in config" };
     }
 
-    try {
-      await validatePublicUrl(url);
-    } catch (err) {
-      return {
-        channelId: "",
-        success: false,
-        error: err instanceof Error ? err.message : "URL validation failed",
-      };
-    }
-
     const outgoing = {
       ...payload,
       content: formatWebhookMessage(payload),
@@ -69,7 +59,7 @@ export const webhookDriver: ChannelDriver = {
     }
 
     try {
-      const res = await fetch(url, {
+      const res = await fetchHardened(url, {
         method: "POST",
         headers,
         body,
@@ -80,7 +70,7 @@ export const webhookDriver: ChannelDriver = {
         return {
           channelId: "",
           success: false,
-          error: `Webhook returned ${res.status} ${res.statusText}`,
+          error: `Webhook returned ${res.status}`,
         };
       }
 

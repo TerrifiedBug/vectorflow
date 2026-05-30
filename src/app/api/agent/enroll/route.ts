@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonCapped } from "@/app/api/_lib/read-json-capped";
 import { prisma } from "@/lib/prisma";
 import {
   verifyEnrollmentToken,
@@ -39,13 +40,9 @@ export async function POST(request: Request) {
   // Parse the body first — enrollment tokens are in the body, not the
   // Authorization header. resolveAgentOrg needs the explicit token for
   // slug extraction and legacy-token detection.
-  let parsed: ReturnType<typeof enrollSchema.safeParse>;
-  try {
-    const body = await request.json();
-    parsed = enrollSchema.safeParse(body);
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+  const read = await readJsonCapped(request);
+  if (!read.ok) return read.response;
+  const parsed = enrollSchema.safeParse(read.data);
   if (!parsed.success) {
     errorLog("enroll", "invalid input", parsed.error.flatten().fieldErrors);
     return NextResponse.json(

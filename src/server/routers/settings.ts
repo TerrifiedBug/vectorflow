@@ -17,7 +17,7 @@ import {
   previewBackup,
 } from "@/server/services/backup";
 import { rescheduleBackupForOrg, isValidCron } from "@/server/services/backup-scheduler";
-import { validatePublicUrl } from "@/server/services/url-validation";
+import { validateOutboundUrl } from "@/server/services/url-validation";
 import { getOrgSettings, updateOrgSettings, type OrgSettings } from "@/lib/org-settings";
 import {
   encryptForOrgOrFallback,
@@ -391,13 +391,26 @@ export const settingsRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      await validatePublicUrl(input.issuer);
       const discoveryUrl = `${input.issuer.replace(/\/$/, "")}/.well-known/openid-configuration`;
+      // Validate the URL we actually fetch (not just the issuer) and refuse
+      // to follow redirects — a 3xx into a private IP / cloud metadata
+      // endpoint would otherwise bypass the public-URL check. `force: true`
+      // applies the SSRF policy regardless of VF_STRICT_OUTBOUND.
+      await validateOutboundUrl(discoveryUrl, { force: true });
 
       try {
         const response = await fetch(discoveryUrl, {
           signal: AbortSignal.timeout(10000),
+          redirect: "manual",
         });
+
+        if (response.status >= 300 && response.status < 400) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "OIDC discovery endpoint returned a redirect; refusing to follow (SSRF protection)",
+          });
+        }
 
         if (!response.ok) {
           throw new TRPCError({

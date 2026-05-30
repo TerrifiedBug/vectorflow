@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJsonCapped } from "@/app/api/_lib/read-json-capped";
 import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgentInOrg } from "@/server/services/agent-auth";
@@ -25,7 +26,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json();
+    const read = await readJsonCapped(request);
+    if (!read.ok) return read.response;
+    const body = read.data;
     const parsed = sampleResultsRequestSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(

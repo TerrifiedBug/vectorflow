@@ -1,5 +1,5 @@
 import type { ChannelDriver, ChannelPayload, ChannelDeliveryResult } from "./types";
-import { validatePublicUrl } from "@/server/services/url-validation";
+import { fetchHardened } from "@/server/services/webhook-hardened-delivery";
 
 function buildSlackBlocks(payload: ChannelPayload) {
   const statusEmoji = payload.status === "firing" ? "\ud83d\udd34" : "\u2705";
@@ -78,20 +78,10 @@ export const slackDriver: ChannelDriver = {
       return { channelId: "", success: false, error: "Missing webhookUrl in config" };
     }
 
-    try {
-      await validatePublicUrl(webhookUrl);
-    } catch (err) {
-      return {
-        channelId: "",
-        success: false,
-        error: err instanceof Error ? err.message : "URL validation failed",
-      };
-    }
-
     const body = JSON.stringify(buildSlackBlocks(payload));
 
     try {
-      const res = await fetch(webhookUrl, {
+      const res = await fetchHardened(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
@@ -102,7 +92,7 @@ export const slackDriver: ChannelDriver = {
         return {
           channelId: "",
           success: false,
-          error: `Slack webhook returned ${res.status} ${res.statusText}`,
+          error: `Slack webhook returned ${res.status}`,
         };
       }
 
