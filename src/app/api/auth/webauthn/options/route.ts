@@ -26,6 +26,7 @@ import { checkIpRateLimit } from "@/app/api/_lib/ip-rate-limit";
 
 import { prisma } from "@/lib/prisma";
 import { startAuthentication } from "@/server/services/webauthn";
+import { isWebauthnEnabled } from "@/server/services/auth/webauthn-provider";
 import { warnLog } from "@/lib/logger";
 
 const RP_ID = process.env.VF_WEBAUTHN_RP_ID ?? "localhost";
@@ -36,6 +37,16 @@ interface RequestBody {
 }
 
 export async function POST(req: NextRequest) {
+  // WebAuthn is disabled in production when VF_WEBAUTHN_RP_ID is unset (we
+  // refuse the localhost RP_ID fallback). Don't issue a challenge that could
+  // only be satisfied by a localhost-bound ceremony.
+  if (!isWebauthnEnabled()) {
+    return NextResponse.json(
+      { error: "WebAuthn is not configured" },
+      { status: 404 },
+    );
+  }
+
   const limited = await checkIpRateLimit(req, "auth:webauthn-options", 30);
   if (limited) return limited;
 

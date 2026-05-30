@@ -118,82 +118,71 @@ describe("webauthnProvider", () => {
   });
 });
 
-describe("module-init production guard", () => {
-  it("throws when NODE_ENV=production and VF_WEBAUTHN_RP_ID is not set", async () => {
+describe("production RP_ID gating (graceful degradation)", () => {
+  // A missing VF_WEBAUTHN_RP_ID must NOT take down the whole auth surface.
+  // auth.ts statically imports this module, so a module-load throw would 500
+  // password + OIDC sign-in too. Instead WebAuthn is disabled per-method:
+  // the module still imports, ceremonies are refused, and other methods work.
+  async function withEnv(
+    opts: { rpId?: string | null; nodeEnv?: string; phase?: string },
+    fn: (mod: typeof import("../webauthn-provider")) => Promise<void>,
+  ) {
     const savedRpId = process.env.VF_WEBAUTHN_RP_ID;
     try {
-      delete process.env.VF_WEBAUTHN_RP_ID;
-      vi.stubEnv("NODE_ENV", "production");
+      if (opts.rpId == null) delete process.env.VF_WEBAUTHN_RP_ID;
+      else process.env.VF_WEBAUTHN_RP_ID = opts.rpId;
+      if (opts.nodeEnv) vi.stubEnv("NODE_ENV", opts.nodeEnv);
+      if (opts.phase) vi.stubEnv("NEXT_PHASE", opts.phase);
       vi.resetModules();
-      await expect(import("../webauthn-provider")).rejects.toThrow(
-        "VF_WEBAUTHN_RP_ID must be set in production",
-      );
+      await fn(await import("../webauthn-provider"));
     } finally {
       vi.unstubAllEnvs();
-      if (savedRpId !== undefined) {
-        process.env.VF_WEBAUTHN_RP_ID = savedRpId;
-      } else {
-        delete process.env.VF_WEBAUTHN_RP_ID;
-      }
+      if (savedRpId !== undefined) process.env.VF_WEBAUTHN_RP_ID = savedRpId;
+      else delete process.env.VF_WEBAUTHN_RP_ID;
       vi.resetModules();
     }
+  }
+
+  it("imports without throwing in production even when VF_WEBAUTHN_RP_ID is unset", async () => {
+    await withEnv({ rpId: null, nodeEnv: "production" }, async (mod) => {
+      expect(mod.webauthnProvider).toBeDefined();
+      expect(mod.isWebauthnEnabled()).toBe(false);
+    });
   });
 
-  it("does not throw during next build even without VF_WEBAUTHN_RP_ID", async () => {
-    // Regression: `next build` statically imports server modules under
-    // NODE_ENV=production but without runtime env, so VF_WEBAUTHN_RP_ID is
-    // legitimately absent. The guard must defer to runtime startup instead of
-    // breaking page-data collection (CI failure on /api/auth/oidc-status).
-    const savedRpId = process.env.VF_WEBAUTHN_RP_ID;
-    try {
-      delete process.env.VF_WEBAUTHN_RP_ID;
-      vi.stubEnv("NODE_ENV", "production");
-      vi.stubEnv("NEXT_PHASE", "phase-production-build");
-      vi.resetModules();
-      await expect(import("../webauthn-provider")).resolves.toBeDefined();
-    } finally {
-      vi.unstubAllEnvs();
-      if (savedRpId !== undefined) {
-        process.env.VF_WEBAUTHN_RP_ID = savedRpId;
-      } else {
-        delete process.env.VF_WEBAUTHN_RP_ID;
-      }
-      vi.resetModules();
-    }
+  it("refuses the ceremony (returns null) in production without VF_WEBAUTHN_RP_ID", async () => {
+    await withEnv({ rpId: null, nodeEnv: "production" }, async (mod) => {
+      await expect(
+        mod.authorizeWebauthn({ assertionJSON: goodAssertion }),
+      ).resolves.toBeNull();
+      // The ceremony is refused up-front — never reaches verification.
+      expect(mocks.finishAuthentication).not.toHaveBeenCalled();
+    });
   });
 
-  it("does not throw when NODE_ENV=production and VF_WEBAUTHN_RP_ID is set", async () => {
-    const savedRpId = process.env.VF_WEBAUTHN_RP_ID;
-    try {
-      process.env.VF_WEBAUTHN_RP_ID = "example.com";
-      vi.stubEnv("NODE_ENV", "production");
-      vi.resetModules();
-      await expect(import("../webauthn-provider")).resolves.toBeDefined();
-    } finally {
-      vi.unstubAllEnvs();
-      if (savedRpId !== undefined) {
-        process.env.VF_WEBAUTHN_RP_ID = savedRpId;
-      } else {
-        delete process.env.VF_WEBAUTHN_RP_ID;
-      }
-      vi.resetModules();
-    }
+  it("stays enabled during next build even without VF_WEBAUTHN_RP_ID", async () => {
+    // `next build` statically imports server modules under NODE_ENV=production
+    // without runtime env; the check must defer to per-request runtime so it
+    // does not break page-data collection (CI failure on /api/auth/oidc-status).
+    await withEnv(
+      { rpId: null, nodeEnv: "production", phase: "phase-production-build" },
+      async (mod) => {
+        expect(mod.isWebauthnEnabled()).toBe(true);
+      },
+    );
   });
 
-  it("does not throw in dev when VF_WEBAUTHN_RP_ID is not set", async () => {
-    const savedRpId = process.env.VF_WEBAUTHN_RP_ID;
-    // NODE_ENV=test is the vitest default — same guard applies (not production)
-    try {
-      delete process.env.VF_WEBAUTHN_RP_ID;
-      vi.resetModules();
-      await expect(import("../webauthn-provider")).resolves.toBeDefined();
-    } finally {
-      if (savedRpId !== undefined) {
-        process.env.VF_WEBAUTHN_RP_ID = savedRpId;
-      } else {
-        delete process.env.VF_WEBAUTHN_RP_ID;
-      }
-      vi.resetModules();
-    }
+  it("is enabled when NODE_ENV=production and VF_WEBAUTHN_RP_ID is set", async () => {
+    await withEnv({ rpId: "example.com", nodeEnv: "production" }, async (mod) => {
+      expect(mod.isWebauthnEnabled()).toBe(true);
+    });
+  });
+
+  it("is enabled in dev/test even when VF_WEBAUTHN_RP_ID is unset", async () => {
+    // NODE_ENV=test is the vitest default — not production, so the localhost
+    // fallback is allowed and WebAuthn is enabled.
+    await withEnv({ rpId: null }, async (mod) => {
+      expect(mod.isWebauthnEnabled()).toBe(true);
+    });
   });
 });
