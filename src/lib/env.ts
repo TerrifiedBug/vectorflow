@@ -10,6 +10,18 @@ export const isBuildPhase =
   process.env.NEXT_PHASE === "phase-production-build" ||
   process.env.NEXT_PHASE === "phase-export";
 
+// Placeholder secrets shipped in docker/server/.env.example. If a production
+// deployment is still running with one of these literal values, the operator
+// never replaced the example value — every "secret" is publicly known. Reject
+// at boot rather than silently serving with a known session/encryption key.
+// Matches the published `change-me-...` examples (case-insensitive) so a
+// trivially-edited variant like `Change-Me-...` is still caught.
+const PLACEHOLDER_SECRET_PATTERN = /^change-me-/i;
+
+export function isPlaceholderSecret(value: string | undefined): boolean {
+  return typeof value === "string" && PLACEHOLDER_SECRET_PATTERN.test(value);
+}
+
 const runtimeEnvSchema = z
   .object({
     DATABASE_URL: isBuildPhase
@@ -87,6 +99,36 @@ function validateEnv(): Env {
       `Environment validation failed:\n${formatted}\n\nCheck your .env file or environment variables.`
     );
   }
+  // Hard-fail in production if a published placeholder secret was never
+  // replaced. docker/server/.env.example ships `change-me-...` defaults for
+  // NEXTAUTH_SECRET (and the optional VF_ENCRYPTION_KEY_V2); booting with them
+  // means the session-signing and encryption-at-rest keys are publicly known,
+  // so any attacker can forge sessions and decrypt stored secrets. Refuse to
+  // boot rather than serve traffic on a known key. Dev/test keep using example
+  // values freely, so this only fires when NODE_ENV=production.
+  if (!isBuildPhase && result.data.NODE_ENV === "production") {
+    const placeholderVars: string[] = [];
+    if (isPlaceholderSecret(result.data.NEXTAUTH_SECRET)) {
+      placeholderVars.push("NEXTAUTH_SECRET");
+    }
+    if (isPlaceholderSecret(result.data.VF_ENCRYPTION_KEY_V2)) {
+      placeholderVars.push("VF_ENCRYPTION_KEY_V2");
+    }
+    if (placeholderVars.length > 0) {
+      throw new Error(
+        `Environment validation failed:\n` +
+          placeholderVars
+            .map(
+              (name) =>
+                `  - ${name}: still set to the published "change-me-..." placeholder from .env.example`,
+            )
+            .join("\n") +
+          `\n\nReplace these with unique random values before running in production. ` +
+          `Generate one with: openssl rand -base64 32`,
+      );
+    }
+  }
+
   // Loud boot warning: without a dedicated encryption root, the master key is
   // derived from NEXTAUTH_SECRET. That couples secret-at-rest to the session
   // signing secret — rotating NEXTAUTH_SECRET would make every encrypted secret
