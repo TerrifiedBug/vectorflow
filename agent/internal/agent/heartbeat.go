@@ -1,21 +1,70 @@
 package agent
 
 import (
+	"context"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/TerrifiedBug/vectorflow/agent/internal/client"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/metrics"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/selfmetrics"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/supervisor"
 )
 
-func buildHeartbeat(sup pipelineSupervisor, sm *selfmetrics.Metrics, vectorVersion string, deploymentMode string, sampleResults []client.SampleResultMsg, labels map[string]string, runningAs string) client.HeartbeatRequest {
+// scrapeFunc scrapes a single Vector metrics endpoint. It is a package var so
+// tests can substitute a fake without spinning up real HTTP servers.
+var scrapeFunc = metrics.ScrapePrometheusContext
+
+// heartbeatScrapeTimeout bounds the total time spent scraping every running
+// pipeline's metrics endpoint while assembling a heartbeat. Scrapes run in
+// parallel, so this is a ceiling on the whole batch — a single slow or hung
+// Vector endpoint can no longer stall heartbeats or shutdown.
+const heartbeatScrapeTimeout = 4 * time.Second
+
+// scrapeRunningPipelines scrapes every RUNNING pipeline's metrics endpoint
+// concurrently, bounded by ctx, and returns the results keyed by the pipeline's
+// index in statuses. Pipelines that are not running (or have no metrics port)
+// are absent from the map. Running the scrapes in parallel keeps the caller off
+// the critical path: the slowest endpoint, not the sum of all endpoints, sets
+// the latency, and ctx cancellation short-circuits the wait.
+func scrapeRunningPipelines(ctx context.Context, statuses []supervisor.ProcessInfo) map[int]metrics.ScrapeResult {
+	results := make(map[int]metrics.ScrapeResult)
+	var (
+		mu sync.Mutex
+		wg sync.WaitGroup
+	)
+	for i, s := range statuses {
+		if s.Status != "RUNNING" || s.MetricsPort <= 0 {
+			continue
+		}
+		wg.Add(1)
+		go func(idx, port int) {
+			defer wg.Done()
+			sr := scrapeFunc(ctx, port)
+			mu.Lock()
+			results[idx] = sr
+			mu.Unlock()
+		}(i, s.MetricsPort)
+	}
+	wg.Wait()
+	return results
+}
+
+func buildHeartbeat(ctx context.Context, sup pipelineSupervisor, sm *selfmetrics.Metrics, vectorVersion string, deploymentMode string, sampleResults []client.SampleResultMsg, labels map[string]string, runningAs string) client.HeartbeatRequest {
 	statuses := sup.Statuses()
+
+	// Scrape all running pipelines in parallel under a bounded timeout so a slow
+	// or hung Vector metrics endpoint cannot stall the control loop. The derived
+	// context is also cancelled when the parent ctx is (e.g. on shutdown).
+	scrapeCtx, cancel := context.WithTimeout(ctx, heartbeatScrapeTimeout)
+	defer cancel()
+	scrapes := scrapeRunningPipelines(scrapeCtx, statuses)
 
 	pipelines := make([]client.PipelineStatus, 0, len(statuses))
 	var hostMetrics *client.HostMetrics
 
-	for _, s := range statuses {
+	for i, s := range statuses {
 		uptimeSeconds := 0
 		if s.Status == "RUNNING" || s.Status == "STARTING" {
 			uptimeSeconds = int(math.Floor(time.Since(s.StartedAt).Seconds()))
@@ -29,9 +78,8 @@ func buildHeartbeat(sup pipelineSupervisor, sm *selfmetrics.Metrics, vectorVersi
 			UptimeSeconds: uptimeSeconds,
 		}
 
-		// Scrape metrics from Vector's Prometheus endpoint for running pipelines
-		if s.Status == "RUNNING" && s.MetricsPort > 0 {
-			sr := metrics.ScrapePrometheus(s.MetricsPort)
+		// Apply the (already-collected) metrics scrape for running pipelines.
+		if sr, ok := scrapes[i]; ok {
 			ps.EventsIn = sr.Pipeline.EventsIn
 			ps.EventsOut = sr.Pipeline.EventsOut
 			ps.BytesIn = sr.Pipeline.BytesIn

@@ -296,21 +296,91 @@ func (s *Supervisor) monitor(info *ProcessInfo, metricsPort, apiPort int) {
 		backoff := s.backoffFunc(count)
 		slog.Info("restarting crashed pipeline", "pipeline", info.PipelineID, "backoff", backoff, "restarts", count)
 
-		go func() {
-			time.Sleep(backoff)
-			s.mu.Lock()
-			defer s.mu.Unlock()
-			// Check it hasn't been stopped/replaced while we waited
-			if current, ok := s.processes[info.PipelineID]; ok && current == info {
-				delete(s.processes, info.PipelineID)
-				s.startProcess(info.PipelineID, info.configPath, info.Version, info.LogLevel, info.Secrets, metricsPort, apiPort)
-			}
-		}()
+		go s.restartAfter(info, backoff, metricsPort, apiPort)
 	} else {
 		slog.Info("pipeline exited cleanly", "pipeline", info.PipelineID, "pid", info.PID)
 		info.Status = "STOPPED"
 		delete(s.restartCounts, info.PipelineID)
 	}
+}
+
+// restartAfter waits for the backoff and then attempts to replace a crashed
+// pipeline's process. It runs in its own goroutine.
+//
+// If startProcess fails (e.g. transient resource exhaustion or a failed bind),
+// the pipeline must NOT be permanently dropped: instead the crashed entry is
+// left in the map in a CRASHED state, the reserved ports are returned to the
+// pool, and another restart is scheduled under the same backoff/circuit-breaker
+// policy as a crash. This reconciliation loop keeps retrying until the process
+// starts or the consecutive-failure count trips the crash-loop breaker.
+func (s *Supervisor) restartAfter(info *ProcessInfo, backoff time.Duration, metricsPort, apiPort int) {
+	time.Sleep(backoff)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Bail out if the pipeline was stopped or replaced while we waited.
+	current, ok := s.processes[info.PipelineID]
+	if !ok || current != info {
+		// Ports for this attempt are no longer ours to use; whoever replaced the
+		// entry owns its own ports, so just return these to the pool.
+		s.releasePort(metricsPort)
+		s.releasePort(apiPort)
+		return
+	}
+
+	delete(s.processes, info.PipelineID)
+	if err := s.startProcess(info.PipelineID, info.configPath, info.Version, info.LogLevel, info.Secrets, metricsPort, apiPort); err != nil {
+		// The restart itself failed before a process was registered. Don't drop
+		// the pipeline: re-register the crashed entry and schedule a reconciling
+		// retry so a transient failure self-heals.
+		s.releasePort(metricsPort)
+		s.releasePort(apiPort)
+		s.reconcileFailedRestart(info, err)
+	}
+}
+
+// reconcileFailedRestart re-registers a pipeline whose restart attempt failed
+// and schedules another attempt, escalating the backoff and honouring the
+// crash-loop circuit breaker exactly as a real crash would. Callers must hold
+// s.mu.
+func (s *Supervisor) reconcileFailedRestart(info *ProcessInfo, cause error) {
+	info.Status = "CRASHED"
+	s.processes[info.PipelineID] = info
+
+	s.restartCounts[info.PipelineID]++
+	count := s.restartCounts[info.PipelineID]
+	info.restarts = count
+
+	if count > s.maxRestarts {
+		info.Status = "CRASH_LOOP"
+		slog.Error("pipeline restart keeps failing, giving up until next config change",
+			"pipeline", info.PipelineID, "restarts", count, "max", s.maxRestarts, "error", cause)
+		return
+	}
+
+	backoff := s.backoffFunc(count)
+	slog.Error("pipeline restart failed, reconciling with retry",
+		"pipeline", info.PipelineID, "backoff", backoff, "restarts", count, "error", cause)
+
+	metricsPort, apiPort, err := s.allocatePortPair()
+	if err != nil {
+		// No ports available right now; retry the whole reconciliation later
+		// without consuming a port pair. The crash counter already advanced, so
+		// repeated exhaustion will eventually trip the breaker.
+		slog.Error("could not allocate ports for pipeline restart, will retry",
+			"pipeline", info.PipelineID, "error", err)
+		go func() {
+			time.Sleep(backoff)
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if current, ok := s.processes[info.PipelineID]; ok && current == info {
+				s.reconcileFailedRestart(info, err)
+			}
+		}()
+		return
+	}
+	go s.restartAfter(info, backoff, metricsPort, apiPort)
 }
 
 // Stop terminates a running pipeline process.

@@ -62,6 +62,12 @@ type Agent struct {
 	pushCh               chan push.PushMessage
 	immediateHeartbeat   *time.Timer
 	immediateHeartbeatCh chan struct{}
+
+	// runCtx is the lifecycle context established by Run(). It is set once,
+	// before the main loop starts, and read only from the main goroutine
+	// (sendHeartbeat). Heartbeat-time metric scrapes derive a bounded child from
+	// it so they cancel promptly on shutdown.
+	runCtx context.Context
 }
 
 func New(cfg *config.Config) (*Agent, error) {
@@ -123,6 +129,9 @@ func (a *Agent) Run() error {
 	// Set up signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// Expose the lifecycle context to sendHeartbeat so its metric scrapes are
+	// bounded and cancel on shutdown.
+	a.runCtx = ctx
 
 	// Start self-metrics HTTP server (port 0 = disabled by operator).
 	// Launched after ctx is created so the server shuts down cleanly on SIGTERM.
@@ -406,7 +415,11 @@ func (a *Agent) sendHeartbeat() {
 	a.sampleResults = nil
 	a.mu.Unlock()
 
-	hb := buildHeartbeat(a.supervisor, a.metrics, a.vectorVersion, a.deploymentMode, results, a.labels, a.runningAs)
+	ctx := a.runCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	hb := buildHeartbeat(ctx, a.supervisor, a.metrics, a.vectorVersion, a.deploymentMode, results, a.labels, a.runningAs)
 	updateErr := a.updateError
 	if updateErr != "" {
 		hb.UpdateError = updateErr
