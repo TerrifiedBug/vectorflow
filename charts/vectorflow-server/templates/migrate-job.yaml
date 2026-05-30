@@ -1,12 +1,20 @@
 {{- if .Values.migrations.enabled }}
+{{- if not .Values.existingSecret }}
+{{- fail "migrations.enabled runs migrations from a pre-install/pre-upgrade hook Job, which executes BEFORE the chart's own Secret and bundled PostgreSQL exist. It therefore requires an externally-managed database exposed via existingSecret (with a DATABASE_URL key). For bundled PostgreSQL (postgresql.enabled) or a chart-created secret (secret.databaseUrl), set migrations.enabled=false; the server pods then apply migrations on startup, serialized by Prisma's advisory lock." }}
+{{- end }}
 {{/*
 Gate `prisma migrate deploy` to a single execution per release.
 
 Every server replica runs the same entrypoint, so in an HA deployment they would
-all run migrations concurrently and race on the _prisma_migrations advisory lock.
-This pre-install/pre-upgrade hook Job applies migrations exactly once before the
-new pods roll out; the Deployment sets VF_SKIP_MIGRATIONS=true so the server pods
-never migrate themselves.
+all run migrations concurrently and contend on the _prisma_migrations advisory
+lock. This pre-install/pre-upgrade hook Job applies migrations exactly once before
+the new pods roll out; the Deployment sets VF_SKIP_MIGRATIONS=true so the server
+pods never migrate themselves.
+
+A pre-install hook runs before the chart's normal-phase resources, so this Job must
+not depend on them: it uses the namespace default ServiceAccount (it needs no
+Kubernetes API access — automountServiceAccountToken is disabled) and sources
+DATABASE_URL from existingSecret, which the guard above requires.
 */}}
 apiVersion: batch/v1
 kind: Job
@@ -36,7 +44,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "vectorflow-server.serviceAccountName" . }}
+      automountServiceAccountToken: false
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
