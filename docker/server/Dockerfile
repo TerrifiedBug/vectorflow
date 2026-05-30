@@ -86,9 +86,11 @@ RUN mkdir -p /app/.vectorflow && chown vectorflow:nodejs /app/.vectorflow
 # Create backup directory
 RUN mkdir -p /backups && chown vectorflow:nodejs /backups
 
-# Copy entrypoint script
+# Copy entrypoint + one-shot migration scripts and their shared DATABASE_URL helper
+COPY --chown=vectorflow:nodejs docker/server/db-url.sh ./db-url.sh
 COPY --chown=vectorflow:nodejs docker/server/entrypoint.sh ./entrypoint.sh
-RUN chmod +x ./entrypoint.sh
+COPY --chown=vectorflow:nodejs docker/server/migrate.sh ./migrate.sh
+RUN chmod +x ./db-url.sh ./entrypoint.sh ./migrate.sh
 
 USER vectorflow
 EXPOSE 3000

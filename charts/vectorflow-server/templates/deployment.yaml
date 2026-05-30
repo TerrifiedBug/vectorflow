@@ -61,6 +61,13 @@ spec:
               value: {{ .Values.trustProxyHeaders | quote }}
             - name: NODE_ENV
               value: "production"
+            {{- if .Values.migrations.enabled }}
+            # Migrations run once via the pre-upgrade Job (see migrate-job.yaml);
+            # tell every replica's entrypoint to skip migrating so HA pods don't
+            # race on the _prisma_migrations advisory lock.
+            - name: VF_SKIP_MIGRATIONS
+              value: "true"
+            {{- end }}
             {{- if or .Values.secret.encryptionKeyV2 .Values.existingSecret }}
             - name: VF_ENCRYPTION_KEY_V2
               valueFrom:

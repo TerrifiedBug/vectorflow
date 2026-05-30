@@ -1,74 +1,26 @@
 #!/bin/sh
 set -e
 
-# Build DATABASE_URL from POSTGRES_PASSWORD (+ optional component overrides)
-# unless the user has supplied a complete DATABASE_URL of their own.
-#
-# Rationale: a Postgres password is part of the userinfo segment of a URI and
-# MUST be percent-encoded (RFC 3986). Embedding the raw password in compose
-# (`postgresql://user:${POSTGRES_PASSWORD}@host/db`) silently corrupts the
-# connection string whenever the password contains `/`, `+`, `=`, `@`, `?`,
-# `#`, `:`, `%`, or space. Postgres itself accepts those characters fine, but
-# `openssl rand -base64 32` produces `/` and `+` ~25% of the time, so the
-# breakage is easy to hit in practice. Prisma reports this as a cryptic
-# `P1013: invalid port number in database URL`.
-#
-# Constructing the URL here, with `encodeURIComponent` from the runtime that
-# is already in the image, removes the footgun without forcing users to
-# percent-encode their passwords by hand.
-if [ -z "${DATABASE_URL:-}" ]; then
-    if [ -z "${POSTGRES_PASSWORD:-}" ]; then
-        echo "ERROR: either DATABASE_URL or POSTGRES_PASSWORD must be set." >&2
-        exit 1
-    fi
+# Resolve DATABASE_URL (builds + URL-encodes it from POSTGRES_* when not set).
+# The helper lives next to this script so it resolves regardless of cwd.
+SCRIPT_DIR=$(unset CDPATH; cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck source=docker/server/db-url.sh
+. "${SCRIPT_DIR}/db-url.sh"
+resolve_database_url
 
-    # Reject the published placeholder from .env.example in production. Booting
-    # the database with a publicly-known password (the literal
-    # `change-me-...` example value) is a credential leak, so fail fast unless
-    # this is a non-production run. NODE_ENV defaults to production in the image,
-    # so an unset NODE_ENV is treated as production.
-    case "${NODE_ENV:-production}" in
-        production)
-            case "$POSTGRES_PASSWORD" in
-                change-me-*)
-                    echo "ERROR: POSTGRES_PASSWORD is still the published .env.example placeholder ('change-me-...')." >&2
-                    echo "       Set a unique random password before running in production." >&2
-                    echo "       Generate one with: openssl rand -base64 32" >&2
-                    exit 1
-                    ;;
-            esac
-            ;;
-    esac
-
-    PG_USER="${POSTGRES_USER:-vectorflow}"
-    PG_HOST="${POSTGRES_HOST:-postgres}"
-    PG_PORT="${POSTGRES_PORT:-5432}"
-    PG_DB="${POSTGRES_DB:-vectorflow}"
-
-    DATABASE_URL=$(
-        VF_PG_USER="$PG_USER" \
-        VF_PG_PASS="$POSTGRES_PASSWORD" \
-        VF_PG_HOST="$PG_HOST" \
-        VF_PG_PORT="$PG_PORT" \
-        VF_PG_DB="$PG_DB" \
-        node -e '
-            const enc = encodeURIComponent;
-            const u = enc(process.env.VF_PG_USER);
-            const p = enc(process.env.VF_PG_PASS);
-            // Bracket bare IPv6 literals so `host:port` parses correctly.
-            // (RFC 3986 §3.2.2: IP-literal = "[" IPv6address "]".)
-            let host = process.env.VF_PG_HOST;
-            if (host.includes(":") && !host.startsWith("[")) host = `[${host}]`;
-            const port = process.env.VF_PG_PORT;
-            const db = enc(process.env.VF_PG_DB);
-            process.stdout.write(`postgresql://${u}:${p}@${host}:${port}/${db}`);
-        '
-    )
-    export DATABASE_URL
+# Gate migrations to a single execution. In HA deployments every replica boots
+# this entrypoint; running `prisma migrate deploy` from each pod concurrently
+# races on the _prisma_migrations advisory lock and can leave a migration half
+# applied. The Helm chart runs migrations once via a pre-upgrade Job and sets
+# VF_SKIP_MIGRATIONS=true on the server pods so they never migrate themselves.
+# Single-instance deployments (docker compose, the default chart with one
+# replica) leave it unset and keep migrating inline on boot.
+if [ "${VF_SKIP_MIGRATIONS:-false}" = "true" ]; then
+    echo "Skipping database migrations (VF_SKIP_MIGRATIONS=true)."
+else
+    echo "Running database migrations..."
+    prisma migrate deploy
 fi
-
-echo "Running database migrations..."
-prisma migrate deploy
 
 echo "Starting VectorFlow..."
 exec node server.js

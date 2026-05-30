@@ -117,6 +117,35 @@ authTrustHost: "true"
 trustProxyHeaders: "false"
 
 # ------------------------------------------------------------------
+# Database migrations
+# ------------------------------------------------------------------
+# When enabled, `prisma migrate deploy` runs once per release via a
+# pre-install/pre-upgrade hook Job and the server pods are told to skip
+# migrating on boot (VF_SKIP_MIGRATIONS=true). This prevents HA replicas from
+# racing on the _prisma_migrations advisory lock.
+#
+# Opt-in (default false): the hook Job runs BEFORE the chart's own Secret and
+# bundled PostgreSQL exist, so it REQUIRES an externally-managed database via
+# `existingSecret` (DATABASE_URL). Enabling it without existingSecret fails at
+# render with guidance. When disabled, the server pods apply migrations on
+# startup, serialized by Prisma's advisory lock (safe for replicaCount > 1,
+# just slightly redundant) — this is the right choice for bundled PostgreSQL
+# or a chart-created secret.
+migrations:
+  enabled: false
+  # -- Retries before the migration Job is marked failed (and the release fails).
+  backoffLimit: 3
+  # -- Hard timeout for the migration Job in seconds. Empty ("") = no deadline.
+  activeDeadlineSeconds: 600
+  resources:
+    limits:
+      cpu: "1"
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# ------------------------------------------------------------------
 # Secrets
 # ------------------------------------------------------------------
 # Provide secrets either via existingSecret (recommended) or inline.

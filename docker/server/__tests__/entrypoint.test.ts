@@ -180,3 +180,38 @@ describe("entrypoint.sh DATABASE_URL construction", () => {
     );
   });
 });
+
+describe("entrypoint.sh migration gating (VF_SKIP_MIGRATIONS)", () => {
+  // The stub prisma echoes STUB_PRISMA_DATABASE_URL=... only when it is invoked,
+  // so its presence/absence in stdout tells us whether migrations ran.
+  it("runs migrations by default (single-instance / docker compose)", () => {
+    const r = runEntrypoint({ POSTGRES_PASSWORD: "pw" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("Running database migrations...");
+    expect(r.stdout).toMatch(/STUB_PRISMA_DATABASE_URL=/);
+    // Server still starts after migrating.
+    expect(r.stdout).toMatch(/STUB_SERVER_DATABASE_URL=/);
+  });
+
+  it("skips migrations when VF_SKIP_MIGRATIONS=true (HA replicas)", () => {
+    const r = runEntrypoint({
+      POSTGRES_PASSWORD: "pw",
+      VF_SKIP_MIGRATIONS: "true",
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("Skipping database migrations");
+    // prisma must NOT have been invoked.
+    expect(r.stdout).not.toMatch(/STUB_PRISMA_DATABASE_URL=/);
+    // Server still starts.
+    expect(r.stdout).toMatch(/STUB_SERVER_DATABASE_URL=/);
+  });
+
+  it("still migrates when VF_SKIP_MIGRATIONS is set to a non-'true' value", () => {
+    const r = runEntrypoint({
+      POSTGRES_PASSWORD: "pw",
+      VF_SKIP_MIGRATIONS: "false",
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toMatch(/STUB_PRISMA_DATABASE_URL=/);
+  });
+});

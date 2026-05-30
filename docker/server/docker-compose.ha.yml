@@ -47,6 +47,24 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # One-shot migration runner. With two app replicas, letting each container run
+  # `prisma migrate deploy` on boot races on the _prisma_migrations advisory lock
+  # and can leave a migration half applied. This service applies migrations once,
+  # then exits; vf1/vf2 wait for it to complete and skip migrating themselves
+  # (VF_SKIP_MIGRATIONS=true).
+  migrate:
+    container_name: vectorflow-ha-migrate
+    image: ghcr.io/terrifiedbug/vectorflow-server:${VF_VERSION:-latest}
+    command: ["./migrate.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Same DATABASE_URL resolution as the app containers.
+      DATABASE_URL:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    restart: "no"
+
   vf1:
     container_name: vectorflow-ha-1
     image: ghcr.io/terrifiedbug/vectorflow-server:${VF_VERSION:-latest}
@@ -55,6 +73,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       # Entrypoint constructs DATABASE_URL from POSTGRES_PASSWORD with proper
       # URL-encoding. Set DATABASE_URL directly in .env to point at an
@@ -65,6 +85,8 @@ services:
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       AUTH_TRUST_HOST: "true"
       NEXTAUTH_URL:
+      # Migrations are handled once by the `migrate` service above.
+      VF_SKIP_MIGRATIONS: "true"
     volumes:
       - vfdata1:/app/.vectorflow
       - backups:/backups
@@ -84,6 +106,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -91,6 +115,8 @@ services:
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       AUTH_TRUST_HOST: "true"
       NEXTAUTH_URL:
+      # Migrations are handled once by the `migrate` service above.
+      VF_SKIP_MIGRATIONS: "true"
     volumes:
       - vfdata2:/app/.vectorflow
       - backups:/backups
