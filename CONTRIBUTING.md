@@ -339,4 +339,4 @@ This repository is the OSS core. A separate private repository (`vectorflow-clou
 
 The tenancy primitives (`Organization`, `OrgMember`, `OrganizationSettings`) ship in the OSS edition so self-hosted deployments have the schema shape. In the OSS build they default to a single org — no multi-tenant behaviour is active unless you opt in.
 
-See [`LICENSE-CLOUD.md`](./LICENSE-CLOUD.md) for the full boundary explanation.
+See [`OPEN-CORE.md`](./OPEN-CORE.md) for the full boundary explanation.
