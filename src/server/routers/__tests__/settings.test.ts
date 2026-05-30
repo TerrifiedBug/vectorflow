@@ -74,6 +74,7 @@ vi.mock("@/server/services/backup-scheduler", () => ({
 
 vi.mock("@/server/services/url-validation", () => ({
   validatePublicUrl: vi.fn().mockResolvedValue(undefined),
+  validateOutboundUrl: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/auth", () => ({
