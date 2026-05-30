@@ -14,6 +14,19 @@ import {
   verifyBackupCode,
 } from "@/server/services/totp";
 
+/**
+ * True when a freshly-matched TOTP step is a replay of an already-consumed
+ * step (`<= lastTotpStep`). Used to keep settings-UI TOTP verification
+ * single-use, consistent with the login path (VF-16).
+ */
+function isTotpReplay(matchedStep: number | null, lastTotpStep: number | null): boolean {
+  return (
+    matchedStep !== null &&
+    lastTotpStep !== null &&
+    matchedStep <= lastTotpStep
+  );
+}
+
 export const userRouter = router({
   /** Returns current user info for client-side feature gating */
   me: protectedProcedure.query(async ({ ctx }) => {
@@ -200,7 +213,7 @@ export const userRouter = router({
       const userId = ctx.session.user!.id!;
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { totpSecret: true, totpEnabled: true },
+        select: { totpSecret: true, totpEnabled: true, lastTotpStep: true },
       });
 
       if (!user?.totpSecret) {
@@ -217,16 +230,19 @@ export const userRouter = router({
       }
 
       const secret = decrypt(user.totpSecret);
-      if (!verifyTotpCode(secret, input.code)) {
+      const matchedStep = verifyTotpCode(secret, input.code);
+      if (matchedStep === null || isTotpReplay(matchedStep, user.lastTotpStep)) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Invalid verification code. Please try again.",
         });
       }
 
+      // Persist the consumed step alongside enabling 2FA so the same code
+      // cannot be replayed at the login screen immediately after enrolment.
       await prisma.user.update({
         where: { id: userId },
-        data: { totpEnabled: true },
+        data: { totpEnabled: true, lastTotpStep: matchedStep },
       });
 
       return { enabled: true };
@@ -243,7 +259,12 @@ export const userRouter = router({
       const userId = ctx.session.user!.id!;
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { totpSecret: true, totpEnabled: true, totpBackupCodes: true },
+        select: {
+          totpSecret: true,
+          totpEnabled: true,
+          totpBackupCodes: true,
+          lastTotpStep: true,
+        },
       });
 
       if (!user?.totpEnabled || !user.totpSecret) {
@@ -254,7 +275,10 @@ export const userRouter = router({
       }
 
       const secret = decrypt(user.totpSecret);
-      const codeValid = verifyTotpCode(secret, input.code);
+      const matchedStep = verifyTotpCode(secret, input.code);
+      // A replayed live code is treated as invalid, same as the login path.
+      const codeValid =
+        matchedStep !== null && !isTotpReplay(matchedStep, user.lastTotpStep);
 
       if (!codeValid) {
         // Try backup code
@@ -278,6 +302,8 @@ export const userRouter = router({
           totpEnabled: false,
           totpSecret: null,
           totpBackupCodes: null,
+          // Clear the consumed-step marker; a future re-enrolment starts fresh.
+          lastTotpStep: null,
         },
       });
 

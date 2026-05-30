@@ -67,7 +67,15 @@ export interface RotateOrgDekResult {
 /** Flat representation of one row-field that needs re-encryption. */
 interface RotationEntry {
   table: "Secret" | "OrganizationSettings" | "Environment" | "Team" | "WebhookEndpoint";
+  /**
+   * Identity folded into the v3 AAD. MUST match the runtime callsite for the
+   * column, which is NOT always the Prisma primary key — Secret binds AAD to
+   * `${environmentId}:${name}` (see secret.ts:secretRowId), every other column
+   * binds to the bare row id.
+   */
   rowId: string;
+  /** Prisma primary key used for the `where: { id }` write clause. */
+  pk: string;
   ciphertext: string;
 }
 
@@ -103,7 +111,7 @@ export async function rotateOrgDek(
     await Promise.all([
       prisma.secret.findMany({
         where: { organizationId: orgId },
-        select: { id: true, encryptedValue: true },
+        select: { id: true, environmentId: true, name: true, encryptedValue: true },
       }),
       prisma.organizationSettings.findUnique({
         where: { organizationId: orgId },
@@ -145,7 +153,10 @@ export async function rotateOrgDek(
       .filter((s) => s.encryptedValue.startsWith("v3:"))
       .map((s) => ({
         table: "Secret" as const,
-        rowId: s.id,
+        // AAD rowId is the composite `${environmentId}:${name}` the runtime
+        // callsites use — NOT the cuid — or decrypt would fail the AAD check.
+        rowId: `${s.environmentId}:${s.name}`,
+        pk: s.id,
         ciphertext: s.encryptedValue,
       })),
     ...(orgSettings?.oidcClientSecret?.startsWith("v3:")
@@ -153,6 +164,7 @@ export async function rotateOrgDek(
           {
             table: "OrganizationSettings" as const,
             rowId: orgSettings.id,
+            pk: orgSettings.id,
             ciphertext: orgSettings.oidcClientSecret,
           },
         ]
@@ -162,6 +174,7 @@ export async function rotateOrgDek(
       .map((e) => ({
         table: "Environment" as const,
         rowId: e.id,
+        pk: e.id,
         ciphertext: e.gitToken!,
       })),
     ...teams
@@ -169,6 +182,7 @@ export async function rotateOrgDek(
       .map((t) => ({
         table: "Team" as const,
         rowId: t.id,
+        pk: t.id,
         ciphertext: t.aiApiKey!,
       })),
     ...webhookEndpoints
@@ -176,6 +190,7 @@ export async function rotateOrgDek(
       .map((w) => ({
         table: "WebhookEndpoint" as const,
         rowId: w.id,
+        pk: w.id,
         ciphertext: w.encryptedSecret!,
       })),
   ];
@@ -229,7 +244,7 @@ export async function rotateOrgDek(
         case "Secret":
           writes.push(
             tx.secret.update({
-              where: { id: entry.rowId },
+              where: { id: entry.pk },
               data: { encryptedValue: newCt },
             }),
           );
@@ -237,7 +252,7 @@ export async function rotateOrgDek(
         case "OrganizationSettings":
           writes.push(
             tx.organizationSettings.update({
-              where: { id: entry.rowId },
+              where: { id: entry.pk },
               data: { oidcClientSecret: newCt },
             }),
           );
@@ -245,7 +260,7 @@ export async function rotateOrgDek(
         case "Environment":
           writes.push(
             tx.environment.update({
-              where: { id: entry.rowId },
+              where: { id: entry.pk },
               data: { gitToken: newCt },
             }),
           );
@@ -253,7 +268,7 @@ export async function rotateOrgDek(
         case "Team":
           writes.push(
             tx.team.update({
-              where: { id: entry.rowId },
+              where: { id: entry.pk },
               data: { aiApiKey: newCt },
             }),
           );
@@ -261,7 +276,7 @@ export async function rotateOrgDek(
         case "WebhookEndpoint":
           writes.push(
             tx.webhookEndpoint.update({
-              where: { id: entry.rowId },
+              where: { id: entry.pk },
               data: { encryptedSecret: newCt },
             }),
           );

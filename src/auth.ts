@@ -33,6 +33,7 @@ import { resolveOrgIdFromHost } from "@/lib/host-to-org";
 import { getRequestHostFromHeaders } from "@/lib/request-host";
 import { webauthnProvider } from "@/server/services/auth/webauthn-provider";
 import { getJwtSecretForOrg } from "@/server/services/auth/jwt-key";
+import { isOidcEmailVerified } from "@/server/services/auth/oidc-email-verified";
 
 async function getClientIp(): Promise<string | null> {
   try {
@@ -172,7 +173,7 @@ const credentialsProvider = Credentials({
         where: { id: user.id },
         data: { lockedAt: null, lockedBy: null },
       });
-      loginAttemptTracker.clearFailures(email);
+      await loginAttemptTracker.clearFailuresShared(email);
     }
 
     const valid = await bcrypt.compare(
@@ -180,7 +181,7 @@ const credentialsProvider = Credentials({
       user.passwordHash
     );
     if (!valid) {
-      const failures = loginAttemptTracker.recordFailure(email);
+      const failures = await loginAttemptTracker.recordFailureShared(email);
       const shouldLock = failures >= ACCOUNT_LOCKOUT_THRESHOLD;
 
       if (shouldLock) {
@@ -214,9 +215,18 @@ const credentialsProvider = Credentials({
       }
 
       const secret = decrypt(user.totpSecret);
-      let codeValid = verifyTotpCode(secret, totpCode);
+      // verifyTotpCode returns the matched absolute time-step (counter) or
+      // null. Enforce single-use: a code whose step is <= the last consumed
+      // step is a replay and must be rejected even though it still validates
+      // within the ±1 window (VF-16).
+      const matchedStep = verifyTotpCode(secret, totpCode);
+      const isReplay =
+        matchedStep !== null &&
+        user.lastTotpStep !== null &&
+        matchedStep <= user.lastTotpStep;
+      let codeValid = matchedStep !== null && !isReplay;
 
-      // If TOTP code didn't match, try as a backup code
+      // If TOTP code didn't match (or was a replay), try as a backup code
       if (!codeValid && user.totpBackupCodes) {
         const hashedCodes: string[] = JSON.parse(decrypt(user.totpBackupCodes));
         const result = verifyBackupCode(totpCode, hashedCodes);
@@ -230,12 +240,22 @@ const credentialsProvider = Credentials({
         }
       }
 
+      // Live TOTP code accepted (not a backup code) — persist the consumed
+      // step so the same code, or any earlier code still inside the window,
+      // cannot be replayed on a parallel session.
+      if (matchedStep !== null && !isReplay) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { lastTotpStep: matchedStep },
+        });
+      }
+
       if (!codeValid) {
         // Count invalid TOTP toward both the overall lockout threshold and the
         // TOTP-specific rate limit. Use separate counters so the TOTP limit
         // (TOTP_RATE_LIMIT) is only triggered by actual TOTP failures, never
         // by a mix of password + TOTP failures sharing one counter.
-        const allFailures = loginAttemptTracker.recordFailure(email);
+        const allFailures = await loginAttemptTracker.recordFailureShared(email);
         const totpFailures = loginAttemptTracker.recordTotpFailure(email);
         const shouldLock = totpFailures >= TOTP_RATE_LIMIT || allFailures >= ACCOUNT_LOCKOUT_THRESHOLD;
 
@@ -260,8 +280,8 @@ const credentialsProvider = Credentials({
       }
     }
 
-    // Successful login — clear all in-memory failure counters
-    loginAttemptTracker.clearFailures(email);
+    // Successful login — clear failure counters (shared + in-memory)
+    await loginAttemptTracker.clearFailuresShared(email);
     loginAttemptTracker.clearTotpFailures(email);
 
     writeAuditLog({
@@ -379,6 +399,21 @@ async function getAuthInstance() {
               const oidcOrgId = await resolveOrgIdFromHost(await getRequestHost());
               const settings = await getOrgSettings(oidcOrgId);
               const profileData = profile as Record<string, unknown> | undefined;
+
+              // Refuse to auto-provision or link an account on an email the
+              // IdP explicitly marked as unverified (email_verified === false).
+              // A claim that is simply absent is allowed — see
+              // oidc-email-verified.ts for the rationale (VF-31).
+              if (!isOidcEmailVerified(profileData)) {
+                const ipAddress = await getClientIp();
+                writeAuditLog({
+                  userId: null, action: "auth.oidc_link_blocked", entityType: "Auth", entityId: "oidc",
+                  ipAddress, userEmail: user.email, userName: user.name ?? null,
+                  metadata: { reason: "email_not_verified" },
+                }).catch(() => {});
+                warnLog("auth", `OIDC sign-in blocked: email_verified is false for ${user.email}.`);
+                return "/login?error=email_not_verified";
+              }
 
               // Ensure user exists in the database
               let dbUser = await prisma.user.findUnique({

@@ -38,6 +38,35 @@ func TestUpdateHTTPClientHasExplicitTimeouts(t *testing.T) {
 	}
 }
 
+func TestUpdateHTTPClientRejectsRedirectToInsecureScheme(t *testing.T) {
+	if updateHTTPClient.CheckRedirect == nil {
+		t.Fatal("expected self-update client to set CheckRedirect to re-validate the scheme on redirects")
+	}
+
+	httpsReq, _ := http.NewRequest("GET", "https://example.com/vf-agent", nil)
+	httpReq, _ := http.NewRequest("GET", "http://evil.example.com/vf-agent", nil)
+
+	// A redirect that stays on https must be allowed.
+	if err := updateHTTPClient.CheckRedirect(httpsReq, nil); err != nil {
+		t.Fatalf("expected an https redirect to be allowed, got: %v", err)
+	}
+
+	// A redirect that downgrades to http must be refused.
+	if err := updateHTTPClient.CheckRedirect(httpReq, nil); err == nil {
+		t.Fatal("expected a redirect to http:// to be refused")
+	} else if !strings.Contains(err.Error(), "https is required") {
+		t.Fatalf("expected an https-required error, got: %v", err)
+	}
+}
+
+func TestUpdateHTTPClientRedirectCapStopsAfterTenHops(t *testing.T) {
+	httpsReq, _ := http.NewRequest("GET", "https://example.com/vf-agent", nil)
+	via := make([]*http.Request, 10)
+	if err := updateHTTPClient.CheckRedirect(httpsReq, via); err == nil {
+		t.Fatal("expected redirect chain to be capped at 10 hops")
+	}
+}
+
 func TestHandleSelfUpdateRejectsNonHTTPS(t *testing.T) {
 	a := &Agent{cfg: &config.Config{}}
 	err := a.handleSelfUpdate(&client.PendingAction{

@@ -3,9 +3,11 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthSessionProvider } from "@/components/session-provider";
+import { NonceProvider } from "@/components/nonce-provider";
 import { TRPCClientProvider } from "@/trpc/client";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { getCspNonce } from "@/lib/csp-nonce";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -24,11 +26,13 @@ export const metadata: Metadata = {
   description: "Visual pipeline management for Vector",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Per-request CSP nonce (strict multi-tenant mode only); empty in OSS mode.
+  const nonce = await getCspNonce();
   return (
     <html lang="en" suppressHydrationWarning>
       <body
@@ -46,13 +50,15 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AuthSessionProvider>
-            <TRPCClientProvider>
-              <TooltipProvider>
-                {children}
-              </TooltipProvider>
-            </TRPCClientProvider>
-          </AuthSessionProvider>
+          <NonceProvider nonce={nonce}>
+            <AuthSessionProvider>
+              <TRPCClientProvider>
+                <TooltipProvider>
+                  {children}
+                </TooltipProvider>
+              </TRPCClientProvider>
+            </AuthSessionProvider>
+          </NonceProvider>
           <Toaster />
         </ThemeProvider>
       </body>

@@ -30,8 +30,16 @@ export function generateTotpSecret(email: string): { secret: string; uri: string
 /**
  * Verify a 6-digit TOTP code against a base32 secret.
  * Allows ±1 time window for clock drift tolerance.
+ *
+ * Returns the matched **absolute** time-step (counter) when the code is
+ * valid, or `null` when it is invalid. The absolute step is the value the
+ * caller persists (`User.lastTotpStep`) and compares against on the next
+ * attempt so each code can only be consumed once within its window
+ * (replay prevention — VF-16). Use `verifyTotpStep` for a boolean check
+ * that does not need replay tracking (e.g. enabling/disabling 2FA in the
+ * settings UI, where the session is already authenticated).
  */
-export function verifyTotpCode(secretBase32: string, code: string): boolean {
+export function verifyTotpCode(secretBase32: string, code: string): number | null {
   const totp = new TOTP({
     issuer: ISSUER,
     algorithm: ALGORITHM,
@@ -40,9 +48,26 @@ export function verifyTotpCode(secretBase32: string, code: string): boolean {
     secret: Secret.fromBase32(secretBase32),
   });
 
-  // delta returns null if invalid, or the time step difference if valid
+  // delta returns null if invalid, or the time step difference (relative to
+  // the current step) if valid. window:1 accepts the previous/current/next
+  // 30s step.
   const delta = totp.validate({ token: code, window: 1 });
-  return delta !== null;
+  if (delta === null) return null;
+
+  // Convert the relative delta into an absolute monotonic counter so callers
+  // can store and compare it across requests. otpauth uses Unix-epoch steps:
+  // floor(now / period) is the current step.
+  const currentStep = Math.floor(Date.now() / (PERIOD * 1000));
+  return currentStep + delta;
+}
+
+/**
+ * Boolean convenience wrapper around `verifyTotpCode` for call sites that
+ * only need validity (no replay tracking), e.g. enabling/disabling 2FA from
+ * an already-authenticated session.
+ */
+export function verifyTotpStep(secretBase32: string, code: string): boolean {
+  return verifyTotpCode(secretBase32, code) !== null;
 }
 
 /**

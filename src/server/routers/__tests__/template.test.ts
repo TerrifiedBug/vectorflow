@@ -19,6 +19,7 @@ vi.mock("@/trpc/init", () => {
     requirePlatformOperator: passthrough,
     denyInDemo: passthrough,
     middleware: t.middleware,
+    roleLevel: { VIEWER: 0, EDITOR: 1, ADMIN: 2 },
   };
 });
 
@@ -214,6 +215,29 @@ describe("templateRouter", () => {
       prismaMock.template.findUnique.mockResolvedValueOnce(systemTmpl as never);
 
       await expect(caller.delete({ id: "tmpl-1" })).rejects.toThrow("System templates cannot be deleted");
+    });
+
+    it("throws FORBIDDEN when a VIEWER tries to delete a team template (VF-32)", async () => {
+      // VF-32: delete previously checked membership existence only, letting a
+      // VIEWER delete team templates. EDITOR+ is now required.
+      const tmpl = makeTemplate();
+      prismaMock.template.findUnique.mockResolvedValueOnce(tmpl as never);
+      prismaMock.orgMember.findUnique.mockResolvedValueOnce(null as never);
+      prismaMock.teamMember.findUnique.mockResolvedValueOnce({ role: "VIEWER" } as never);
+
+      await expect(caller.delete({ id: "tmpl-1" })).rejects.toThrow(/FORBIDDEN/i);
+      expect(prismaMock.template.delete).not.toHaveBeenCalled();
+    });
+
+    it("allows an EDITOR to delete a team template (VF-32)", async () => {
+      const tmpl = makeTemplate();
+      prismaMock.template.findUnique.mockResolvedValueOnce(tmpl as never);
+      prismaMock.orgMember.findUnique.mockResolvedValueOnce(null as never);
+      prismaMock.teamMember.findUnique.mockResolvedValueOnce({ role: "EDITOR" } as never);
+      prismaMock.template.delete.mockResolvedValueOnce(tmpl as never);
+
+      const result = await caller.delete({ id: "tmpl-1" });
+      expect(result.id).toBe("tmpl-1");
     });
   });
 });

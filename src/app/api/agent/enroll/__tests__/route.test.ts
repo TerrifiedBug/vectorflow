@@ -15,6 +15,8 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/server/services/agent-token", () => ({
   verifyEnrollmentToken: vi.fn(),
   generateNodeToken: vi.fn(),
+  // No-id tokens (e.g. "vf_enroll_test") return null and take the fan-out path.
+  getEnrollmentTokenIdentifier: vi.fn(() => null),
 }));
 
 vi.mock("@/server/services/event-alerts", () => ({
@@ -31,7 +33,11 @@ vi.mock("@/lib/logger", () => ({
 
 import { POST } from "../route";
 import { prisma } from "@/lib/prisma";
-import { verifyEnrollmentToken, generateNodeToken } from "@/server/services/agent-token";
+import {
+  verifyEnrollmentToken,
+  generateNodeToken,
+  getEnrollmentTokenIdentifier,
+} from "@/server/services/agent-token";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -183,6 +189,77 @@ describe("POST /api/agent/enroll -- NODE-03 label template auto-assignment", () 
 
     // Empty nodeGroups -> update should NOT be called
     expect(prismaMock.vectorNode.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/agent/enroll -- VF-36 token-id fast path", () => {
+  // A current enrollment token embeds a 16-hex identifier:
+  // vf_enroll_<slug>_<16hex>_<64hex>
+  const TOKEN_WITH_ID =
+    "vf_enroll_default_0123456789abcdef_fedcba98765432100123456789abcdeffedcba98765432100123456789abcdef";
+
+  beforeEach(() => {
+    mockReset(prismaMock);
+    // Current-format tokens embed a 16-hex identifier; return it so the route
+    // takes the indexed (by-id) fast path. The legacy test below overrides this.
+    vi.mocked(getEnrollmentTokenIdentifier).mockReturnValue("0123456789abcdef");
+    vi.mocked(verifyEnrollmentToken).mockResolvedValue(true);
+    vi.mocked(generateNodeToken).mockResolvedValue({
+      token: "vf_node_default_0123456789abcdef_cc",
+      hash: "h-id",
+      identifier: "0123456789abcdef",
+    });
+    prismaMock.$transaction.mockImplementation(
+      async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock),
+    );
+    prismaMock.$executeRaw.mockResolvedValue(0 as never);
+    prismaMock.organization.findUnique.mockResolvedValue({ plan: "FREE" } as never);
+    prismaMock.vectorNode.count.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+    prismaMock.vectorNode.create.mockResolvedValue(mockNode as never);
+    prismaMock.nodeStatusEvent.create.mockResolvedValue({} as never);
+    prismaMock.nodeGroup.findMany.mockResolvedValue([]);
+  });
+
+  it("looks up a single environment by enrollmentTokenId instead of scanning all", async () => {
+    prismaMock.environment.findFirst.mockResolvedValue(mockEnv as never);
+
+    const req = makeRequest({ token: TOKEN_WITH_ID, hostname: "fast-path-host" });
+    const res = await POST(req);
+
+    expect(res.status).toBe(200);
+    // Fast path: single indexed lookup, no fan-out scan.
+    expect(prismaMock.environment.findFirst).toHaveBeenCalledTimes(1);
+    expect(prismaMock.environment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ enrollmentTokenId: "0123456789abcdef" }),
+      }),
+    );
+    expect(prismaMock.environment.findMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects with 401 when the token id matches no environment (no fan-out)", async () => {
+    prismaMock.environment.findFirst.mockResolvedValue(null);
+
+    const req = makeRequest({ token: TOKEN_WITH_ID, hostname: "no-match-host" });
+    const res = await POST(req);
+
+    expect(res.status).toBe(401);
+    expect(prismaMock.environment.findFirst).toHaveBeenCalled();
+    expect(prismaMock.environment.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.vectorNode.create).not.toHaveBeenCalled();
+  });
+
+  it("falls back to scanning environments for a legacy (no-id) token", async () => {
+    vi.mocked(getEnrollmentTokenIdentifier).mockReturnValue(null);
+    prismaMock.environment.findMany.mockResolvedValue([mockEnv] as never);
+
+    const req = makeRequest({ token: "vf_enroll_legacytoken", hostname: "legacy-host" });
+    const res = await POST(req);
+
+    expect(res.status).toBe(200);
+    // Legacy path: scan, never the indexed single lookup.
+    expect(prismaMock.environment.findMany).toHaveBeenCalled();
+    expect(prismaMock.environment.findFirst).not.toHaveBeenCalled();
   });
 });
 

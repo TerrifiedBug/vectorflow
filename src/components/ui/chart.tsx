@@ -10,6 +10,7 @@ import type {
 } from "recharts/types/component/DefaultTooltipContent"
 
 import { cn } from "@/lib/utils"
+import { useCspNonce } from "@/components/nonce-provider"
 
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: "", dark: ".dark" } as const
@@ -76,6 +77,10 @@ function ChartContainer({
 }
 
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
+  // Attach the per-request CSP nonce so this inline <style> is permitted under
+  // the strict multi-tenant CSP (which drops 'unsafe-inline'). undefined in
+  // OSS/non-strict mode, where 'unsafe-inline' already allows it.
+  const nonce = useCspNonce()
   const colorConfig = Object.entries(config).filter(
     ([, config]) => config.theme || config.color
   )
@@ -86,6 +91,7 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
 
   return (
     <style
+      nonce={nonce}
       dangerouslySetInnerHTML={{
         __html: Object.entries(THEMES)
           .map(

@@ -1,12 +1,15 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { TOTP, Secret } from "otpauth";
 import {
   generateTotpSecret,
   verifyTotpCode,
+  verifyTotpStep,
   generateBackupCodes,
   hashBackupCode,
   verifyBackupCode,
 } from "@/server/services/totp";
+
+const PERIOD_SECONDS = 30;
 
 // ─── generateTotpSecret ────────────────────────────────────────────────────
 
@@ -51,7 +54,7 @@ describe("generateTotpSecret", () => {
 // ─── verifyTotpCode ────────────────────────────────────────────────────────
 
 describe("verifyTotpCode", () => {
-  it("returns true for a valid current code", () => {
+  it("returns the matched absolute step (a number) for a valid current code", () => {
     const { secret } = generateTotpSecret("test@example.com");
 
     // Generate a valid code using the same library
@@ -64,22 +67,76 @@ describe("verifyTotpCode", () => {
     });
     const validCode = totp.generate();
 
-    expect(verifyTotpCode(secret, validCode)).toBe(true);
+    const step = verifyTotpCode(secret, validCode);
+    expect(typeof step).toBe("number");
+    // For a current code (delta 0) the absolute step equals the current
+    // Unix-epoch step counter.
+    const expectedStep = Math.floor(Date.now() / (PERIOD_SECONDS * 1000));
+    expect(step).toBe(expectedStep);
+  });
+
+  it("returns null for a wrong code", () => {
+    const { secret } = generateTotpSecret("test@example.com");
+    expect(verifyTotpCode(secret, "000000")).toBeNull();
+  });
+
+  it("returns null for a non-numeric code", () => {
+    const { secret } = generateTotpSecret("test@example.com");
+    expect(verifyTotpCode(secret, "abcdef")).toBeNull();
+  });
+
+  it("returns null for an empty code", () => {
+    const { secret } = generateTotpSecret("test@example.com");
+    expect(verifyTotpCode(secret, "")).toBeNull();
+  });
+
+  it("returns a monotonically increasing step as time advances (replay tracking basis)", () => {
+    const { secret } = generateTotpSecret("test@example.com");
+    const totp = new TOTP({
+      issuer: "VectorFlow",
+      algorithm: "SHA1",
+      digits: 6,
+      period: 30,
+      secret: Secret.fromBase32(secret),
+    });
+
+    const now = 1_700_000_000_000; // fixed instant
+    const currentStep = Math.floor(now / (PERIOD_SECONDS * 1000));
+    const spy = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      const code = totp.generate({ timestamp: now });
+      // The same code validated at the current instant maps to currentStep.
+      expect(verifyTotpCode(secret, code)).toBe(currentStep);
+
+      // The previous step's code still validates within the ±1 window but maps
+      // to currentStep - 1, which is strictly less than currentStep — exactly
+      // the inequality the login path uses to reject replays.
+      const prevCode = totp.generate({ timestamp: now - PERIOD_SECONDS * 1000 });
+      expect(verifyTotpCode(secret, prevCode)).toBe(currentStep - 1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+// ─── verifyTotpStep (boolean wrapper) ───────────────────────────────────────
+
+describe("verifyTotpStep", () => {
+  it("returns true for a valid current code", () => {
+    const { secret } = generateTotpSecret("test@example.com");
+    const totp = new TOTP({
+      issuer: "VectorFlow",
+      algorithm: "SHA1",
+      digits: 6,
+      period: 30,
+      secret: Secret.fromBase32(secret),
+    });
+    expect(verifyTotpStep(secret, totp.generate())).toBe(true);
   });
 
   it("returns false for a wrong code", () => {
     const { secret } = generateTotpSecret("test@example.com");
-    expect(verifyTotpCode(secret, "000000")).toBe(false);
-  });
-
-  it("returns false for a non-numeric code", () => {
-    const { secret } = generateTotpSecret("test@example.com");
-    expect(verifyTotpCode(secret, "abcdef")).toBe(false);
-  });
-
-  it("returns false for an empty code", () => {
-    const { secret } = generateTotpSecret("test@example.com");
-    expect(verifyTotpCode(secret, "")).toBe(false);
+    expect(verifyTotpStep(secret, "000000")).toBe(false);
   });
 });
 

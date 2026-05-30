@@ -194,6 +194,16 @@ export function sanitizeSentryEvent(event: ErrorEvent): ErrorEvent {
     if (event.request.headers && typeof event.request.headers === "object") {
       event.request.headers = redactHeaders(event.request.headers);
     }
+    // 3b. Redact the parsed cookie jar. Sentry's requestDataIntegration
+    // parses the Cookie header into a SEPARATE `event.request.cookies`
+    // field (DEFAULT_INCLUDE.cookies = true) even after the Cookie header
+    // is dropped at step 3. That jar carries the NextAuth session token
+    // (an encrypted JWE bearer credential) and the CSRF token, so it must
+    // be scrubbed too — otherwise a captured server error ships a live
+    // session to Sentry.
+    if (event.request.cookies) {
+      event.request.cookies = redactCookies(event.request.cookies);
+    }
   }
 
   // 4. Recursive value-key scrub on extra / contexts / tags /
@@ -230,6 +240,22 @@ function redactHeaders(
     } else {
       out[k] = v;
     }
+  }
+  return out;
+}
+
+/**
+ * Redact every cookie value. Cookie names are kept for diagnostics; the
+ * value (which may be a NextAuth session JWE or CSRF token) is replaced
+ * with `[REDACTED]` unconditionally — no cookie value is ever safe to
+ * ship to Sentry.
+ */
+function redactCookies(
+  cookies: { [key: string]: string },
+): { [key: string]: string } {
+  const out: { [key: string]: string } = {};
+  for (const k of Object.keys(cookies)) {
+    out[k] = REDACTED;
   }
   return out;
 }

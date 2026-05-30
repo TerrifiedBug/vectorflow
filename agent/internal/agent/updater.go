@@ -34,6 +34,19 @@ var updateHTTPClient = &http.Client{
 		ResponseHeaderTimeout: 30 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	},
+	// Re-validate the scheme on every redirect hop. The up-front https check on
+	// action.DownloadURL only inspects the initial URL; without this, an https
+	// URL that 3xx-redirects to plain http would be followed over cleartext,
+	// defeating the downgrade/MITM protection for a re-exec-as-root binary.
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if !strings.EqualFold(req.URL.Scheme, "https") {
+			return fmt.Errorf("refusing self-update redirect to insecure scheme %q: https is required", req.URL.Scheme)
+		}
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
+		}
+		return nil
+	},
 }
 
 // handleSelfUpdate downloads a new agent binary, verifies its checksum,
