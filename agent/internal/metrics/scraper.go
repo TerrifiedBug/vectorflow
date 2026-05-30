@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -93,14 +94,34 @@ type ScrapeResult struct {
 // which the pipeline is considered to be experiencing backpressure.
 const backpressureThreshold = 0.8
 
-var httpClient = &http.Client{Timeout: 5 * time.Second}
+// DefaultScrapeTimeout bounds a single scrape of Vector's metrics endpoint so a
+// slow or hung endpoint cannot block the caller indefinitely.
+const DefaultScrapeTimeout = 5 * time.Second
+
+var httpClient = &http.Client{Timeout: DefaultScrapeTimeout}
 
 // ScrapePrometheus fetches and parses Vector's Prometheus metrics endpoint.
-// Returns zero metrics on any error (non-fatal).
+// Returns zero metrics on any error (non-fatal). It applies DefaultScrapeTimeout
+// via the shared HTTP client; for caller-controlled cancellation/deadlines use
+// ScrapePrometheusContext.
 func ScrapePrometheus(metricsPort int) ScrapeResult {
+	return ScrapePrometheusContext(context.Background(), metricsPort)
+}
+
+// ScrapePrometheusContext fetches and parses Vector's Prometheus metrics
+// endpoint, honouring the supplied context for cancellation and deadlines.
+// Returns zero metrics on any error (non-fatal). The shared client's
+// DefaultScrapeTimeout still applies as an upper bound even when ctx has no
+// deadline, so a hung endpoint cannot block forever.
+func ScrapePrometheusContext(ctx context.Context, metricsPort int) ScrapeResult {
 	url := fmt.Sprintf("http://127.0.0.1:%d/metrics", metricsPort)
 
-	resp, err := httpClient.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return ScrapeResult{}
+	}
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return ScrapeResult{}
 	}

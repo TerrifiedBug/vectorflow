@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"testing"
 
 	"github.com/TerrifiedBug/vectorflow/agent/internal/client"
@@ -14,7 +15,7 @@ func newTestMetrics() *selfmetrics.Metrics {
 
 func TestBuildHeartbeatIncludesRunningAs(t *testing.T) {
 	sup := supervisor.New("/usr/local/bin/vector")
-	hb := buildHeartbeat(sup, newTestMetrics(), "0.54.0", "STANDALONE", nil, nil, "testuser")
+	hb := buildHeartbeat(context.Background(), sup, newTestMetrics(), "0.54.0", "STANDALONE", nil, nil, "testuser")
 	if hb.RunningAs != "testuser" {
 		t.Errorf("expected RunningAs=%q, got %q", "testuser", hb.RunningAs)
 	}
@@ -22,7 +23,7 @@ func TestBuildHeartbeatIncludesRunningAs(t *testing.T) {
 
 func TestBuildHeartbeatRunningAsEmpty(t *testing.T) {
 	sup := supervisor.New("/usr/local/bin/vector")
-	hb := buildHeartbeat(sup, newTestMetrics(), "0.54.0", "STANDALONE", nil, nil, "")
+	hb := buildHeartbeat(context.Background(), sup, newTestMetrics(), "0.54.0", "STANDALONE", nil, nil, "")
 	if hb.RunningAs != "" {
 		t.Errorf("expected RunningAs=%q, got %q", "", hb.RunningAs)
 	}
@@ -30,7 +31,7 @@ func TestBuildHeartbeatRunningAsEmpty(t *testing.T) {
 
 func TestBuildHeartbeatRunningAsInPayload(t *testing.T) {
 	sup := supervisor.New("/usr/local/bin/vector")
-	hb := buildHeartbeat(sup, newTestMetrics(), "0.54.0", "DOCKER", []client.SampleResultMsg{}, map[string]string{"env": "prod"}, "root")
+	hb := buildHeartbeat(context.Background(), sup, newTestMetrics(), "0.54.0", "DOCKER", []client.SampleResultMsg{}, map[string]string{"env": "prod"}, "root")
 	if hb.RunningAs != "root" {
 		t.Errorf("expected RunningAs=%q, got %q", "root", hb.RunningAs)
 	}
@@ -47,7 +48,7 @@ func TestBuildHeartbeatIncludesAgentHealth(t *testing.T) {
 	sm.IncPushReconnects()
 	sm.SetPushConnected(true)
 
-	hb := buildHeartbeat(sup, sm, "0.54.0", "STANDALONE", nil, nil, "testuser")
+	hb := buildHeartbeat(context.Background(), sup, sm, "0.54.0", "STANDALONE", nil, nil, "testuser")
 	if hb.AgentHealth == nil {
 		t.Fatal("expected AgentHealth to be set")
 	}
