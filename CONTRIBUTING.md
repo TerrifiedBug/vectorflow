@@ -101,7 +101,7 @@ vectorflow/
 │   └── internal/            # poller, supervisor, metrics, log buffer
 ├── prisma/                  # Database schema and migrations
 ├── e2e/                     # Playwright end-to-end tests
-└── docs/public/             # GitBook documentation (auto-synced)
+└── docs/public/             # redirect stub → user docs published at vectorflow.sh/docs
 ```
 
 **Key concepts:**
@@ -111,7 +111,7 @@ vectorflow/
 - **tRPC** handles all data mutations. There are no Next.js Server Actions for data. Routers are in `src/server/routers/`.
 - **Auth** uses NextAuth 5 with credentials (bcrypt + optional TOTP) and OIDC. All secrets are AES-256-GCM encrypted at rest.
 
-See [docs/public/](./docs/public/) for the full user-facing documentation.
+See <https://vectorflow.sh/docs> for the user-facing documentation.
 
 ### Server-Agent Contracts
 
@@ -261,7 +261,7 @@ Before opening a PR:
 - [ ] No hardcoded secrets or credentials
 - [ ] PR description explains the *why*, not just the *what*
 - [ ] Screenshots or recordings attached for UI changes
-- [ ] Public-facing changes have corresponding `docs/public/` updates
+- [ ] Public-facing changes are flagged so the docs at <https://vectorflow.sh/docs> can be updated
 
 ---
 
