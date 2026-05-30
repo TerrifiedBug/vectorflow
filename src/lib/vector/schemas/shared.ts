@@ -99,17 +99,55 @@ export function bufferSchema() {
         },
         max_events: {
           type: "number",
-          description: "Max events in buffer (default: 500)",
+          description: "Max events in memory buffer (default: 500)",
           default: 500,
+          dependsOn: { field: "type", value: "memory" },
+        },
+        max_size: {
+          type: "number",
+          description:
+            "Max disk buffer size in bytes (required for disk; must be at least ~256MB / 268435488 bytes)",
+          dependsOn: { field: "type", value: "disk" },
         },
         when_full: {
           type: "string",
-          enum: ["block", "drop_newest"],
-          description: "Behavior when buffer full (default: block)",
+          enum: ["block", "drop_newest", "overflow"],
+          description:
+            "Behavior when buffer full (default: block; overflow requires a multi-stage disk buffer)",
           default: "block",
         },
       },
       description: "Buffer configuration",
+    },
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Acknowledgements                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * End-to-end acknowledgements config for sinks.
+ *
+ * When enabled, any connected source that supports end-to-end
+ * acknowledgements waits for events to be acknowledged by all connected
+ * sinks before acknowledging them at the source. Sink-level config takes
+ * precedence over the global `acknowledgements` option.
+ *
+ * See https://vector.dev/docs/architecture/end-to-end-acknowledgements/
+ */
+export function acknowledgementsSchema() {
+  return {
+    acknowledgements: {
+      type: "object",
+      properties: {
+        enabled: {
+          type: "boolean",
+          description: "Enable end-to-end acknowledgements for this sink",
+          default: false,
+        },
+      },
+      description: "End-to-end acknowledgements configuration",
     },
   };
 }
