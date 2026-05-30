@@ -38,6 +38,7 @@ func buildHeartbeat(sup pipelineSupervisor, sm *selfmetrics.Metrics, vectorVersi
 			ps.BytesOut = sr.Pipeline.BytesOut
 			ps.ErrorsTotal = sr.Pipeline.ErrorsTotal
 			ps.EventsDiscarded = sr.Pipeline.EventsDiscarded
+			ps.Utilization = sr.Pipeline.Utilization
 
 			// Map per-component metrics for editor node overlays
 			for _, cm := range sr.Components {

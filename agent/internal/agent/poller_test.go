@@ -225,6 +225,123 @@ func TestPoll_InvalidConfigDoesNotBlockOtherPipelines(t *testing.T) {
 	}
 }
 
+// TestPoll_SampleRequestsDispatchedOncePerPoll verifies that draining the
+// queue with SampleRequests() clears it, so a single poll's requests are not
+// returned a second time.
+func TestPoll_SampleRequestsDispatchedOncePerPoll(t *testing.T) {
+	tmpDir := t.TempDir()
+	mc := &mockConfigFetcher{resp: &client.ConfigResponse{
+		SampleRequests: []client.SampleRequestMsg{
+			{RequestID: "req-1", PipelineID: "pipe", ComponentKeys: []string{"a"}, Limit: 10},
+		},
+	}}
+	p := newPoller(&config.Config{DataDir: tmpDir}, mc)
+
+	if _, err := p.Poll(); err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+	first := p.SampleRequests()
+	if len(first) != 1 || first[0].RequestID != "req-1" {
+		t.Fatalf("expected req-1 on first drain, got %v", first)
+	}
+	if second := p.SampleRequests(); len(second) != 0 {
+		t.Fatalf("expected empty on second drain, got %v", second)
+	}
+}
+
+// TestPoll_SampleRequestNotReExecutedAcrossPolls verifies that a request the
+// server keeps re-sending on every poll is dispatched exactly once.
+func TestPoll_SampleRequestNotReExecutedAcrossPolls(t *testing.T) {
+	tmpDir := t.TempDir()
+	mc := &mockConfigFetcher{resp: &client.ConfigResponse{
+		SampleRequests: []client.SampleRequestMsg{
+			{RequestID: "req-1", PipelineID: "pipe", Limit: 5},
+		},
+	}}
+	p := newPoller(&config.Config{DataDir: tmpDir}, mc)
+
+	// Poll #1: request is queued and drained (dispatched).
+	if _, err := p.Poll(); err != nil {
+		t.Fatalf("Poll #1: %v", err)
+	}
+	if got := p.SampleRequests(); len(got) != 1 {
+		t.Fatalf("poll #1: expected 1 request, got %d", len(got))
+	}
+
+	// Poll #2: server re-sends the same request (not yet acked) — it must NOT
+	// be queued again.
+	if _, err := p.Poll(); err != nil {
+		t.Fatalf("Poll #2: %v", err)
+	}
+	if got := p.SampleRequests(); len(got) != 0 {
+		t.Fatalf("poll #2: re-sent request should be suppressed, got %d", len(got))
+	}
+}
+
+// TestPoll_QueuedSampleRequestNotDuplicatedBeforeDrain verifies that if two
+// polls happen before the agent drains the queue, a re-sent request is not
+// duplicated in the queue.
+func TestPoll_QueuedSampleRequestNotDuplicatedBeforeDrain(t *testing.T) {
+	tmpDir := t.TempDir()
+	mc := &mockConfigFetcher{resp: &client.ConfigResponse{
+		SampleRequests: []client.SampleRequestMsg{
+			{RequestID: "req-1", PipelineID: "pipe", Limit: 5},
+		},
+	}}
+	p := newPoller(&config.Config{DataDir: tmpDir}, mc)
+
+	if _, err := p.Poll(); err != nil {
+		t.Fatalf("Poll #1: %v", err)
+	}
+	if _, err := p.Poll(); err != nil {
+		t.Fatalf("Poll #2: %v", err)
+	}
+	got := p.SampleRequests()
+	if len(got) != 1 {
+		t.Fatalf("expected 1 queued request after two undrained polls, got %d", len(got))
+	}
+}
+
+// TestPoll_DispatchedSamplesPrunedWhenServerStops verifies that once the server
+// stops re-sending a request, its ID is pruned so a future request that reuses
+// the ID is not suppressed.
+func TestPoll_DispatchedSamplesPrunedWhenServerStops(t *testing.T) {
+	tmpDir := t.TempDir()
+	mc := &mockConfigFetcher{resp: &client.ConfigResponse{
+		SampleRequests: []client.SampleRequestMsg{
+			{RequestID: "req-1", PipelineID: "pipe", Limit: 5},
+		},
+	}}
+	p := newPoller(&config.Config{DataDir: tmpDir}, mc)
+
+	if _, err := p.Poll(); err != nil {
+		t.Fatalf("Poll #1: %v", err)
+	}
+	_ = p.SampleRequests() // dispatch req-1
+
+	// Server stops sending sample requests.
+	mc.resp.SampleRequests = nil
+	if _, err := p.Poll(); err != nil {
+		t.Fatalf("Poll #2: %v", err)
+	}
+
+	p.mu.Lock()
+	_, stillTracked := p.dispatchedSamples["req-1"]
+	p.mu.Unlock()
+	if stillTracked {
+		t.Fatal("expected req-1 to be pruned from dispatchedSamples after server stopped sending it")
+	}
+
+	// A new request reusing req-1 must be dispatched again.
+	mc.resp.SampleRequests = []client.SampleRequestMsg{{RequestID: "req-1", PipelineID: "pipe", Limit: 5}}
+	if _, err := p.Poll(); err != nil {
+		t.Fatalf("Poll #3: %v", err)
+	}
+	if got := p.SampleRequests(); len(got) != 1 {
+		t.Fatalf("expected reused-ID request to be re-dispatched, got %d", len(got))
+	}
+}
+
 func TestAgentPollAndApply_RestartFailureRetriesSameChecksumAndPreservesConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	pipelinesDir := filepath.Join(tmpDir, "pipelines")

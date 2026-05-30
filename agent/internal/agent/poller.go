@@ -30,17 +30,23 @@ type poller struct {
 	known          map[string]pipelineState // pipelineId -> last known state
 	configErrors   map[string]string        // pipelineId -> last config-validation error
 	sampleRequests []client.SampleRequestMsg
-	pendingAction  *client.PendingAction
-	pollIntervalMs int // server-provided poll interval from last response
-	pushUrl        string
+	// dispatchedSamples records the RequestIDs already handed to the agent so a
+	// request the server keeps re-sending across polls (until it observes the
+	// result) is dispatched at most once. Entries are pruned when the server
+	// stops including the request, so the set stays bounded.
+	dispatchedSamples map[string]bool
+	pendingAction     *client.PendingAction
+	pollIntervalMs    int // server-provided poll interval from last response
+	pushUrl           string
 }
 
 func newPoller(cfg *config.Config, c configFetcher) *poller {
 	return &poller{
-		cfg:          cfg,
-		client:       c,
-		known:        make(map[string]pipelineState),
-		configErrors: make(map[string]string),
+		cfg:               cfg,
+		client:            c,
+		known:             make(map[string]pipelineState),
+		configErrors:      make(map[string]string),
+		dispatchedSamples: make(map[string]bool),
 	}
 }
 
@@ -220,8 +226,32 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 		}
 	}
 
-	// Store sample requests for the agent to process
-	p.sampleRequests = resp.SampleRequests
+	// Queue sample requests for the agent to process, skipping any RequestID
+	// already dispatched. The server re-sends a request on every poll until it
+	// observes the result, so without this guard the same `vector tap` would be
+	// launched repeatedly. New requests are appended to anything not yet drained
+	// by SampleRequests() so a fast poll cadence cannot drop a pending request.
+	if p.dispatchedSamples == nil {
+		p.dispatchedSamples = make(map[string]bool)
+	}
+	present := make(map[string]bool, len(resp.SampleRequests))
+	for _, req := range resp.SampleRequests {
+		present[req.RequestID] = true
+		if p.dispatchedSamples[req.RequestID] {
+			continue
+		}
+		if sampleRequestQueued(p.sampleRequests, req.RequestID) {
+			continue
+		}
+		p.sampleRequests = append(p.sampleRequests, req)
+	}
+	// Prune dispatched IDs the server no longer reports so the set stays bounded
+	// and a future request that happens to reuse an ID is not suppressed.
+	for id := range p.dispatchedSamples {
+		if !present[id] {
+			delete(p.dispatchedSamples, id)
+		}
+	}
 
 	// Store pending action (e.g. self-update) for the agent to handle
 	p.pendingAction = resp.PendingAction
@@ -261,11 +291,35 @@ func (p *poller) MarkApplied(action PipelineAction) {
 	}
 }
 
-// SampleRequests returns the sample requests from the last poll response.
+// SampleRequests drains and returns the queued sample requests, marking each
+// RequestID as dispatched so it is not handed out again on a later poll. The
+// queue is cleared so a request is processed exactly once.
 func (p *poller) SampleRequests() []client.SampleRequestMsg {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.sampleRequests
+	if len(p.sampleRequests) == 0 {
+		return nil
+	}
+	if p.dispatchedSamples == nil {
+		p.dispatchedSamples = make(map[string]bool)
+	}
+	out := p.sampleRequests
+	for _, req := range out {
+		p.dispatchedSamples[req.RequestID] = true
+	}
+	p.sampleRequests = nil
+	return out
+}
+
+// sampleRequestQueued reports whether a request with the given ID is already
+// waiting in the queue.
+func sampleRequestQueued(queue []client.SampleRequestMsg, id string) bool {
+	for _, req := range queue {
+		if req.RequestID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // PendingAction returns the pending action from the last poll response, if any.

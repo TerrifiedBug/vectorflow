@@ -258,6 +258,121 @@ func TestStart_PortsAllocated(t *testing.T) {
 	}
 }
 
+// TestPorts_ReusedAfterStop verifies that ports freed by a stopped pipeline are
+// reused by the next start, so ports do not climb monotonically toward
+// exhaustion as pipelines churn.
+func TestPorts_ReusedAfterStop(t *testing.T) {
+	s, procs := newTestSupervisor(nil)
+	cfg := tempConfig(t)
+	t.Cleanup(func() { s.ShutdownAll(); drainProcs(procs) })
+
+	if err := s.Start("pipe1", cfg, 1, "", nil); err != nil {
+		t.Fatalf("Start pipe1: %v", err)
+	}
+	proc1 := <-procs
+	var firstMetrics, firstAPI int
+	for _, st := range s.Statuses() {
+		firstMetrics, firstAPI = st.MetricsPort, st.APIPort
+	}
+
+	// Stop pipe1 (respond to SIGTERM) — its ports return to the pool.
+	go func() {
+		for !proc1.receivedSIGTERM() {
+			time.Sleep(1 * time.Millisecond)
+		}
+		proc1.exit(nil)
+	}()
+	if err := s.Stop("pipe1"); err != nil {
+		t.Fatalf("Stop pipe1: %v", err)
+	}
+
+	// Start a fresh pipeline — it should reuse the freed ports rather than
+	// allocating higher ones.
+	if err := s.Start("pipe2", cfg, 1, "", nil); err != nil {
+		t.Fatalf("Start pipe2: %v", err)
+	}
+	<-procs
+	var secondMetrics, secondAPI int
+	for _, st := range s.Statuses() {
+		secondMetrics, secondAPI = st.MetricsPort, st.APIPort
+	}
+
+	reused := map[int]bool{firstMetrics: true, firstAPI: true}
+	if !reused[secondMetrics] || !reused[secondAPI] {
+		t.Errorf("expected pipe2 to reuse freed ports {%d,%d}, got {%d,%d}",
+			firstMetrics, firstAPI, secondMetrics, secondAPI)
+	}
+}
+
+// TestPorts_DoNotGrowMonotonically verifies that repeatedly starting and
+// stopping pipelines does not advance the sequential allocator: the second
+// start after a stop reuses ports rather than handing out higher numbers.
+func TestPorts_DoNotGrowMonotonically(t *testing.T) {
+	s, procs := newTestSupervisor(nil)
+	cfg := tempConfig(t)
+	t.Cleanup(func() { s.ShutdownAll(); drainProcs(procs) })
+
+	maxSeen := 0
+	for i := 0; i < 50; i++ {
+		if err := s.Start("pipe", cfg, 1, "", nil); err != nil {
+			t.Fatalf("Start iteration %d: %v", i, err)
+		}
+		proc := <-procs
+		for _, st := range s.Statuses() {
+			if st.MetricsPort > maxSeen {
+				maxSeen = st.MetricsPort
+			}
+			if st.APIPort > maxSeen {
+				maxSeen = st.APIPort
+			}
+		}
+		go func() {
+			for !proc.receivedSIGTERM() {
+				time.Sleep(time.Millisecond)
+			}
+			proc.exit(nil)
+		}()
+		if err := s.Stop("pipe"); err != nil {
+			t.Fatalf("Stop iteration %d: %v", i, err)
+		}
+	}
+
+	// Only one pipeline is ever live at a time, so at most two ports are in use.
+	// With reuse, the highest port handed out must stay near basePort+2, not
+	// climb with the iteration count.
+	if maxSeen > s.basePort+10 {
+		t.Errorf("ports grew monotonically: max port %d far above base %d after 50 churns",
+			maxSeen, s.basePort)
+	}
+}
+
+// TestPorts_ExhaustionReturnsError verifies that the allocator surfaces an error
+// once the port range is exhausted rather than returning an invalid port.
+func TestPorts_ExhaustionReturnsError(t *testing.T) {
+	s, procs := newTestSupervisor(nil)
+	cfg := tempConfig(t)
+	t.Cleanup(func() { s.ShutdownAll(); drainProcs(procs) })
+
+	// Shrink the range so exhaustion is reachable: room for exactly one pair.
+	s.nextSeqPort = s.maxPort - 1 // two ports available: maxPort-1, maxPort
+
+	if err := s.Start("pipe1", cfg, 1, "", nil); err != nil {
+		t.Fatalf("first Start should succeed: %v", err)
+	}
+	<-procs
+
+	err := s.Start("pipe2", cfg, 1, "", nil)
+	if err == nil {
+		t.Fatal("expected port-exhaustion error on second Start, got nil")
+	}
+	if !strings.Contains(err.Error(), "no available ports") {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if statuses := s.Statuses(); len(statuses) != 1 {
+		t.Errorf("expected only pipe1 active after exhaustion, got %d", len(statuses))
+	}
+}
+
 // ── Stop tests ───────────────────────────────────────────────────────────────
 
 // TestStop_GracefulShutdown verifies that Stop sends SIGTERM, waits for the
