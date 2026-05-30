@@ -17,6 +17,11 @@ type PipelineMetrics struct {
 	EventsDiscarded int64
 	BytesIn         int64
 	BytesOut        int64
+	// Utilization is the busiest non-internal component's saturation in [0,1],
+	// taken from Vector's vector_component_utilization gauge. The pipeline is
+	// gated by its most-utilized component, so the max is the meaningful
+	// pipeline-level figure.
+	Utilization float64
 }
 
 // ComponentMetrics holds per-component metrics for editor node overlays.
@@ -135,6 +140,14 @@ func ScrapePrometheus(metricsPort int) ScrapeResult {
 		case "vector_component_latency_mean_seconds", "component_latency_mean_seconds":
 			if !isInternal {
 				getOrCreate(componentMap, componentID, componentKind).LatencyMeanSeconds = value
+			}
+
+		case "vector_component_utilization", "component_utilization":
+			// Gauge in [0,1] reporting how busy each component is. The pipeline
+			// is bottlenecked by its busiest component, so track the maximum
+			// across non-internal components.
+			if !isInternal && value > sr.Pipeline.Utilization {
+				sr.Pipeline.Utilization = value
 			}
 
 		// Host metrics – use += to aggregate across CPU cores, devices, interfaces, etc.

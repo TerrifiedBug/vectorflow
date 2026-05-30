@@ -74,18 +74,25 @@ type ProcessInfo struct {
 }
 
 type Supervisor struct {
-	vectorBin    string
-	mu           sync.Mutex
-	processes    map[string]*ProcessInfo // pipelineId -> process
+	vectorBin string
+	mu        sync.Mutex
+	processes map[string]*ProcessInfo // pipelineId -> process
 	// restartCounts persists the consecutive crash count per pipeline across
 	// process replacements. Each crash replaces the ProcessInfo via
 	// startProcess (which starts at restarts=0), so the count cannot live on
 	// ProcessInfo — otherwise the backoff would reset to ~1s on every crash
 	// and a crash-looping pipeline would restart roughly once per second
 	// forever. Reset to 0 after a process stays up past stableThreshold.
-	restartCounts   map[string]int
+	restartCounts map[string]int
+	// Port allocation. Ports handed to a process are returned to freePorts when
+	// it stops, crashes terminally, or is replaced, so a node that churns
+	// pipelines reuses ports instead of climbing toward the 65535 ceiling and
+	// eventually failing to bind. nextSeqPort is only advanced when no freed
+	// port is available, and never past maxPort.
 	basePort        int
-	portSeq         int
+	nextSeqPort     int   // next never-before-used port to hand out
+	maxPort         int   // upper bound; allocation fails above this
+	freePorts       []int // ports released by stopped processes, available for reuse
 	mkProc          procFactory
 	startupDelay    time.Duration
 	backoffFunc     func(restarts int) time.Duration
@@ -95,11 +102,14 @@ type Supervisor struct {
 }
 
 func New(vectorBin string) *Supervisor {
+	const basePort = 8687 // prometheus_exporter ports start at 8688 (first allocation increments before use)
 	return &Supervisor{
 		vectorBin:       vectorBin,
 		processes:       make(map[string]*ProcessInfo),
 		restartCounts:   make(map[string]int),
-		basePort:        8687, // prometheus_exporter ports start at 8688 (portSeq increments before use)
+		basePort:        basePort,
+		nextSeqPort:     basePort + 1,
+		maxPort:         65535, // highest valid TCP port
 		mkProc:          defaultProcFactory,
 		startupDelay:    2 * time.Second,
 		backoffFunc:     defaultBackoffFunc,
@@ -109,9 +119,58 @@ func New(vectorBin string) *Supervisor {
 	}
 }
 
-func (s *Supervisor) nextPort() int {
-	s.portSeq++
-	return s.basePort + s.portSeq
+// allocatePortPair reserves a metrics and an API port, preferring previously
+// freed ports. It returns an error if the allocator has reached maxPort, which
+// surfaces exhaustion to the caller instead of returning an invalid port.
+// Callers must hold s.mu.
+func (s *Supervisor) allocatePortPair() (metricsPort, apiPort int, err error) {
+	metricsPort, err = s.nextPort()
+	if err != nil {
+		return 0, 0, err
+	}
+	apiPort, err = s.nextPort()
+	if err != nil {
+		// Return the metrics port to the pool so a transient exhaustion does not
+		// permanently lose it.
+		s.releasePort(metricsPort)
+		return 0, 0, err
+	}
+	return metricsPort, apiPort, nil
+}
+
+// nextPort returns the next available port, reusing a freed port when possible.
+// Callers must hold s.mu.
+func (s *Supervisor) nextPort() (int, error) {
+	if n := len(s.freePorts); n > 0 {
+		port := s.freePorts[n-1]
+		s.freePorts = s.freePorts[:n-1]
+		return port, nil
+	}
+	if s.nextSeqPort > s.maxPort {
+		return 0, fmt.Errorf("no available ports (exhausted range %d-%d)", s.basePort+1, s.maxPort)
+	}
+	port := s.nextSeqPort
+	s.nextSeqPort++
+	return port, nil
+}
+
+// releasePort returns a port to the free pool for reuse. Callers must hold
+// s.mu. Ports outside the managed range (e.g. zero values) are ignored.
+func (s *Supervisor) releasePort(port int) {
+	if port <= s.basePort || port > s.maxPort {
+		return
+	}
+	s.freePorts = append(s.freePorts, port)
+}
+
+// releasePorts returns both of a process's ports to the free pool. Callers must
+// hold s.mu.
+func (s *Supervisor) releasePorts(info *ProcessInfo) {
+	if info == nil {
+		return
+	}
+	s.releasePort(info.MetricsPort)
+	s.releasePort(info.APIPort)
 }
 
 // Start spawns a new Vector process for a pipeline.
@@ -123,9 +182,18 @@ func (s *Supervisor) Start(pipelineID, configPath string, version int, logLevel 
 		return fmt.Errorf("pipeline %s already running", pipelineID)
 	}
 
-	metricsPort := s.nextPort()
-	apiPort := s.nextPort()
-	return s.startProcess(pipelineID, configPath, version, logLevel, secrets, metricsPort, apiPort)
+	metricsPort, apiPort, err := s.allocatePortPair()
+	if err != nil {
+		return fmt.Errorf("start pipeline %s: %w", pipelineID, err)
+	}
+	if err := s.startProcess(pipelineID, configPath, version, logLevel, secrets, metricsPort, apiPort); err != nil {
+		// startProcess failed before the process was registered; return the
+		// reserved ports to the pool so they are not leaked.
+		s.releasePort(metricsPort)
+		s.releasePort(apiPort)
+		return err
+	}
+	return nil
 }
 
 func (s *Supervisor) startProcess(pipelineID, configPath string, version int, logLevel string, secrets map[string]string, metricsPort, apiPort int) error {
@@ -255,6 +323,7 @@ func (s *Supervisor) Stop(pipelineID string) error {
 	}
 	delete(s.processes, pipelineID)
 	delete(s.restartCounts, pipelineID)
+	s.releasePorts(info)
 	s.mu.Unlock()
 
 	return s.stopProcess(info)
@@ -289,9 +358,16 @@ func (s *Supervisor) Restart(pipelineID, configPath string, version int, logLeve
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	metricsPort := s.nextPort()
-	apiPort := s.nextPort()
-	return s.startProcess(pipelineID, configPath, version, logLevel, secrets, metricsPort, apiPort)
+	metricsPort, apiPort, err := s.allocatePortPair()
+	if err != nil {
+		return fmt.Errorf("restart pipeline %s: %w", pipelineID, err)
+	}
+	if err := s.startProcess(pipelineID, configPath, version, logLevel, secrets, metricsPort, apiPort); err != nil {
+		s.releasePort(metricsPort)
+		s.releasePort(apiPort)
+		return err
+	}
+	return nil
 }
 
 // RestartInPlace restarts a pipeline using its currently stored config.
@@ -314,15 +390,23 @@ func (s *Supervisor) RestartInPlace(pipelineID string) error {
 	secrets := info.Secrets
 	delete(s.processes, pipelineID)
 	delete(s.restartCounts, pipelineID)
+	s.releasePorts(info)
 	s.mu.Unlock()
 
 	s.stopProcess(info)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	metricsPort := s.nextPort()
-	apiPort := s.nextPort()
-	return s.startProcess(pipelineID, configPath, version, logLevel, secrets, metricsPort, apiPort)
+	metricsPort, apiPort, err := s.allocatePortPair()
+	if err != nil {
+		return fmt.Errorf("restart pipeline %s: %w", pipelineID, err)
+	}
+	if err := s.startProcess(pipelineID, configPath, version, logLevel, secrets, metricsPort, apiPort); err != nil {
+		s.releasePort(metricsPort)
+		s.releasePort(apiPort)
+		return err
+	}
+	return nil
 }
 
 // UpdateVersion updates the reported version for a pipeline without restarting.
@@ -382,6 +466,7 @@ func (s *Supervisor) ShutdownAll() {
 	infos := make([]*ProcessInfo, 0, len(s.processes))
 	for _, info := range s.processes {
 		infos = append(infos, info)
+		s.releasePorts(info)
 	}
 	s.processes = make(map[string]*ProcessInfo)
 	s.mu.Unlock()

@@ -43,6 +43,39 @@ vector_component_sent_events_total{component_id="blackhole",component_kind="sink
 	}
 }
 
+func TestScrapePrometheusAggregatesUtilizationAsMax(t *testing.T) {
+	result := scrapeFixture(t, `
+vector_component_utilization{component_id="http",component_kind="source"} 0.12
+vector_component_utilization{component_id="remap",component_kind="transform"} 0.81
+vector_component_utilization{component_id="sink",component_kind="sink"} 0.45
+`)
+
+	if result.Pipeline.Utilization != 0.81 {
+		t.Fatalf("expected pipeline utilization to be the max non-internal component (0.81), got %v", result.Pipeline.Utilization)
+	}
+}
+
+func TestScrapePrometheusExcludesInternalComponentsFromUtilization(t *testing.T) {
+	result := scrapeFixture(t, `
+vector_component_utilization{component_id="vf_internal_metrics",component_kind="source"} 0.99
+vector_component_utilization{component_id="remap",component_kind="transform"} 0.30
+`)
+
+	if result.Pipeline.Utilization != 0.30 {
+		t.Fatalf("expected injected vf_ component to be excluded, got utilization %v", result.Pipeline.Utilization)
+	}
+}
+
+func TestScrapePrometheusUtilizationZeroWhenAbsent(t *testing.T) {
+	result := scrapeFixture(t, `
+vector_component_sent_events_total{component_id="sink",component_kind="sink"} 10
+`)
+
+	if result.Pipeline.Utilization != 0 {
+		t.Fatalf("expected zero utilization when gauge absent, got %v", result.Pipeline.Utilization)
+	}
+}
+
 func TestScrapePrometheusPrefersSourceReceivedTotalsWhenPresent(t *testing.T) {
 	result := scrapeFixture(t, `
 vector_component_received_events_total{component_id="http",component_kind="source"} 30
