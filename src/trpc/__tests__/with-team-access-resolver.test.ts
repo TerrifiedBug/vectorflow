@@ -20,6 +20,14 @@ vi.mock("@/lib/org-admin", () => ({
   isOrgWideAdmin: vi.fn(),
 }));
 
+// Importing @/trpc/init pulls in @/auth (next-auth -> next/server), which does
+// not resolve under vitest; stub it (and next/headers) so we exercise only the
+// real withTeamAccess resolver.
+vi.mock("@/auth", () => ({ auth: vi.fn() }));
+vi.mock("next/headers", () => ({
+  headers: vi.fn(async () => new Map<string, string>()),
+}));
+
 import { prisma } from "@/lib/prisma";
 import { isOrgWideAdmin } from "@/lib/org-admin";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";

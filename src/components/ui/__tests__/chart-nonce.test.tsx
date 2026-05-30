@@ -14,6 +14,10 @@ vi.mock("recharts", () => ({
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="rc">{children}</div>
   ),
+  // chart.tsx binds these at module load (RechartsPrimitive.Tooltip / .Legend),
+  // so the mock must export them even though this test renders no chart series.
+  Tooltip: () => null,
+  Legend: () => null,
 }));
 
 import { ChartContainer } from "@/components/ui/chart";
