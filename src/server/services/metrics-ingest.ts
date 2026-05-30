@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
 export interface MetricsDataPoint {
   nodeId: string;
@@ -34,6 +35,7 @@ export function clamp(curr: bigint, prevVal: bigint | null | undefined): bigint 
 
 /** Shape of a per-node metric row to insert. */
 interface PerNodeRow {
+  organizationId: string;
   pipelineId: string;
   nodeId: string;
   timestamp: Date;
@@ -55,6 +57,7 @@ export function computeDeltas(
   dataPoints: MetricsDataPoint[],
   previousSnapshots: Map<string, PreviousSnapshot> | undefined,
   now: Date,
+  organizationId: string,
 ): PerNodeRow[] {
   const rows: PerNodeRow[] = [];
 
@@ -63,6 +66,7 @@ export function computeDeltas(
     const prev = previousSnapshots?.get(snapshotKey);
 
     rows.push({
+      organizationId,
       pipelineId: dp.pipelineId,
       nodeId: dp.nodeId,
       timestamp: now,
@@ -82,6 +86,7 @@ export function computeDeltas(
 
 /** Shape of an aggregation row (nodeId: null, componentId: null). */
 interface AggregationRow {
+  organizationId: string;
   pipelineId: string;
   timestamp: Date;
   eventsIn: bigint;
@@ -112,6 +117,7 @@ export function computeAggregation(
     latencyMeanMs?: number | null;
   }>,
   timestamp: Date,
+  organizationId: string,
 ): AggregationRow {
   let totalEventsIn = BigInt(0);
   let totalEventsOut = BigInt(0);
@@ -143,6 +149,7 @@ export function computeAggregation(
     latencyWeightCount > 0 ? latencyWeightedSum / latencyWeightCount : null;
 
   return {
+    organizationId,
     pipelineId,
     timestamp,
     eventsIn: totalEventsIn,
@@ -201,6 +208,7 @@ export function accumulateRow(
  */
 export async function ingestMetrics(
   dataPoints: MetricsDataPoint[],
+  organizationId: string = DEFAULT_ORG_ID,
   previousSnapshots?: Map<string, PreviousSnapshot>,
 ): Promise<void> {
   if (dataPoints.length === 0) return;
@@ -210,7 +218,12 @@ export async function ingestMetrics(
   now.setSeconds(0, 0);
 
   // 1. Compute all deltas in-memory
-  const perNodeDeltas = computeDeltas(dataPoints, previousSnapshots, now);
+  const perNodeDeltas = computeDeltas(
+    dataPoints,
+    previousSnapshots,
+    now,
+    organizationId,
+  );
 
   // Track which pipelines we touched for aggregation
   const touchedPipelineIds = [...new Set(dataPoints.map((dp) => dp.pipelineId))];
@@ -265,7 +278,9 @@ export async function ingestMetrics(
         },
       });
 
-      aggregationRows.push(computeAggregation(pipelineId, allNodeRows, now));
+      aggregationRows.push(
+        computeAggregation(pipelineId, allNodeRows, now, organizationId),
+      );
     }
 
     // 2e. Delete existing aggregation rows for touched pipelines
