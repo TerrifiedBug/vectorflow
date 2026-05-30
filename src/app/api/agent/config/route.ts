@@ -150,7 +150,11 @@ export async function GET(request: Request) {
 
     // Collect secret names actually referenced across all pipeline configs,
     // then fetch and decrypt only those — not every secret in the environment.
-    const secrets: Record<string, string> = {};
+    // The decrypted values are keyed by their original secret name so each
+    // pipeline can be handed ONLY the secrets it references (per-pipeline
+    // scoping, mirroring the VAULT path below) rather than every BUILTIN secret
+    // referenced anywhere on the node.
+    const builtinSecretsByName = new Map<string, string>();
     const referencedNames = new Set<string>();
     let sharedVaultData: Record<string, unknown> | null = null;
     let vaultConfig: VaultBackendConfig | null = null;
@@ -180,17 +184,16 @@ export async function GET(request: Request) {
         });
         const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, environment.organizationId);
         for (const s of envSecrets) {
-          const envKey = secretNameToEnvVar(s.name);
-          if (secrets[envKey] !== undefined) {
-            warnLog("agent-config", `Secret name collision: "${s.name}" normalizes to "${envKey}" which is already set`);
-          }
-          secrets[envKey] = await decryptForOrgOrFallback(s.encryptedValue, {
-            orgId: environment.organizationId,
-            dataKeyCiphertext,
-            domain: ENCRYPTION_DOMAINS.GENERIC,
-            rowTable: "Secret",
-            rowId: `${agent.environmentId}:${s.name}`,
-          });
+          builtinSecretsByName.set(
+            s.name,
+            await decryptForOrgOrFallback(s.encryptedValue, {
+              orgId: environment.organizationId,
+              dataKeyCiphertext,
+              domain: ENCRYPTION_DOMAINS.GENERIC,
+              rowTable: "Secret",
+              rowId: `${agent.environmentId}:${s.name}`,
+            }),
+          );
         }
       }
 
@@ -210,7 +213,9 @@ export async function GET(request: Request) {
         const version = latestVersion.version;
         let configYaml = latestVersion.configYaml;
         let certFiles: Array<{ name: string; filename: string; data: string }> = [];
-        let pipelineSecrets = secrets;
+        // Per-pipeline secret map — only the secrets this pipeline references are
+        // added below. Never share decrypted secrets across pipelines on a node.
+        const pipelineSecrets: Record<string, string> = {};
 
         // Parse versioned YAML back to objects so we can resolve references
         // at the object level. This ensures js-yaml properly quotes values
@@ -228,17 +233,34 @@ export async function GET(request: Request) {
         const varRefs = collectVarRefs(parsedConfig);
 
         if (varRefs.size > 0) {
-          try {
-            configForDelivery = resolveVarRefs(parsedConfig, pipelineVars, envVarMap);
-            shouldDumpConfig = true;
-          } catch (err) {
-            warnLog("agent-config", `Unresolved variables in pipeline ${pipeline.id}: ${err instanceof Error ? err.message : String(err)}`);
-          }
+          // If any VAR[...] reference can't be resolved, skip delivering this
+          // pipeline entirely. Shipping the un-resolved config would send a
+          // literal `VAR[name]` string to the agent, which Vector treats as the
+          // intended value — a broken config that silently runs. Skipping keeps
+          // the agent on its last-known-good config until the variable is fixed.
+          configForDelivery = resolveVarRefs(parsedConfig, pipelineVars, envVarMap);
+          shouldDumpConfig = true;
         }
 
         if (environment.secretBackend === "BUILTIN" || environment.secretBackend === "VAULT") {
+          if (environment.secretBackend === "BUILTIN") {
+            // Scope BUILTIN secrets to THIS pipeline's references only. The bulk
+            // decrypt above keyed every referenced secret by name; here we pick
+            // out just the ones this pipeline uses so a pipeline never receives
+            // another pipeline's secrets just because they share a node.
+            const pipelineSecretRefs = collectSecretRefs(configForDelivery);
+            for (const name of pipelineSecretRefs) {
+              const value = builtinSecretsByName.get(name);
+              if (value === undefined) continue; // missing secrets surface as un-interpolated ${VF_SECRET_*}, unchanged behaviour
+              const envKey = secretNameToEnvVar(name);
+              if (pipelineSecrets[envKey] !== undefined) {
+                warnLog("agent-config", `Secret name collision: "${name}" normalizes to "${envKey}" which is already set`);
+              }
+              pipelineSecrets[envKey] = value;
+            }
+          }
+
           if (environment.secretBackend === "VAULT") {
-            pipelineSecrets = {};
             const pipelineSecretRefs = collectSecretRefs(configForDelivery);
             if (pipelineSecretRefs.size > 0) {
               const vaultSecrets = sharedVaultData && vaultConfig?.basePath

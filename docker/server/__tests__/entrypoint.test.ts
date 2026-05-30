@@ -138,6 +138,47 @@ describe("entrypoint.sh DATABASE_URL construction", () => {
     expect(r.status).not.toBe(0);
     expect(r.stderr).toMatch(/DATABASE_URL or POSTGRES_PASSWORD/);
   });
+
+  it("rejects the published POSTGRES_PASSWORD placeholder in production", () => {
+    // .env.example ships this exact value; booting with it in production means
+    // a publicly-known database credential.
+    const r = runEntrypoint({
+      NODE_ENV: "production",
+      POSTGRES_PASSWORD: "change-me-to-a-random-32-char-string",
+    });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/placeholder/i);
+  });
+
+  it("treats an unset NODE_ENV as production for the placeholder guard", () => {
+    const r = runEntrypoint({
+      POSTGRES_PASSWORD: "change-me-to-a-random-32-char-string",
+    });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/placeholder/i);
+  });
+
+  it("allows the placeholder outside production (dev)", () => {
+    const r = runEntrypoint({
+      NODE_ENV: "development",
+      POSTGRES_PASSWORD: "change-me-to-a-random-32-char-string",
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.databaseUrl).toBe(
+      "postgresql://vectorflow:change-me-to-a-random-32-char-string@postgres:5432/vectorflow",
+    );
+  });
+
+  it("accepts a unique POSTGRES_PASSWORD in production", () => {
+    const r = runEntrypoint({
+      NODE_ENV: "production",
+      POSTGRES_PASSWORD: "a-real-unique-password",
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.databaseUrl).toBe(
+      "postgresql://vectorflow:a-real-unique-password@postgres:5432/vectorflow",
+    );
+  });
 });
 
 describe("entrypoint.sh migration gating (VF_SKIP_MIGRATIONS)", () => {

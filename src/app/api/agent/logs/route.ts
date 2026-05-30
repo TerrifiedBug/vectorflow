@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJsonCapped } from "@/app/api/_lib/read-json-capped";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgentInOrg } from "@/server/services/agent-auth";
@@ -22,7 +23,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json();
+    const read = await readJsonCapped(request);
+    if (!read.ok) return read.response;
+    const body = read.data;
     const parsed = logBatchesRequestSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
