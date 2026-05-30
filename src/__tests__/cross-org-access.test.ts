@@ -100,6 +100,15 @@ const TENANT_INPUT_KEYS = [
   "nodeId",
   "groupId",
   "id",
+  // Added per the 2026-05-30 readiness audit (RLS §2.1): these scoping keys
+  // were previously invisible to the linter. `secretId` (secret.usage) is gated
+  // via withTeamAccess on its co-required environmentId; `channelId` is reserved
+  // (no ungated top-level input today, future-proofing); `grantId`
+  // (orgAccessGrant.approve/revoke) authorises in-handler — see
+  // INTENTIONALLY_UNGUARDED below.
+  "secretId",
+  "channelId",
+  "grantId",
 ] as const;
 
 /**
@@ -217,6 +226,15 @@ const INTENTIONALLY_UNGUARDED = new Set<string>([
   // inline-auth pattern as `template.get` / `template.delete` above.
   "org.verifyDomain",
   "org.unclaimDomain",
+
+  // orgAccessGrant.approve / orgAccessGrant.revoke: org-scoped (not team-scoped)
+  // break-glass grant consent, so withTeamAccess is not the right gate. Each
+  // wraps DB work in withOrgTx(input.organizationId) + requireOrgRole(...,
+  // input.organizationId, ADMIN/OWNER) and rejects when
+  // grant.organizationId !== input.organizationId (FORBIDDEN). The companion
+  // cross-org-access-allowlist-justification.test.ts pins these markers.
+  "orgAccessGrant.approve",
+  "orgAccessGrant.revoke",
 ]);
 
 interface AuditEntry {

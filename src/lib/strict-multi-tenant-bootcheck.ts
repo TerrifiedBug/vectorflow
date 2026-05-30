@@ -134,3 +134,111 @@ export function warnTrustForwardedHostIfOn(): void {
   }
 }
 
+
+type RlsProbeClient = {
+  $queryRawUnsafe: <T = unknown>(query: string, ...values: unknown[]) => Promise<T>;
+};
+
+/**
+ * RLS enforcement boot probe — the GA gate from
+ * `cloud/docs/rls-isolation-model.md`.
+ *
+ * Opt-in via `VF_ENFORCE_RLS=true` — a DEDICATED flag, intentionally separate
+ * from `VF_STRICT_MULTI_TENANT`, so enabling strict cookies/CSP does NOT also
+ * demand RLS enforcement before the `withOrgTx` / `vectorflow_app` rollout has
+ * landed. When enabled, refuses to boot unless the Postgres role the app
+ * connects as actually has RLS enforced:
+ *
+ *   1. `current_user` is NOT a BYPASSRLS role (`rolbypassrls = false`),
+ *   2. at least one tenant table carries an `app.org_id` RLS policy, and
+ *   3. with no `app.org_id` GUC set, that table exposes NO rows (the policy
+ *      fires on this connection rather than leaking every tenant's rows).
+ *
+ * Until the rollout flips `DATABASE_URL` to the NOBYPASSRLS `vectorflow_app`
+ * role, this probe WILL fail on the owner role — which is the point: it stops
+ * an image advertising RLS from shipping while RLS is still bypassed. OSS
+ * single-tenant never sets `VF_ENFORCE_RLS` and is unaffected.
+ */
+export async function assertRlsEnforcementBoot(opts?: {
+  exit?: (code: number) => never;
+  client?: RlsProbeClient;
+}): Promise<void> {
+  if (process.env.VF_ENFORCE_RLS !== "true") return;
+
+  const exit = opts?.exit ?? process.exit;
+  let db = opts?.client;
+  if (!db) {
+    // Lazy import so this module (and its tests) don't pull in the Prisma
+    // singleton / env validation unless the probe actually runs.
+    const { prisma } = await import("@/lib/prisma");
+    db = prisma as unknown as RlsProbeClient;
+  }
+
+  let bypassesRls = true;
+  let policyTable: string | null = null;
+  let leaked = false;
+  try {
+    const roleRows = await db.$queryRawUnsafe<Array<{ rolbypassrls: boolean }>>(
+      "SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user",
+    );
+    bypassesRls = roleRows[0]?.rolbypassrls === true;
+
+    const policyRows = await db.$queryRawUnsafe<Array<{ tablename: string }>>(
+      "SELECT tablename FROM pg_policies WHERE schemaname = 'public' " +
+        "AND qual LIKE '%app.org_id%' ORDER BY tablename LIMIT 1",
+    );
+    policyTable = policyRows[0]?.tablename ?? null;
+
+    if (policyTable) {
+      const quoted = policyTable.replace(/"/g, '""');
+      const leakRows = await db.$queryRawUnsafe<Array<{ leaked: boolean }>>(
+        `SELECT EXISTS(SELECT 1 FROM "${quoted}") AS leaked`,
+      );
+      leaked = leakRows[0]?.leaked === true;
+    }
+  } catch (err) {
+    const message =
+      "FATAL: VF_ENFORCE_RLS=true but the RLS enforcement probe could not run: " +
+      `${(err as Error).message}. Refusing to boot rather than assume the ` +
+      "database backstop is active.";
+    errorLog("instrumentation", message);
+    console.error(`\n${message}\n`);
+    return exit(1);
+  }
+
+  const failures: string[] = [];
+  if (bypassesRls) {
+    failures.push(
+      "the app connects as a BYPASSRLS Postgres role (rolbypassrls = true) — " +
+        "RLS policies never fire. Point DATABASE_URL at the NOBYPASSRLS " +
+        "vectorflow_app role (scripts/grant-vectorflow-app.sql).",
+    );
+  }
+  if (!policyTable) {
+    failures.push(
+      "no tenant table carries an app.org_id RLS policy — the policies are not " +
+        "provisioned in this database.",
+    );
+  } else if (leaked) {
+    failures.push(
+      `tenant table "${policyTable}" exposed rows with no app.org_id GUC set — ` +
+        "the RLS policy is not blocking unscoped reads on this connection.",
+    );
+  }
+
+  if (failures.length > 0) {
+    const message =
+      "FATAL: VF_ENFORCE_RLS=true but RLS is not actually enforced:\n" +
+      failures.map((f) => `  - ${f}`).join("\n") +
+      "\nRefusing to boot. Complete the RLS rollout " +
+      "(cloud/docs/rls-isolation-model.md) before enabling VF_ENFORCE_RLS.";
+    errorLog("instrumentation", message);
+    console.error(`\n${message}\n`);
+    return exit(1);
+  }
+
+  infoLog(
+    "instrumentation",
+    "RLS enforcement probe passed: non-bypass role and app.org_id policy fires.",
+  );
+}

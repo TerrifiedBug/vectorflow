@@ -9,7 +9,7 @@
 #      The server runs database migrations automatically on first boot.
 #
 #   2. Enroll the agent: open the UI, finish setup, then generate a token in
-#      Settings → Agent Tokens → Generate Enrollment Token. Put it in .env as
+#      Environments → (your environment) → Agent Enrollment → Generate token. Put it in .env as
 #      VF_ENROLLMENT_TOKEN and start the agent (it lives behind the "agent" profile
 #      so step 1 does not require the token):
 #        docker compose --profile agent up -d

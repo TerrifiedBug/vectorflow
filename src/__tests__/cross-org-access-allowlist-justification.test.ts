@@ -96,6 +96,16 @@ const JUSTIFICATIONS: Justification[] = [
     file: "src/server/routers/org.ts",
     mustContain: ["organizationDomainClaim", "claim.organizationId !== ctx.organizationId"],
   },
+
+  // orgAccessGrant.approve / orgAccessGrant.revoke — org-scoped break-glass
+  // grant consent. Authorised inline: requireOrgRole(..., input.organizationId,
+  // ADMIN/OWNER) plus a grant.organizationId !== input.organizationId boundary
+  // check, all inside withOrgTx(input.organizationId).
+  {
+    procedure: "orgAccessGrant.approve / orgAccessGrant.revoke",
+    file: "src/server/routers/org-access-grant.ts",
+    mustContain: ["requireOrgRole", "grant.organizationId !== input.organizationId"],
+  },
 ];
 
 const REPO_ROOT = resolve(__dirname, "../..");

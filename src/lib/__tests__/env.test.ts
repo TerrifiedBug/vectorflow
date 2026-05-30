@@ -29,6 +29,7 @@ describe("env validation", () => {
     delete process.env.VF_DISABLE_LOCAL_AUTH;
     delete process.env.TIMESCALEDB_ENABLED;
     delete process.env.VF_ENCRYPTION_KEY_V2;
+    delete process.env.VF_ALLOW_NEXTAUTH_DERIVED_KEY;
     delete process.env.SENTRY_AUTH_TOKEN;
     delete process.env.SENTRY_DSN;
     delete process.env.REDIS_URL;
@@ -178,9 +179,47 @@ describe("env validation", () => {
       process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/vf";
       process.env.NEXTAUTH_SECRET = "a-real-unique-secret-value-32-chars";
       process.env.NEXTAUTH_URL = "https://vf.example.com";
+      process.env.VF_ENCRYPTION_KEY_V2 = "a-dedicated-unique-encryption-key-32c";
       vi.stubEnv("NODE_ENV", "production");
       const { env } = await import("@/lib/env");
       expect(env.NEXTAUTH_SECRET).toBe("a-real-unique-secret-value-32-chars");
+    });
+  });
+
+  describe("encryption-key boot guard (production)", () => {
+    function setProdBase() {
+      process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/vf";
+      process.env.NEXTAUTH_SECRET = "a-real-unique-secret-value-32-chars";
+      process.env.NEXTAUTH_URL = "https://vf.example.com";
+    }
+
+    it("refuses to boot when VF_ENCRYPTION_KEY_V2 is unset in production", async () => {
+      setProdBase();
+      vi.stubEnv("NODE_ENV", "production");
+      await expect(import("@/lib/env")).rejects.toThrow(/VF_ENCRYPTION_KEY_V2/);
+    });
+
+    it("boots when VF_ENCRYPTION_KEY_V2 is set in production", async () => {
+      setProdBase();
+      process.env.VF_ENCRYPTION_KEY_V2 = "a-dedicated-unique-encryption-key-32c";
+      vi.stubEnv("NODE_ENV", "production");
+      const { env } = await import("@/lib/env");
+      expect(env.VF_ENCRYPTION_KEY_V2).toBe("a-dedicated-unique-encryption-key-32c");
+    });
+
+    it("boots when the operator explicitly accepts the NEXTAUTH_SECRET-derived key", async () => {
+      setProdBase();
+      process.env.VF_ALLOW_NEXTAUTH_DERIVED_KEY = "true";
+      vi.stubEnv("NODE_ENV", "production");
+      const { env } = await import("@/lib/env");
+      expect(env.VF_ENCRYPTION_KEY_V2).toBeUndefined();
+    });
+
+    it("does not require VF_ENCRYPTION_KEY_V2 outside production", async () => {
+      setProdBase();
+      vi.stubEnv("NODE_ENV", "development");
+      const { env } = await import("@/lib/env");
+      expect(env.VF_ENCRYPTION_KEY_V2).toBeUndefined();
     });
   });
 });

@@ -10,6 +10,7 @@ vi.mock("@/lib/logger", () => ({
 import {
   assertStrictMultiTenantBoot,
   warnTrustForwardedHostIfOn,
+  assertRlsEnforcementBoot,
 } from "../strict-multi-tenant-bootcheck";
 import { errorLog, infoLog, warnLog } from "@/lib/logger";
 
@@ -19,6 +20,7 @@ const ENV_KEYS = [
   "VF_REQUIRE_STRICT_MULTI_TENANT",
   "VF_TRUST_FORWARDED_HOST",
   "VF_TRUST_PROXY_HEADERS",
+  "VF_ENFORCE_RLS",
 ] as const;
 const ORIGINAL: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
 
@@ -136,5 +138,78 @@ describe("warnTrustForwardedHostIfOn", () => {
       (call) => typeof call[1] === "string" && (call[1] as string).includes("VF_TRUST_PROXY_HEADERS=true is set but"),
     );
     expect(asymmetryCalls.length).toBe(0);
+  });
+});
+
+type ProbeScenario = {
+  bypass: boolean;
+  policyTable: string | null;
+  leaked: boolean;
+  throwOn?: string;
+};
+
+function makeProbeClient(s: ProbeScenario) {
+  return {
+    $queryRawUnsafe: vi.fn(async (q: string) => {
+      if (s.throwOn && q.includes(s.throwOn)) throw new Error("probe query failed");
+      if (q.includes("pg_roles")) return [{ rolbypassrls: s.bypass }];
+      if (q.includes("pg_policies")) {
+        return s.policyTable ? [{ tablename: s.policyTable }] : [];
+      }
+      if (q.includes("EXISTS")) return [{ leaked: s.leaked }];
+      return [];
+    }),
+  };
+}
+
+describe("assertRlsEnforcementBoot", () => {
+  it("is a no-op when VF_ENFORCE_RLS is unset", async () => {
+    const exit = vi.fn();
+    const client = makeProbeClient({ bypass: true, policyTable: null, leaked: true });
+    await assertRlsEnforcementBoot({ exit: exit as never, client: client as never });
+    expect(client.$queryRawUnsafe).not.toHaveBeenCalled();
+    expect(exit).not.toHaveBeenCalled();
+  });
+
+  it("refuses to boot when the app role bypasses RLS", async () => {
+    process.env.VF_ENFORCE_RLS = "true";
+    const exit = vi.fn();
+    const client = makeProbeClient({ bypass: true, policyTable: "Team", leaked: false });
+    await assertRlsEnforcementBoot({ exit: exit as never, client: client as never });
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(errorLog).toHaveBeenCalled();
+  });
+
+  it("refuses to boot when no app.org_id policy is provisioned", async () => {
+    process.env.VF_ENFORCE_RLS = "true";
+    const exit = vi.fn();
+    const client = makeProbeClient({ bypass: false, policyTable: null, leaked: false });
+    await assertRlsEnforcementBoot({ exit: exit as never, client: client as never });
+    expect(exit).toHaveBeenCalledWith(1);
+  });
+
+  it("refuses to boot when a tenant table leaks rows with no GUC set", async () => {
+    process.env.VF_ENFORCE_RLS = "true";
+    const exit = vi.fn();
+    const client = makeProbeClient({ bypass: false, policyTable: "Team", leaked: true });
+    await assertRlsEnforcementBoot({ exit: exit as never, client: client as never });
+    expect(exit).toHaveBeenCalledWith(1);
+  });
+
+  it("passes on a non-bypass role where the policy fires", async () => {
+    process.env.VF_ENFORCE_RLS = "true";
+    const exit = vi.fn();
+    const client = makeProbeClient({ bypass: false, policyTable: "Team", leaked: false });
+    await assertRlsEnforcementBoot({ exit: exit as never, client: client as never });
+    expect(exit).not.toHaveBeenCalled();
+    expect(infoLog).toHaveBeenCalled();
+  });
+
+  it("refuses to boot when the probe query throws", async () => {
+    process.env.VF_ENFORCE_RLS = "true";
+    const exit = vi.fn();
+    const client = makeProbeClient({ bypass: false, policyTable: "Team", leaked: false, throwOn: "pg_roles" });
+    await assertRlsEnforcementBoot({ exit: exit as never, client: client as never });
+    expect(exit).toHaveBeenCalledWith(1);
   });
 });

@@ -8,6 +8,7 @@ import type { Role, OrgMemberRole, PlatformOperatorRole } from "@/generated/pris
 import { isOrgWideAdmin } from "@/lib/org-admin";
 import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 import { runWithLogContext } from "@/lib/log-context";
+import { isStrictMultiTenantMode } from "@/lib/security-headers";
 
 /**
  * Sentinel error attached as `cause` on the TRPCError thrown by `orgProcedure`
@@ -701,17 +702,18 @@ export const withTeamAccess = (minRole: Role) =>
 
     // Org-boundary check: don't leak cross-org team existence.
     //
-    // NOTE (VF-44, by design): the boundary check is intentionally skipped when
-    // ctx.organizationId === DEFAULT_ORG_ID. This is the single-tenant OSS mode:
-    // users without a real OrgMember row keep the DEFAULT_ORG_ID context (see
+    // NOTE (VF-44, by design): in OSS single-tenant mode the boundary check is
+    // intentionally skipped when ctx.organizationId === DEFAULT_ORG_ID. Users
+    // without a real OrgMember row keep the DEFAULT_ORG_ID context (see
     // createContext), and every team in a single-tenant install lives under that
-    // default org. Skipping the check here keeps all teams reachable in OSS.
-    // Multi-tenant deployments assign a real organizationId, so the check is
-    // enforced for them. Do not remove this guard without re-evaluating the OSS
-    // single-tenant path — it is not a missing isolation check, it is the
-    // single-tenant default.
+    // default org, so skipping keeps all teams reachable in OSS.
+    //
+    // On STRICT multi-tenant deployments (VF_STRICT_MULTI_TENANT=true) the skip
+    // is closed: a real tenant must never resolve to DEFAULT_ORG_ID, so if a
+    // request ever does, enforce the boundary rather than fall open. Do not
+    // remove the OSS path without re-evaluating single-tenant reachability.
     if (
-      ctx.organizationId !== DEFAULT_ORG_ID &&
+      (isStrictMultiTenantMode() || ctx.organizationId !== DEFAULT_ORG_ID) &&
       teamOrg?.organizationId !== ctx.organizationId
     ) {
       throw new TRPCError({ code: "NOT_FOUND" });
