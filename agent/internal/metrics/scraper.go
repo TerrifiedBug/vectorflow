@@ -167,18 +167,25 @@ func ScrapePrometheus(metricsPort int) ScrapeResult {
 				getOrCreate(componentMap, componentID, componentKind).LatencyMeanSeconds = value
 			}
 
-		// Buffer/backpressure gauges. Vector exposes these per sink buffer.
-		// They are gauges (current state), so we set rather than accumulate.
-		case "vector_buffer_events", "buffer_events":
+		// Buffer/backpressure gauges. Vector exposes these per sink buffer,
+		// tagged with the component_id label (NOT buffer_id), so the
+		// componentID parsed above is the correct key. They are gauges
+		// (current state), so we set rather than accumulate. Metric names
+		// follow Vector's `buffer_size_*` / `buffer_max_size_*` scheme; the
+		// `buffer_max_{event,byte}_size` spellings are kept as deprecated
+		// aliases for older Vector releases.
+		case "vector_buffer_size_events", "buffer_size_events":
 			getOrCreate(componentMap, componentID, componentKind).BufferEvents = int64(value)
 
-		case "vector_buffer_byte_size", "buffer_byte_size":
+		case "vector_buffer_size_bytes", "buffer_size_bytes":
 			getOrCreate(componentMap, componentID, componentKind).BufferByteSize = int64(value)
 
-		case "vector_buffer_max_event_size", "buffer_max_event_size":
+		case "vector_buffer_max_size_events", "buffer_max_size_events",
+			"vector_buffer_max_event_size", "buffer_max_event_size":
 			getOrCreate(componentMap, componentID, componentKind).BufferMaxEvents = int64(value)
 
-		case "vector_buffer_max_byte_size", "buffer_max_byte_size":
+		case "vector_buffer_max_size_bytes", "buffer_max_size_bytes",
+			"vector_buffer_max_byte_size", "buffer_max_byte_size":
 			getOrCreate(componentMap, componentID, componentKind).BufferMaxByteSize = int64(value)
 
 		case "vector_buffer_discarded_events_total", "buffer_discarded_events_total":

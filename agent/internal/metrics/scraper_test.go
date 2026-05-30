@@ -61,9 +61,9 @@ vector_component_sent_bytes_total{component_id="http",component_kind="source"} 2
 
 func TestScrapePrometheusAggregatesBufferGaugesAndDetectsBackpressure(t *testing.T) {
 	result := scrapeFixture(t, `
-vector_buffer_events{component_id="http_sink",component_kind="sink"} 450
-vector_buffer_max_event_size{component_id="http_sink",component_kind="sink"} 500
-vector_buffer_byte_size{component_id="http_sink",component_kind="sink"} 4096
+vector_buffer_size_events{component_id="http_sink",component_kind="sink"} 450
+vector_buffer_max_size_events{component_id="http_sink",component_kind="sink"} 500
+vector_buffer_size_bytes{component_id="http_sink",component_kind="sink"} 4096
 vector_buffer_discarded_events_total{component_id="http_sink",component_kind="sink"} 7
 `)
 
@@ -96,8 +96,8 @@ vector_buffer_discarded_events_total{component_id="http_sink",component_kind="si
 
 func TestScrapePrometheusBackpressureNotTriggeredBelowThreshold(t *testing.T) {
 	result := scrapeFixture(t, `
-vector_buffer_byte_size{component_id="s3",component_kind="sink"} 1000
-vector_buffer_max_byte_size{component_id="s3",component_kind="sink"} 10000
+vector_buffer_size_bytes{component_id="s3",component_kind="sink"} 1000
+vector_buffer_max_size_bytes{component_id="s3",component_kind="sink"} 10000
 `)
 
 	if result.Backpressure.Triggered {
