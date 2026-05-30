@@ -1,7 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
-vi.mock("@/server/services/url-validation", () => ({
-  validatePublicUrl: vi.fn().mockResolvedValue(undefined),
+vi.mock("@/server/services/webhook-hardened-delivery", () => ({
+  fetchHardened: vi.fn(),
 }));
 
 import {
@@ -9,7 +9,7 @@ import {
   webhookDriver,
 } from "@/server/services/channels/webhook";
 import type { ChannelPayload } from "@/server/services/channels/types";
-import * as urlValidation from "@/server/services/url-validation";
+import * as hardened from "@/server/services/webhook-hardened-delivery";
 
 function makePayload(overrides: Partial<ChannelPayload> = {}): ChannelPayload {
   return {
@@ -63,41 +63,31 @@ describe("formatWebhookMessage", () => {
 });
 
 describe("webhookDriver.deliver", () => {
+  const fetchHardened = vi.mocked(hardened.fetchHardened);
+
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(urlValidation.validatePublicUrl).mockResolvedValue(undefined);
+    fetchHardened.mockResolvedValue({ status: 200, ok: true, redirectChain: [] });
   });
 
-  it("delivers successfully when the destination returns 2xx", async () => {
-    const mockFetch = vi
-      .fn()
-      .mockResolvedValue({ ok: true, status: 200, statusText: "OK" });
-    vi.stubGlobal("fetch", mockFetch);
-
+  it("delivers through the hardened fetch when the destination returns 2xx", async () => {
     const result = await webhookDriver.deliver(
       { url: "https://hooks.example.com/webhook" },
       makePayload(),
     );
 
     expect(result.success).toBe(true);
-    expect(mockFetch).toHaveBeenCalledWith(
+    expect(fetchHardened).toHaveBeenCalledWith(
       "https://hooks.example.com/webhook",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({ "Content-Type": "application/json" }),
       }),
     );
-
-    vi.unstubAllGlobals();
   });
 
   it("returns failure when the destination responds with an error status", async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 500,
-      statusText: "Internal Server Error",
-    });
-    vi.stubGlobal("fetch", mockFetch);
+    fetchHardened.mockResolvedValue({ status: 500, ok: false, redirectChain: [] });
 
     const result = await webhookDriver.deliver(
       { url: "https://hooks.example.com/webhook" },
@@ -106,37 +96,23 @@ describe("webhookDriver.deliver", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("500");
-
-    vi.unstubAllGlobals();
   });
 
   it("adds an HMAC signature when hmacSecret is configured", async () => {
-    const mockFetch = vi
-      .fn()
-      .mockResolvedValue({ ok: true, status: 200, statusText: "OK" });
-    vi.stubGlobal("fetch", mockFetch);
-
     await webhookDriver.deliver(
       { url: "https://hooks.example.com/webhook", hmacSecret: "my-secret" },
       makePayload(),
     );
 
-    const sentHeaders = mockFetch.mock.calls[0][1].headers as Record<
+    const sentHeaders = fetchHardened.mock.calls[0][1].headers as Record<
       string,
       string
     >;
     expect(sentHeaders["X-VectorFlow-Signature"]).toBeDefined();
     expect(sentHeaders["X-VectorFlow-Signature"]).toMatch(/^sha256=/);
-
-    vi.unstubAllGlobals();
   });
 
   it("forwards custom headers from the channel config", async () => {
-    const mockFetch = vi
-      .fn()
-      .mockResolvedValue({ ok: true, status: 200, statusText: "OK" });
-    vi.stubGlobal("fetch", mockFetch);
-
     await webhookDriver.deliver(
       {
         url: "https://hooks.example.com/webhook",
@@ -145,19 +121,15 @@ describe("webhookDriver.deliver", () => {
       makePayload(),
     );
 
-    const sentHeaders = mockFetch.mock.calls[0][1].headers as Record<
+    const sentHeaders = fetchHardened.mock.calls[0][1].headers as Record<
       string,
       string
     >;
     expect(sentHeaders["Authorization"]).toBe("Bearer token123");
-
-    vi.unstubAllGlobals();
   });
 
-  it("returns failure when URL validation rejects (SSRF protection)", async () => {
-    vi.mocked(urlValidation.validatePublicUrl).mockRejectedValueOnce(
-      new Error("Private IP address"),
-    );
+  it("returns failure when the hardened fetch rejects the URL (SSRF protection)", async () => {
+    fetchHardened.mockRejectedValueOnce(new Error("Private IP address"));
 
     const result = await webhookDriver.deliver(
       { url: "http://192.168.1.1/webhook" },
@@ -168,9 +140,25 @@ describe("webhookDriver.deliver", () => {
     expect(result.error).toContain("Private IP");
   });
 
-  it("returns failure when fetch throws", async () => {
-    const mockFetch = vi.fn().mockRejectedValue(new Error("Connection refused"));
-    vi.stubGlobal("fetch", mockFetch);
+  it("returns failure when a redirect to a private IP is refused mid-delivery", async () => {
+    // fetchHardened re-validates every redirect hop and throws on a 3xx
+    // into a private/reserved address (e.g. cloud metadata). The driver
+    // must surface that as a failed delivery, never a silent success.
+    fetchHardened.mockRejectedValueOnce(
+      new Error("Refusing redirect to private IP (169.254.169.254)"),
+    );
+
+    const result = await webhookDriver.deliver(
+      { url: "https://hooks.example.com/webhook" },
+      makePayload(),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("169.254.169.254");
+  });
+
+  it("returns failure when the hardened fetch throws", async () => {
+    fetchHardened.mockRejectedValueOnce(new Error("Connection refused"));
 
     const result = await webhookDriver.deliver(
       { url: "https://hooks.example.com/webhook" },
@@ -179,8 +167,6 @@ describe("webhookDriver.deliver", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("Connection refused");
-
-    vi.unstubAllGlobals();
   });
 
   it("returns failure when url is missing from config", async () => {
