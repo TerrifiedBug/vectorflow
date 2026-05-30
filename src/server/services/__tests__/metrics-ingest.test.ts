@@ -18,6 +18,7 @@ import {
   type PreviousSnapshot,
 } from "@/server/services/metrics-ingest";
 import { MetricStore } from "@/server/services/metric-store";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -25,6 +26,7 @@ const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
 const NOW = new Date("2025-06-01T12:00:00Z");
 const NODE_ID = "node-abc";
+const ORG = "org-test";
 
 function makeDataPoint(
   overrides: Partial<MetricsDataPoint> & { pipelineId: string },
@@ -93,7 +95,7 @@ describe("computeDeltas", () => {
     const snapshots = new Map<string, PreviousSnapshot>();
     snapshots.set(`${NODE_ID}:pipe-1`, makeSnapshot());
 
-    const rows = computeDeltas(dataPoints, snapshots, NOW);
+    const rows = computeDeltas(dataPoints, snapshots, NOW, ORG);
 
     expect(rows).toHaveLength(1);
     const row = rows[0];
@@ -141,7 +143,7 @@ describe("computeDeltas", () => {
       }),
     );
 
-    const rows = computeDeltas(dataPoints, snapshots, NOW);
+    const rows = computeDeltas(dataPoints, snapshots, NOW, ORG);
 
     expect(rows).toHaveLength(1);
     expect(rows[0].eventsIn).toBe(BigInt(0));
@@ -156,7 +158,7 @@ describe("computeDeltas", () => {
     const dataPoints = [makeDataPoint({ pipelineId: "pipe-new" })];
     const snapshots = new Map<string, PreviousSnapshot>();
 
-    const rows = computeDeltas(dataPoints, snapshots, NOW);
+    const rows = computeDeltas(dataPoints, snapshots, NOW, ORG);
 
     expect(rows).toHaveLength(1);
     expect(rows[0].eventsIn).toBe(BigInt(0));
@@ -167,7 +169,7 @@ describe("computeDeltas", () => {
   it("returns zero deltas when previousSnapshots is undefined", () => {
     const dataPoints = [makeDataPoint({ pipelineId: "pipe-1" })];
 
-    const rows = computeDeltas(dataPoints, undefined, NOW);
+    const rows = computeDeltas(dataPoints, undefined, NOW, ORG);
 
     expect(rows).toHaveLength(1);
     expect(rows[0].eventsIn).toBe(BigInt(0));
@@ -182,7 +184,7 @@ describe("computeDeltas", () => {
     snapshots.set(`${NODE_ID}:pipe-1`, makeSnapshot({ eventsIn: BigInt(100) }));
     snapshots.set(`${NODE_ID}:pipe-2`, makeSnapshot({ eventsIn: BigInt(50) }));
 
-    const rows = computeDeltas(dataPoints, snapshots, NOW);
+    const rows = computeDeltas(dataPoints, snapshots, NOW, ORG);
 
     expect(rows).toHaveLength(2);
     expect(rows[0].eventsIn).toBe(BigInt(100)); // 200 - 100
@@ -194,7 +196,7 @@ describe("computeDeltas", () => {
       makeDataPoint({ pipelineId: "pipe-1", latencyMeanMs: null }),
     ];
 
-    const rows = computeDeltas(dataPoints, undefined, NOW);
+    const rows = computeDeltas(dataPoints, undefined, NOW, ORG);
 
     expect(rows[0]).not.toHaveProperty("latencyMeanMs");
   });
@@ -204,6 +206,7 @@ describe("computeDeltas", () => {
 
 describe("accumulateRow", () => {
   const baseDelta = {
+    organizationId: ORG,
     pipelineId: "pipe-1",
     nodeId: "node-1",
     timestamp: new Date("2026-01-01"),
@@ -298,7 +301,7 @@ describe("computeAggregation", () => {
       },
     ];
 
-    const agg = computeAggregation("pipe-1", nodeRows, NOW);
+    const agg = computeAggregation("pipe-1", nodeRows, NOW, ORG);
 
     expect(agg.pipelineId).toBe("pipe-1");
     expect(agg.timestamp).toBe(NOW);
@@ -334,7 +337,7 @@ describe("computeAggregation", () => {
       },
     ];
 
-    const agg = computeAggregation("pipe-1", nodeRows, NOW);
+    const agg = computeAggregation("pipe-1", nodeRows, NOW, ORG);
 
     expect(agg.utilization).toBeCloseTo(0.6);
   });
@@ -366,7 +369,7 @@ describe("computeAggregation", () => {
       },
     ];
 
-    const agg = computeAggregation("pipe-1", nodeRows, NOW);
+    const agg = computeAggregation("pipe-1", nodeRows, NOW, ORG);
 
     // (10*190 + 20*380) / (190+380) = (1900 + 7600) / 570 ≈ 16.667
     expect(agg.latencyMeanMs).toBeCloseTo(16.667, 2);
@@ -386,13 +389,13 @@ describe("computeAggregation", () => {
       },
     ];
 
-    const agg = computeAggregation("pipe-1", nodeRows, NOW);
+    const agg = computeAggregation("pipe-1", nodeRows, NOW, ORG);
 
     expect(agg).not.toHaveProperty("latencyMeanMs");
   });
 
   it("returns zero aggregation for empty node rows", () => {
-    const agg = computeAggregation("pipe-1", [], NOW);
+    const agg = computeAggregation("pipe-1", [], NOW, ORG);
 
     expect(agg.eventsIn).toBe(BigInt(0));
     expect(agg.eventsOut).toBe(BigInt(0));
@@ -425,7 +428,7 @@ describe("ingestMetrics", () => {
   });
 
   it("makes no DB calls for empty dataPoints array", async () => {
-    await ingestMetrics([], undefined);
+    await ingestMetrics([], ORG);
 
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
@@ -436,7 +439,7 @@ describe("ingestMetrics", () => {
       makeDataPoint({ pipelineId: "pipe-2" }),
     ];
 
-    await ingestMetrics(dataPoints, new Map());
+    await ingestMetrics(dataPoints, ORG, new Map());
 
     expect(prismaMock.$transaction).toHaveBeenCalledOnce();
   });
@@ -444,7 +447,7 @@ describe("ingestMetrics", () => {
   it("reads existing per-node rows before delete+insert", async () => {
     const dataPoints = [makeDataPoint({ pipelineId: "pipe-1" })];
 
-    await ingestMetrics(dataPoints, new Map());
+    await ingestMetrics(dataPoints, ORG, new Map());
 
     // First findMany: read existing per-node rows for accumulation
     const findManyCalls = mockTx.pipelineMetric.findMany.mock.calls;
@@ -484,7 +487,7 @@ describe("ingestMetrics", () => {
       // Second findMany: for aggregation
       .mockResolvedValue([] as never);
 
-    await ingestMetrics(dataPoints, new Map());
+    await ingestMetrics(dataPoints, ORG, new Map());
 
     // createMany should include accumulated values (existing + delta)
     const createManyCalls = mockTx.pipelineMetric.createMany.mock.calls;
@@ -498,7 +501,7 @@ describe("ingestMetrics", () => {
     // findMany returns empty — no existing rows
     mockTx.pipelineMetric.findMany.mockResolvedValue([] as never);
 
-    await ingestMetrics(dataPoints, new Map());
+    await ingestMetrics(dataPoints, ORG, new Map());
 
     // deleteMany should only be called once (for aggregation rows), not for per-node
     const deleteManyCalls = mockTx.pipelineMetric.deleteMany.mock.calls;
@@ -515,7 +518,7 @@ describe("ingestMetrics", () => {
       makeDataPoint({ pipelineId: "pipe-2" }),
     ];
 
-    await ingestMetrics(dataPoints, new Map());
+    await ingestMetrics(dataPoints, ORG, new Map());
 
     // createMany should be called at least once for per-node rows
     const createManyCalls = mockTx.pipelineMetric.createMany.mock.calls;
@@ -524,6 +527,42 @@ describe("ingestMetrics", () => {
     // The first createMany call should have 2 rows (one per pipeline)
     const firstCall = createManyCalls[0][0] as { data: unknown[] };
     expect(firstCall.data).toHaveLength(2);
+  });
+
+  it("stamps the real organizationId on BOTH per-node and aggregation rows", async () => {
+    // Regression for the $0-metering bug: rows were written with the DB
+    // default 'default' while the billing aggregator filters by the real org,
+    // so every tenant aggregated to 0. Every PipelineMetric write must carry
+    // the org id threaded from the heartbeat's resolveAgentOrg.
+    const dataPoints = [makeDataPoint({ pipelineId: "pipe-1" })];
+
+    await ingestMetrics(dataPoints, ORG, new Map());
+
+    const createManyCalls = mockTx.pipelineMetric.createMany.mock.calls;
+    // Two write sites: per-node rows, then the pipeline-aggregate (billed) row.
+    expect(createManyCalls).toHaveLength(2);
+    for (const call of createManyCalls) {
+      const rows = (call[0] as { data: Array<{ organizationId: string }> }).data;
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect(row.organizationId).toBe(ORG);
+      }
+    }
+  });
+
+  it("defaults organizationId to the single-org id when omitted (OSS self-host)", async () => {
+    // OSS callers invoke ingestMetrics(dataPoints) without an org; the default
+    // must keep single-org self-host writing the canonical 'default' org id.
+    const dataPoints = [makeDataPoint({ pipelineId: "pipe-1" })];
+
+    await ingestMetrics(dataPoints, undefined, new Map());
+
+    const rows = (
+      mockTx.pipelineMetric.createMany.mock.calls[0][0] as {
+        data: Array<{ organizationId: string }>;
+      }
+    ).data;
+    expect(rows[0].organizationId).toBe(DEFAULT_ORG_ID);
   });
 
   it("deletes existing aggregation rows and inserts new ones", async () => {
@@ -567,7 +606,7 @@ describe("ingestMetrics", () => {
         },
       ] as never);
 
-    await ingestMetrics(dataPoints, new Map());
+    await ingestMetrics(dataPoints, ORG, new Map());
 
     // deleteMany called twice: once for per-node (existing rows found), once for aggregation
     expect(mockTx.pipelineMetric.deleteMany).toHaveBeenCalledTimes(2);
@@ -590,7 +629,7 @@ describe("ingestMetrics", () => {
     ];
     mockTx.pipelineMetric.findMany.mockResolvedValue([] as never);
 
-    await ingestMetrics(dataPoints, new Map());
+    await ingestMetrics(dataPoints, ORG, new Map());
 
     // findMany called: 1 (existing per-node lookup) + 2 (one per pipeline for aggregation) = 3
     expect(mockTx.pipelineMetric.findMany).toHaveBeenCalledTimes(3);
@@ -599,7 +638,7 @@ describe("ingestMetrics", () => {
   it("preserves fire-and-forget call pattern in heartbeat handler", async () => {
     // This test verifies the function returns a Promise (enabling .catch())
     const dataPoints = [makeDataPoint({ pipelineId: "pipe-1" })];
-    const result = ingestMetrics(dataPoints, new Map());
+    const result = ingestMetrics(dataPoints, ORG, new Map());
 
     expect(result).toBeInstanceOf(Promise);
     expect(typeof result.catch).toBe("function");
@@ -614,7 +653,7 @@ describe("ingestMetrics", () => {
 
     const dataPoints = [makeDataPoint({ pipelineId: "pipe-1" })];
 
-    await expect(ingestMetrics(dataPoints, new Map())).rejects.toThrow(
+    await expect(ingestMetrics(dataPoints, ORG, new Map())).rejects.toThrow(
       "connection timeout",
     );
   });

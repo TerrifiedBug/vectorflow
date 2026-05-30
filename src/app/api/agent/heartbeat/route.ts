@@ -378,13 +378,14 @@ export async function POST(request: Request) {
       }));
 
     if (metricsData.length > 0) {
-      ingestMetrics(metricsData, prevSnapshots).catch((err) =>
+      ingestMetrics(metricsData, orgResult.orgId, prevSnapshots).catch((err) =>
         errorLog("agent-heartbeat", "Metrics ingestion error", err),
       );
     }
 
     // Write per-component latency rows (direct create, bypasses delta-tracking)
     const componentLatencyRows: Array<{
+      organizationId: string;
       pipelineId: string;
       nodeId: string;
       componentId: string;
@@ -397,6 +398,7 @@ export async function POST(request: Request) {
       for (const cm of ps.componentMetrics) {
         if (cm.latencyMeanSeconds != null && cm.latencyMeanSeconds > 0) {
           componentLatencyRows.push({
+            organizationId: orgResult.orgId,
             pipelineId: ps.pipelineId,
             nodeId: agent.nodeId,
             componentId: cm.componentId,
