@@ -17,6 +17,13 @@ type PipelineMetrics struct {
 	EventsDiscarded int64
 	BytesIn         int64
 	BytesOut        int64
+
+	// Buffer/backpressure aggregates across all sink buffers in the pipeline.
+	BufferEvents          int64 // current events sitting in sink buffers
+	BufferByteSize        int64 // current bytes sitting in sink buffers
+	BufferMaxEvents       int64 // total buffer capacity in events (0 if unbounded/byte-based)
+	BufferMaxByteSize     int64 // total buffer capacity in bytes (0 if unbounded/event-based)
+	BufferDiscardedEvents int64 // events dropped because a buffer was full (when_full=drop_newest)
 }
 
 // ComponentMetrics holds per-component metrics for editor node overlays.
@@ -30,6 +37,24 @@ type ComponentMetrics struct {
 	ErrorsTotal        int64
 	DiscardedEvents    int64
 	LatencyMeanSeconds float64 // mean event time in component (seconds)
+
+	// Buffer/backpressure gauges from Vector's vector_buffer_* metrics.
+	BufferEvents          int64 // current events in this component's buffer
+	BufferByteSize        int64 // current bytes in this component's buffer
+	BufferMaxEvents       int64 // buffer capacity in events (0 if byte-based)
+	BufferMaxByteSize     int64 // buffer capacity in bytes (0 if event-based)
+	BufferDiscardedEvents int64 // events dropped because the buffer was full
+}
+
+// AlertMetric is a derived signal computed from a scrape that can drive an
+// alert. It carries both the raw measurement and a triggered flag so the
+// server can render the value and decide on alerting without re-deriving it.
+type AlertMetric struct {
+	Name       string   // stable identifier, e.g. "backpressure"
+	Value      float64  // measured value (e.g. buffer utilization ratio 0..1)
+	Threshold  float64  // threshold the value is compared against
+	Triggered  bool     // true when Value >= Threshold
+	Components []string // component IDs contributing to the triggered state
 }
 
 // HostMetrics holds system-level metrics from Vector's host_metrics source.
@@ -53,10 +78,15 @@ type HostMetrics struct {
 
 // ScrapeResult contains all metrics from a single Prometheus scrape.
 type ScrapeResult struct {
-	Pipeline   PipelineMetrics
-	Components []ComponentMetrics
-	Host       HostMetrics
+	Pipeline     PipelineMetrics
+	Components   []ComponentMetrics
+	Host         HostMetrics
+	Backpressure AlertMetric // derived buffer-utilization backpressure signal
 }
+
+// backpressureThreshold is the buffer utilization ratio (0..1) at or above
+// which the pipeline is considered to be experiencing backpressure.
+const backpressureThreshold = 0.8
 
 var httpClient = &http.Client{Timeout: 5 * time.Second}
 
@@ -137,6 +167,27 @@ func ScrapePrometheus(metricsPort int) ScrapeResult {
 				getOrCreate(componentMap, componentID, componentKind).LatencyMeanSeconds = value
 			}
 
+		// Buffer/backpressure gauges. Vector exposes these per sink buffer.
+		// They are gauges (current state), so we set rather than accumulate.
+		case "vector_buffer_events", "buffer_events":
+			getOrCreate(componentMap, componentID, componentKind).BufferEvents = int64(value)
+
+		case "vector_buffer_byte_size", "buffer_byte_size":
+			getOrCreate(componentMap, componentID, componentKind).BufferByteSize = int64(value)
+
+		case "vector_buffer_max_event_size", "buffer_max_event_size":
+			getOrCreate(componentMap, componentID, componentKind).BufferMaxEvents = int64(value)
+
+		case "vector_buffer_max_byte_size", "buffer_max_byte_size":
+			getOrCreate(componentMap, componentID, componentKind).BufferMaxByteSize = int64(value)
+
+		case "vector_buffer_discarded_events_total", "buffer_discarded_events_total":
+			v := int64(value)
+			if !isInternal {
+				sr.Pipeline.BufferDiscardedEvents += v
+			}
+			getOrCreate(componentMap, componentID, componentKind).BufferDiscardedEvents = v
+
 		// Host metrics – use += to aggregate across CPU cores, devices, interfaces, etc.
 		case "host_memory_total_bytes":
 			sr.Host.MemoryTotalBytes += int64(value)
@@ -199,6 +250,30 @@ func ScrapePrometheus(metricsPort int) ScrapeResult {
 		}
 	}
 
+	// Aggregate buffer gauges across user-facing components and derive the
+	// backpressure signal from per-component buffer utilization. Utilization is
+	// the fraction of a buffer's capacity currently in use; a buffer at or above
+	// backpressureThreshold is applying backpressure up the topology.
+	sr.Backpressure = AlertMetric{Name: "backpressure", Threshold: backpressureThreshold}
+	for _, cm := range componentMap {
+		if strings.HasPrefix(cm.ComponentID, "vf_") {
+			continue
+		}
+		sr.Pipeline.BufferEvents += cm.BufferEvents
+		sr.Pipeline.BufferByteSize += cm.BufferByteSize
+		sr.Pipeline.BufferMaxEvents += cm.BufferMaxEvents
+		sr.Pipeline.BufferMaxByteSize += cm.BufferMaxByteSize
+
+		util := bufferUtilization(cm)
+		if util > sr.Backpressure.Value {
+			sr.Backpressure.Value = util
+		}
+		if util >= backpressureThreshold {
+			sr.Backpressure.Components = append(sr.Backpressure.Components, cm.ComponentID)
+		}
+	}
+	sr.Backpressure.Triggered = sr.Backpressure.Value >= backpressureThreshold
+
 	// Convert component map to slice, filtering out injected vf_ components
 	for _, cm := range componentMap {
 		if strings.HasPrefix(cm.ComponentID, "vf_") {
@@ -208,6 +283,35 @@ func ScrapePrometheus(metricsPort int) ScrapeResult {
 	}
 
 	return sr
+}
+
+// bufferUtilization returns how full a component's buffer is as a ratio in
+// [0, 1]. It prefers byte-based capacity when present, falling back to
+// event-based capacity. Returns 0 when no capacity is reported.
+func bufferUtilization(cm *ComponentMetrics) float64 {
+	if cm.BufferMaxByteSize > 0 {
+		return ratio(cm.BufferByteSize, cm.BufferMaxByteSize)
+	}
+	if cm.BufferMaxEvents > 0 {
+		return ratio(cm.BufferEvents, cm.BufferMaxEvents)
+	}
+	return 0
+}
+
+// ratio clamps used/total into [0, 1], guarding against negative or
+// over-capacity readings from a noisy scrape.
+func ratio(used, total int64) float64 {
+	if total <= 0 {
+		return 0
+	}
+	r := float64(used) / float64(total)
+	if r < 0 {
+		return 0
+	}
+	if r > 1 {
+		return 1
+	}
+	return r
 }
 
 // getOrCreate returns the ComponentMetrics for a given componentID, creating it if needed.
