@@ -37,6 +37,7 @@ describe("env validation", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     process.env = { ...originalEnv };
   });
 
@@ -136,5 +137,50 @@ describe("env validation", () => {
     expect(env.REDIS_URL).toBeUndefined();
     expect(env.SENTRY_DSN).toBeUndefined();
     expect(env.VF_ENCRYPTION_KEY_V2).toBeUndefined();
+  });
+
+  describe("placeholder-secret boot guard (production)", () => {
+    it("rejects the published NEXTAUTH_SECRET placeholder in production", async () => {
+      process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/vf";
+      process.env.NEXTAUTH_SECRET = "change-me-to-a-random-32-char-string";
+      process.env.NEXTAUTH_URL = "https://vf.example.com";
+      vi.stubEnv("NODE_ENV", "production");
+      await expect(import("@/lib/env")).rejects.toThrow(/NEXTAUTH_SECRET/);
+    });
+
+    it("rejects the published VF_ENCRYPTION_KEY_V2 placeholder in production", async () => {
+      process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/vf";
+      process.env.NEXTAUTH_SECRET = "a-real-unique-secret-value-32-chars";
+      process.env.NEXTAUTH_URL = "https://vf.example.com";
+      process.env.VF_ENCRYPTION_KEY_V2 = "change-me-to-a-different-random-32-char-string";
+      vi.stubEnv("NODE_ENV", "production");
+      await expect(import("@/lib/env")).rejects.toThrow(/VF_ENCRYPTION_KEY_V2/);
+    });
+
+    it("matches the placeholder case-insensitively", async () => {
+      process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/vf";
+      process.env.NEXTAUTH_SECRET = "Change-Me-To-A-Random-32-Char-String";
+      process.env.NEXTAUTH_URL = "https://vf.example.com";
+      vi.stubEnv("NODE_ENV", "production");
+      await expect(import("@/lib/env")).rejects.toThrow(/NEXTAUTH_SECRET/);
+    });
+
+    it("allows the placeholder outside production (dev/test)", async () => {
+      process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/vf";
+      process.env.NEXTAUTH_SECRET = "change-me-to-a-random-32-char-string";
+      process.env.NEXTAUTH_URL = "http://localhost:3000";
+      vi.stubEnv("NODE_ENV", "development");
+      const { env } = await import("@/lib/env");
+      expect(env.NEXTAUTH_SECRET).toBe("change-me-to-a-random-32-char-string");
+    });
+
+    it("accepts a unique NEXTAUTH_SECRET in production", async () => {
+      process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/vf";
+      process.env.NEXTAUTH_SECRET = "a-real-unique-secret-value-32-chars";
+      process.env.NEXTAUTH_URL = "https://vf.example.com";
+      vi.stubEnv("NODE_ENV", "production");
+      const { env } = await import("@/lib/env");
+      expect(env.NEXTAUTH_SECRET).toBe("a-real-unique-secret-value-32-chars");
+    });
   });
 });

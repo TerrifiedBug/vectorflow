@@ -22,6 +22,24 @@ if [ -z "${DATABASE_URL:-}" ]; then
         exit 1
     fi
 
+    # Reject the published placeholder from .env.example in production. Booting
+    # the database with a publicly-known password (the literal
+    # `change-me-...` example value) is a credential leak, so fail fast unless
+    # this is a non-production run. NODE_ENV defaults to production in the image,
+    # so an unset NODE_ENV is treated as production.
+    case "${NODE_ENV:-production}" in
+        production)
+            case "$POSTGRES_PASSWORD" in
+                change-me-*)
+                    echo "ERROR: POSTGRES_PASSWORD is still the published .env.example placeholder ('change-me-...')." >&2
+                    echo "       Set a unique random password before running in production." >&2
+                    echo "       Generate one with: openssl rand -base64 32" >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
+    esac
+
     PG_USER="${POSTGRES_USER:-vectorflow}"
     PG_HOST="${POSTGRES_HOST:-postgres}"
     PG_PORT="${POSTGRES_PORT:-5432}"
