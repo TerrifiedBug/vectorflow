@@ -74,6 +74,14 @@ Name of the secret that holds NEXTAUTH_SECRET, DATABASE_URL, etc.
 {{/*
 Resolve the DATABASE_URL: prefer existingSecret, then bundled postgresql, then secret.databaseUrl.
 Returns the envFrom/env block for database URL injection.
+
+For the bundled postgresql subchart we inject the discrete POSTGRES_* components
+rather than a pre-built DATABASE_URL. The container entrypoint assembles the URL
+and percent-encodes the password (RFC 3986). Interpolating the raw password into
+`postgresql://user:$(POSTGRES_PASSWORD)@host/db` here would silently corrupt the
+connection string whenever the password contains `/`, `+`, `@`, `:`, etc. —
+which bitnami/postgresql auto-generated passwords routinely do — surfacing as a
+cryptic Prisma `P1013: invalid port number in database URL`.
 */}}
 {{- define "vectorflow-server.databaseUrlEnv" -}}
 {{- if .Values.existingSecret }}
@@ -83,13 +91,19 @@ Returns the envFrom/env block for database URL injection.
       name: {{ .Values.existingSecret }}
       key: DATABASE_URL
 {{- else if .Values.postgresql.enabled }}
+- name: POSTGRES_USER
+  value: {{ .Values.postgresql.auth.username | quote }}
+- name: POSTGRES_HOST
+  value: {{ printf "%s-postgresql" .Release.Name | quote }}
+- name: POSTGRES_PORT
+  value: "5432"
+- name: POSTGRES_DB
+  value: {{ .Values.postgresql.auth.database | quote }}
 - name: POSTGRES_PASSWORD
   valueFrom:
     secretKeyRef:
       name: {{ printf "%s-postgresql" .Release.Name }}
       key: password
-- name: DATABASE_URL
-  value: {{ printf "postgresql://%s:$(POSTGRES_PASSWORD)@%s-postgresql:5432/%s" .Values.postgresql.auth.username .Release.Name .Values.postgresql.auth.database | quote }}
 {{- else }}
 - name: DATABASE_URL
   valueFrom:

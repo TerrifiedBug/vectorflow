@@ -95,6 +95,13 @@ topologySpreadConstraints:
     whenUnsatisfiable: DoNotSchedule
 ```
 
+> **Database migrations.** By default (`migrations.enabled=true`) the chart runs
+> `prisma migrate deploy` exactly once per release via a `pre-install`/`pre-upgrade`
+> hook Job, and the server pods boot with `VF_SKIP_MIGRATIONS=true`. This stops HA
+> replicas from racing on the `_prisma_migrations` advisory lock. Only set
+> `migrations.enabled=false` if you apply migrations out of band; doing so with
+> `replicaCount > 1` reintroduces the race.
+
 #### Using an existing Secret
 
 Create a Kubernetes secret containing `NEXTAUTH_SECRET`, `DATABASE_URL`, and optionally `REDIS_URL`:

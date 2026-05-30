@@ -48,6 +48,23 @@ describe("HA Docker Compose readiness", () => {
     }
   });
 
+  it("runs migrations once via a dedicated service, not per-replica", () => {
+    // Two app replicas each running `prisma migrate deploy` on boot race on the
+    // _prisma_migrations advisory lock. The contract is:
+    //   - a one-shot `migrate` service applies migrations once and exits
+    //   - vf1/vf2 wait for it (service_completed_successfully)
+    //   - vf1/vf2 set VF_SKIP_MIGRATIONS=true so they never migrate themselves
+    expect(compose).toMatch(/migrate:[\s\S]*command:\s*\["\.\/migrate\.sh"\]/);
+    expect(compose).toMatch(/migrate:[\s\S]*restart:\s*"no"/);
+
+    const vf1Block = compose.match(/vf1:[\s\S]*?volumes:/)?.[0] ?? "";
+    const vf2Block = compose.match(/vf2:[\s\S]*?volumes:/)?.[0] ?? "";
+    for (const block of [vf1Block, vf2Block]) {
+      expect(block).toMatch(/migrate:\s*\n\s*condition: service_completed_successfully/);
+      expect(block).toMatch(/VF_SKIP_MIGRATIONS:\s*"true"/);
+    }
+  });
+
   it("passes POSTGRES_PASSWORD to each replica so the entrypoint can build DATABASE_URL", () => {
     // The compose used to interpolate ${POSTGRES_PASSWORD} directly into
     // DATABASE_URL, which corrupts the URL when the password contains
