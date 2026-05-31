@@ -1,6 +1,10 @@
 import "@/lib/env";
 import { infoLog, errorLog } from "@/lib/logger";
-import { assertStrictMultiTenantBoot, warnTrustForwardedHostIfOn } from "@/lib/strict-multi-tenant-bootcheck";
+import {
+  assertStrictMultiTenantBoot,
+  warnTrustForwardedHostIfOn,
+  assertRlsEnforcementBoot,
+} from "@/lib/strict-multi-tenant-bootcheck";
 
 export async function registerNodeInstrumentation() {
   // refuse to boot if env signals say this is a strict
@@ -9,6 +13,11 @@ export async function registerNodeInstrumentation() {
   // serving traffic.
   assertStrictMultiTenantBoot();
   warnTrustForwardedHostIfOn();
+  // refuse to boot if VF_ENFORCE_RLS=true but the DB role still bypasses RLS
+  // or the app.org_id policy doesn't fire (the GA gate for the RLS rollout).
+  // No-op unless VF_ENFORCE_RLS is explicitly set, so OSS / mid-rollout cloud
+  // are unaffected.
+  await assertRlsEnforcementBoot();
 
   // Initialize leader election FIRST — determines which services this instance runs.
   let leaderIsLeader: () => boolean;

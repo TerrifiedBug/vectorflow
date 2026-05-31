@@ -67,7 +67,7 @@ cp .env.example .env      # fill in POSTGRES_PASSWORD, NEXTAUTH_SECRET
 docker compose up -d
 ```
 
-After setup, generate an enrollment token in the UI and add `VF_ENROLLMENT_TOKEN` to `.env`, then restart the agent: `docker compose up -d vf-agent`.
+After setup, sign in and generate an enrollment token under **Environments → (select your environment) → Agent Enrollment**. Add it to `.env` as `VF_ENROLLMENT_TOKEN`, then start the bundled agent: `docker compose --profile agent up -d`.
 
 ### Server + Agent + OpenSearch
 

@@ -63,6 +63,10 @@ const runtimeEnvSchema = z
     DEV_AUTH_BYPASS_USER_NAME: z.string().optional(),
     TIMESCALEDB_ENABLED: z.string().optional(),
     VF_ENCRYPTION_KEY_V2: z.string().optional(),
+    // Explicit operator acknowledgement that the encryption-at-rest master key
+    // may be derived from NEXTAUTH_SECRET (i.e. VF_ENCRYPTION_KEY_V2 is unset).
+    // Only the literal "true" opts in; see the production boot guard below.
+    VF_ALLOW_NEXTAUTH_DERIVED_KEY: z.string().optional(),
     SENTRY_AUTH_TOKEN: z.string().optional(),
     SENTRY_DSN: z.string().optional(),
     REDIS_URL: z.string().optional(),
@@ -129,24 +133,45 @@ function validateEnv(): Env {
     }
   }
 
-  // Loud boot warning: without a dedicated encryption root, the master key is
-  // derived from NEXTAUTH_SECRET. That couples secret-at-rest to the session
-  // signing secret — rotating NEXTAUTH_SECRET would make every encrypted secret
-  // (DB creds, OIDC/git/AI keys, TOTP) permanently undecryptable. Surface this
-  // explicitly instead of failing silently; we don't hard-fail because existing
-  // deployments already hold data encrypted under the NEXTAUTH_SECRET-derived
-  // key (set VF_ENCRYPTION_KEY_V2 to that value to migrate without data loss).
+  // Encryption-at-rest root. Without a dedicated key, the master key is derived
+  // from NEXTAUTH_SECRET, coupling secret-at-rest to the session-signing secret:
+  // rotating NEXTAUTH_SECRET would then make every encrypted secret (DB creds,
+  // OIDC/git/AI keys, TOTP) permanently undecryptable — a silent, irreversible
+  // footgun. In production, refuse to boot unless the operator either set a
+  // dedicated VF_ENCRYPTION_KEY_V2 or explicitly accepted the coupling via
+  // VF_ALLOW_NEXTAUTH_DERIVED_KEY=true. Existing deployments holding data
+  // encrypted under the NEXTAUTH_SECRET-derived key migrate losslessly by
+  // setting VF_ENCRYPTION_KEY_V2 to their current NEXTAUTH_SECRET value.
   if (
     !isBuildPhase &&
     result.data.NODE_ENV === "production" &&
     !result.data.VF_ENCRYPTION_KEY_V2
   ) {
-    // Boot-time warning emitted before the structured logger is wired.
+    if (result.data.VF_ALLOW_NEXTAUTH_DERIVED_KEY !== "true") {
+      throw new Error(
+        "Environment validation failed:\n" +
+          "  - VF_ENCRYPTION_KEY_V2: not set in production.\n\n" +
+          "Without it, the encryption-at-rest master key is derived from " +
+          "NEXTAUTH_SECRET, so rotating NEXTAUTH_SECRET makes every encrypted " +
+          "secret (DB credentials, OIDC/git/AI keys, TOTP) permanently " +
+          "unrecoverable. Choose one before booting in production:\n" +
+          "  - New deployment: set VF_ENCRYPTION_KEY_V2 to a dedicated random " +
+          "value (openssl rand -base64 32).\n" +
+          "  - Existing deployment with data already encrypted under the " +
+          "NEXTAUTH_SECRET-derived key: set VF_ENCRYPTION_KEY_V2 to your CURRENT " +
+          "NEXTAUTH_SECRET value to migrate without data loss, after which " +
+          "NEXTAUTH_SECRET can be rotated safely.\n" +
+          "  - To intentionally keep deriving the key from NEXTAUTH_SECRET (and " +
+          "never rotate it), set VF_ALLOW_NEXTAUTH_DERIVED_KEY=true.",
+      );
+    }
+    // Boot-time warning emitted before the structured logger is wired. The
+    // operator opted in, so the coupling stays loud but non-fatal.
     console.warn(
-      "[vectorflow] VF_ENCRYPTION_KEY_V2 is not set: the encryption-at-rest master key " +
-        "is derived from NEXTAUTH_SECRET. Do NOT rotate NEXTAUTH_SECRET or all encrypted " +
-        "secrets become unrecoverable. Set VF_ENCRYPTION_KEY_V2 to a dedicated 32+ char " +
-        "secret (use your current NEXTAUTH_SECRET value to migrate existing data without loss)."
+      "[vectorflow] VF_ENCRYPTION_KEY_V2 is unset and " +
+        "VF_ALLOW_NEXTAUTH_DERIVED_KEY=true: the encryption-at-rest master key is " +
+        "derived from NEXTAUTH_SECRET. Do NOT rotate NEXTAUTH_SECRET or all " +
+        "encrypted secrets (DB creds, OIDC/git/AI keys, TOTP) become unrecoverable."
     );
   }
 

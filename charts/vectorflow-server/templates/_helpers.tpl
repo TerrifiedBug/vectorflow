@@ -157,3 +157,24 @@ supply a ReadWriteMany volume the chart can't introspect).
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Guard against scaling out without shared session/SSE coordination. With more
+than one replica VectorFlow needs Redis (bundled redis.enabled, an external
+secret.redisUrl, or REDIS_URL supplied via existingSecret) to coordinate
+sessions and fan out Server-Sent Events; without it, replicas serve divergent
+session state and SSE clients miss events routed to other pods. Fail loudly at
+render time. existingSecret is exempt — the operator may supply REDIS_URL the
+chart cannot introspect.
+*/}}
+{{- define "vectorflow-server.validateReplication" -}}
+{{- $replicas := .Values.replicaCount | int -}}
+{{- if .Values.autoscaling.enabled -}}
+{{- $replicas = max $replicas (.Values.autoscaling.maxReplicas | int) -}}
+{{- end -}}
+{{- if gt $replicas 1 -}}
+{{- if and (not .Values.redis.enabled) (not .Values.secret.redisUrl) (not .Values.existingSecret) -}}
+{{- fail "replicaCount/maxReplicas > 1 requires Redis for session and SSE coordination, but none is configured. Set redis.enabled=true, provide an external secret.redisUrl, or supply REDIS_URL via existingSecret." -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

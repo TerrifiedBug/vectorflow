@@ -55,7 +55,7 @@ const PLATFORMS = [
     name: "FluentD",
     description: "Migrate from FluentD log pipelines to Vector",
     icon: ArrowRightLeft,
-    available: true,
+    available: false,
     href: null,
   },
   {
@@ -63,7 +63,7 @@ const PLATFORMS = [
     name: "Vector",
     description: "Import existing Vector pipeline configs",
     icon: Workflow,
-    available: true,
+    available: false,
     href: "/library/migration/vector",
   },
   {
@@ -126,12 +126,6 @@ export default function MigrationPage() {
             <PageHeaderMetaSep />
             <span>{PLATFORMS.filter((platform) => platform.available).length} importers available</span>
           </>
-        }
-        actions={
-          <Button size="sm" variant="primary" onClick={() => router.push("/library/migration/new")}>
-            <Plus className="h-3.5 w-3.5" />
-            New migration
-          </Button>
         }
       />
 

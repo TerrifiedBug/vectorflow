@@ -133,6 +133,10 @@ describe("production RP_ID gating (graceful degradation)", () => {
       else process.env.VF_WEBAUTHN_RP_ID = opts.rpId;
       if (opts.nodeEnv) vi.stubEnv("NODE_ENV", opts.nodeEnv);
       if (opts.phase) vi.stubEnv("NEXT_PHASE", opts.phase);
+      // src/lib/env.ts refuses to boot in production without VF_ENCRYPTION_KEY_V2;
+      // this suite stubs NODE_ENV=production only to exercise WebAuthn RP_ID
+      // gating, so acknowledge the derived-key coupling to let @/lib/env validate.
+      vi.stubEnv("VF_ALLOW_NEXTAUTH_DERIVED_KEY", "true");
       vi.resetModules();
       await fn(await import("../webauthn-provider"));
     } finally {
