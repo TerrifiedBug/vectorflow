@@ -10,18 +10,16 @@ const mocks = vi.hoisted(() => ({
   writeAuditLog: vi.fn(),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    $transaction: mocks.$transaction,
-    organization: {
-      findUnique: mocks.organizationFindUnique,
-      findMany: mocks.organizationFindMany,
-      update: mocks.organizationUpdate,
-      updateMany: mocks.organizationUpdateMany,
-    },
-    auditLog: { create: mocks.auditLogCreate },
+vi.mock("@/lib/prisma", () => { const __pm = {
+  $transaction: mocks.$transaction,
+  organization: {
+    findUnique: mocks.organizationFindUnique,
+    findMany: mocks.organizationFindMany,
+    update: mocks.organizationUpdate,
+    updateMany: mocks.organizationUpdateMany,
   },
-}));
+  auditLog: { create: mocks.auditLogCreate },
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/audit", () => ({
   writeAuditLog: mocks.writeAuditLog,
@@ -36,6 +34,7 @@ import {
 
 function makeTxStub() {
   return {
+    $executeRaw: vi.fn(),
     organization: {
       findUnique: mocks.organizationFindUnique,
       update: mocks.organizationUpdate,

@@ -1,18 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    systemSettings: {
-      findUnique: vi.fn(),
-    },
-    organizationSettings: { findUnique: vi.fn(), upsert: vi.fn(), create: vi.fn() },
-    pipelineMetric: { deleteMany: vi.fn() },
-    nodeMetric: { deleteMany: vi.fn() },
-    pipelineLog: { deleteMany: vi.fn() },
-    nodeStatusEvent: { deleteMany: vi.fn() },
-    $queryRawUnsafe: vi.fn(),
+vi.mock("@/lib/prisma", () => { const __pm = {
+  systemSettings: {
+    findUnique: vi.fn(),
   },
-}));
+  organizationSettings: { findUnique: vi.fn(), upsert: vi.fn(), create: vi.fn() },
+  pipelineMetric: { deleteMany: vi.fn() },
+  nodeMetric: { deleteMany: vi.fn() },
+  pipelineLog: { deleteMany: vi.fn() },
+  nodeStatusEvent: { deleteMany: vi.fn() },
+  $queryRawUnsafe: vi.fn(),
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/timescaledb", () => ({
   isTimescaleDbAvailable: vi.fn(),

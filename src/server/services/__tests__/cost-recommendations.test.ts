@@ -3,9 +3,7 @@ import { mockDeep, mockReset } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 import type { AnalysisResult } from "@/server/services/cost-optimizer-types";
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 vi.mock("@/lib/logger", () => ({ debugLog: vi.fn() }));
 
 import { prisma } from "@/lib/prisma";

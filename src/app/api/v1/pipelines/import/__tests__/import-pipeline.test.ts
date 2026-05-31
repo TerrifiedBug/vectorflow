@@ -3,9 +3,7 @@ import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 import { NextRequest } from "next/server";
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/middleware/api-auth", () => ({
   authenticateApiKey: vi.fn(),
@@ -42,6 +40,7 @@ const CTX = {
   serviceAccountId: "sa-1",
   serviceAccountName: "ci-bot",
   environmentId: "env-1",
+  organizationId: "org-1",
   permissions: ["pipelines.write"],
   rateLimit: null,
 };
@@ -77,6 +76,7 @@ describe("POST /api/v1/pipelines/import", () => {
     prismaMock.pipeline.findFirst.mockResolvedValue(null);
 
     const mockTx = {
+      $executeRaw: vi.fn(),
       pipeline: {
         create: vi.fn().mockResolvedValue({ id: "pipe-1", name: "imported-pipe" }),
       },
@@ -143,6 +143,7 @@ describe("POST /api/v1/pipelines/import", () => {
     prismaMock.pipelineGroup.findUnique.mockResolvedValue({ environmentId: "env-1" } as never);
 
     const mockTx = {
+      $executeRaw: vi.fn(),
       pipeline: { create: vi.fn().mockResolvedValue({ id: "pipe-1", name: "imported-pipe" }) },
       pipelineNode: { create: vi.fn() },
       pipelineEdge: { create: vi.fn() },

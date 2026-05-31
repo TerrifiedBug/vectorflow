@@ -1,4 +1,5 @@
-import { prisma } from "@/lib/prisma";
+import { adminPrisma, prisma } from "@/lib/prisma";
+import { runWithOrgContext } from "@/lib/org-context";
 import { Prisma } from "@/generated/prisma";
 import { createVersion, deployFromVersion } from "@/server/services/pipeline-version";
 import { fireEventAlert } from "@/server/services/event-alerts";
@@ -68,7 +69,7 @@ export class StagedRolloutService {
     try {
       let orgs: Array<{ id: string }>;
       try {
-        orgs = await prisma.organization.findMany({
+        orgs = await adminPrisma.organization.findMany({
           where: { suspendedAt: null, deletedAt: null },
           select: { id: true },
         });
@@ -82,7 +83,9 @@ export class StagedRolloutService {
       }
       for (const org of orgs) {
         try {
-          await this.checkHealthWindows({ organizationId: org.id });
+          await runWithOrgContext(org.id, () =>
+            this.checkHealthWindows({ organizationId: org.id }),
+          );
         } catch (err) {
           errorLog(
             "staged-rollout",

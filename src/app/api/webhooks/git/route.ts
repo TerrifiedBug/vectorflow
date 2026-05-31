@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma, adminPrisma } from "@/lib/prisma";
 import { importVectorConfig } from "@/lib/config-generator";
 import { ENCRYPTION_DOMAINS } from "@/server/services/crypto";
 import {
@@ -15,6 +15,8 @@ import type { GitWebhookEvent } from "@/server/services/git-providers";
 import { toFilenameSlug } from "@/server/services/git-sync";
 import { checkIpRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { errorLog } from "@/lib/logger";
+import { runWithOrgContext } from "@/lib/org-context";
+import { withOrgTxFromContext } from "@/lib/with-org-tx";
 
 export async function POST(req: NextRequest) {
   const rateLimited = await checkIpRateLimit(req, "webhook", 30);
@@ -23,7 +25,10 @@ export async function POST(req: NextRequest) {
   const body = await req.text();
 
   // 1. Find environments with gitOps webhook configured.
-  const environments = await prisma.environment.findMany({
+  // Cross-org credential match: find the env whose webhook secret verifies the
+  // signature. Runs on the admin connection because no org scope exists yet —
+  // we are resolving WHICH org this webhook belongs to.
+  const environments = await adminPrisma.environment.findMany({
     where: {
       gitOpsMode: { in: ["bidirectional", "promotion"] },
       gitWebhookSecret: { not: null },
@@ -44,10 +49,7 @@ export async function POST(req: NextRequest) {
     // A single undecryptable row must not abort verification for the rest.
     let webhookSecret: string;
     try {
-      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(
-        prisma,
-        env.organizationId,
-      );
+      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(env.organizationId);
       webhookSecret = await decryptForOrgOrFallback(env.gitWebhookSecret, {
         orgId: env.organizationId,
         dataKeyCiphertext,
@@ -68,6 +70,10 @@ export async function POST(req: NextRequest) {
   if (!matchedEnv) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
+  // Everything past the match operates on the matched env's org. Scope it so
+  // the fenced role's reads/writes (PromotionRequest, Pipeline, DeployRequest…)
+  // see exactly that org's rows.
+  return runWithOrgContext(matchedEnv.organizationId, async () => {
 
   // 3. Resolve the provider for the matched environment
   const provider = getProvider(matchedEnv);
@@ -183,7 +189,7 @@ export async function POST(req: NextRequest) {
   if (changedFiles.size === 0 && event.commits.length > 0 && provider.name === "bitbucket" && event.afterSha) {
     // Bitbucket push events don't include file-level changes — fetch via diffstat API.
     // Resolve the org's wrap state once so the wrapper picks v2 / v3 by ciphertext prefix.
-    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, matchedEnv.organizationId);
+    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(matchedEnv.organizationId);
     const bbToken = matchedEnv.gitToken
       ? await decryptForOrgOrFallback(matchedEnv.gitToken, {
           orgId: matchedEnv.organizationId,
@@ -214,7 +220,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Decrypt token once for file fetching.
-  const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, matchedEnv.organizationId);
+  const dataKeyCiphertext = await loadOrgDataKeyCiphertext(matchedEnv.organizationId);
   const token = matchedEnv.gitToken
     ? await decryptForOrgOrFallback(matchedEnv.gitToken, {
         orgId: matchedEnv.organizationId,
@@ -267,7 +273,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Match by gitPath first, then by name
-      const pipeline = await prisma.$transaction(async (tx) => {
+      const pipeline = await withOrgTxFromContext(async (tx) => {
         // Try matching by gitPath
         const byPath = await tx.pipeline.findFirst({
           where: { environmentId: matchedEnv.id, gitPath: file },
@@ -309,7 +315,7 @@ export async function POST(req: NextRequest) {
         sink: ComponentKind.SINK,
       };
 
-      await prisma.$transaction(async (tx) => {
+      await withOrgTxFromContext(async (tx) => {
         await tx.pipelineEdge.deleteMany({ where: { pipelineId: pipeline!.id } });
         await tx.pipelineNode.deleteMany({ where: { pipelineId: pipeline!.id } });
 
@@ -444,4 +450,5 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ processed: results.length, results });
+  });
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { importVectorConfig } from "@/lib/config-generator";
 import { encryptNodeConfig } from "@/server/services/config-crypto";
 import { writeAuditLog } from "@/server/services/audit";
@@ -73,7 +74,7 @@ export const POST = apiRoute(
       }
     }
 
-    const pipeline = await prisma.$transaction(async (tx) => {
+    const pipeline = await withOrgTx(ctx.organizationId, async (tx) => {
       const created = await tx.pipeline.create({
         data: {
           name: body.name!.trim(),

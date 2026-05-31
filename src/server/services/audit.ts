@@ -1,5 +1,5 @@
 import { Prisma } from "@/generated/prisma";
-import { prisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { errorLog } from "@/lib/logger";
 import { env } from "@/lib/env";
 import { DEFAULT_ORG_ID } from "@/lib/org-constants";
@@ -59,7 +59,7 @@ export async function writeAuditLog(params: WriteAuditLogParams) {
   // chains. We serialize per-org with a Postgres advisory transaction lock
   // (key = hashtext('audit-chain:' || orgId)). The lock auto-releases on
   // transaction commit/abort.
-  const log = await prisma.$transaction(async (tx) => {
+  const log = await withOrgTx(organizationId, async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`audit-chain:${organizationId}`}))`;
 
     // The org's chain tail lives in a dedicated single-row pointer table,

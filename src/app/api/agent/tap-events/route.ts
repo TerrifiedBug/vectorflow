@@ -6,6 +6,7 @@ import { resolveAgentOrg } from "@/server/services/agent-org-binding";
 import { getActiveTap } from "@/server/services/active-taps";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
 import { errorLog } from "@/lib/logger";
+import { runWithOrgContext } from "@/lib/org-context";
 import type { TapEventSSE, TapStoppedSSE } from "@/lib/sse/types";
 import { tapEventPayloadSchema } from "../../../../../contracts/agent/v1/payloads";
 
@@ -21,55 +22,57 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  try {
-    const read = await readJsonCapped(request);
-    if (!read.ok) return read.response;
-    const body = read.data;
-    const parsed = tapEventPayloadSchema.safeParse(body);
-    if (!parsed.success) {
+  return runWithOrgContext(orgResult.orgId, async () => {
+    try {
+      const read = await readJsonCapped(request);
+      if (!read.ok) return read.response;
+      const body = read.data;
+      const parsed = tapEventPayloadSchema.safeParse(body);
+      if (!parsed.success) {
+        return NextResponse.json(
+          { error: "Invalid payload", details: parsed.error.issues },
+          { status: 400 },
+        );
+      }
+
+      const { requestId, pipelineId, componentId, events, status, reason } =
+        parsed.data;
+
+      const tap = await getActiveTap(requestId);
+      if (
+        !tap ||
+        tap.nodeId !== agent.nodeId ||
+        tap.pipelineId !== pipelineId ||
+        tap.componentId !== componentId
+      ) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+
+      if (status === "stopped") {
+        const event: TapStoppedSSE = {
+          type: "tap_stopped",
+          requestId,
+          reason: reason ?? "unknown",
+        };
+        broadcastSSE(event, agent.environmentId);
+      } else if (events && events.length > 0) {
+        const event: TapEventSSE = {
+          type: "tap_event",
+          requestId,
+          pipelineId,
+          componentId,
+          events,
+        };
+        broadcastSSE(event, agent.environmentId);
+      }
+
+      return NextResponse.json({ ok: true });
+    } catch (error) {
+      errorLog("agent-tap-events", "Tap events endpoint error", error);
       return NextResponse.json(
-        { error: "Invalid payload", details: parsed.error.issues },
-        { status: 400 },
+        { error: "Failed to process tap events" },
+        { status: 500 },
       );
     }
-
-    const { requestId, pipelineId, componentId, events, status, reason } =
-      parsed.data;
-
-    const tap = await getActiveTap(requestId);
-    if (
-      !tap ||
-      tap.nodeId !== agent.nodeId ||
-      tap.pipelineId !== pipelineId ||
-      tap.componentId !== componentId
-    ) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    if (status === "stopped") {
-      const event: TapStoppedSSE = {
-        type: "tap_stopped",
-        requestId,
-        reason: reason ?? "unknown",
-      };
-      broadcastSSE(event, agent.environmentId);
-    } else if (events && events.length > 0) {
-      const event: TapEventSSE = {
-        type: "tap_event",
-        requestId,
-        pipelineId,
-        componentId,
-        events,
-      };
-      broadcastSSE(event, agent.environmentId);
-    }
-
-    return NextResponse.json({ ok: true });
-  } catch (error) {
-    errorLog("agent-tap-events", "Tap events endpoint error", error);
-    return NextResponse.json(
-      { error: "Failed to process tap events" },
-      { status: 500 },
-    );
-  }
+  });
 }

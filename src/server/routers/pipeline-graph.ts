@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
-import { prisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { withAudit } from "@/server/middleware/audit";
 import { saveGraphComponents, discardPipelineChanges } from "@/server/services/pipeline-graph";
 import { nodeSchema, edgeSchema } from "./pipeline-schemas";
@@ -27,7 +27,7 @@ export const pipelineGraphRouter = router({
         nodeTypes: [...new Set(nodeTypes)],
       };
 
-      return prisma.$transaction(async (tx) => {
+      return withOrgTx(ctx.organizationId, async (tx) => {
         return saveGraphComponents(tx, {
           pipelineId: input.pipelineId,
           nodes: input.nodes,

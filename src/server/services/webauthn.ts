@@ -50,7 +50,11 @@ import type {
   AuthenticatorTransportFuture,
 } from "@simplewebauthn/server";
 
-import { prisma } from "@/lib/prisma";
+import { adminPrisma } from "@/lib/prisma";
+// webauthn runs pre-session (passkey register/login); WebAuthnChallenge/
+// WebAuthnCredential are fenced but secured by their 256-bit random
+// challenge / credentialId, so these credential-keyed reads/writes use the
+// admin connection (no org scope exists yet).
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -113,7 +117,7 @@ export async function startRegistration(opts: {
     },
   });
 
-  await prisma.webAuthnChallenge.create({
+  await adminPrisma.webAuthnChallenge.create({
     data: {
       kind: "register",
       challenge: options.challenge,
@@ -158,7 +162,7 @@ export async function finishRegistration(opts: {
   let consumedChallenge: string | null = null;
 
   try {
-    return await prisma.$transaction(async (tx) => {
+    return await adminPrisma.$transaction(async (tx) => {
       const verification = await verifyRegistrationResponse({
         response: opts.response,
         expectedOrigin: opts.rp.expectedOrigin,
@@ -222,7 +226,7 @@ export async function finishRegistration(opts: {
     // consumed so it can't be replayed with a different payload. Use the
     // GLOBAL prisma client \u2014 the tx is gone.
     if (consumedChallenge !== null) {
-      await prisma.webAuthnChallenge.deleteMany({
+      await adminPrisma.webAuthnChallenge.deleteMany({
         where: { challenge: consumedChallenge },
       });
     }
@@ -244,7 +248,7 @@ export async function startAuthentication(opts: {
 }): Promise<PublicKeyCredentialRequestOptionsJSON> {
   const allowCredentials = opts.userId
     ? (
-        await prisma.webAuthnCredential.findMany({
+        await adminPrisma.webAuthnCredential.findMany({
           where: { userId: opts.userId },
           select: { credentialId: true, transports: true },
         })
@@ -260,7 +264,7 @@ export async function startAuthentication(opts: {
     userVerification: "preferred",
   });
 
-  await prisma.webAuthnChallenge.create({
+  await adminPrisma.webAuthnChallenge.create({
     data: {
       kind: "authenticate",
       challenge: options.challenge,
@@ -300,7 +304,7 @@ export async function finishAuthentication(opts: {
   let consumedChallenge: string | null = null;
 
   try {
-    return await prisma.$transaction(async (tx) => {
+    return await adminPrisma.$transaction(async (tx) => {
       const stored = await tx.webAuthnCredential.findUnique({
         where: { credentialId: credentialIdFromResponse },
       });
@@ -390,7 +394,7 @@ export async function finishAuthentication(opts: {
     // consumed so the same row can't be re-submitted with a different
     // payload. Global `prisma` client \u2014 outside the rolled-back tx.
     if (consumedChallenge !== null) {
-      await prisma.webAuthnChallenge.deleteMany({
+      await adminPrisma.webAuthnChallenge.deleteMany({
         where: { challenge: consumedChallenge },
       });
     }
@@ -405,7 +409,7 @@ export async function finishAuthentication(opts: {
  * `startAuthentication` requests creates rows we should clean up).
  */
 export async function gcExpiredChallenges(now: () => Date = () => new Date()): Promise<number> {
-  const { count } = await prisma.webAuthnChallenge.deleteMany({
+  const { count } = await adminPrisma.webAuthnChallenge.deleteMany({
     where: { expiresAt: { lt: now() } },
   });
   return count;

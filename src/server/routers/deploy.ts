@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { Prisma } from "@/generated/prisma";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { deployAgent, undeployAgent } from "@/server/services/deploy-agent";
 import { deployFromVersion } from "@/server/services/pipeline-version";
 import { generateVectorYaml } from "@/lib/config-generator";
@@ -167,7 +168,7 @@ export const deployRouter = router({
         }
 
         // Atomic check-and-create to prevent duplicate pending requests
-        const request = await prisma.$transaction(async (tx) => {
+        const request = await withOrgTx(ctx.organizationId, async (tx) => {
           const existingPending = await tx.deployRequest.findFirst({
             where: { pipelineId: input.pipelineId, status: "PENDING" },
           });

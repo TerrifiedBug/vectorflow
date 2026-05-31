@@ -1,18 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    $queryRawUnsafe: vi.fn(),
-    pipelineMetric: {
-      findMany: vi.fn(),
-      aggregate: vi.fn(),
-      groupBy: vi.fn(),
-    },
-    nodeMetric: {
-      findMany: vi.fn(),
-    },
+vi.mock("@/lib/prisma", () => { const __pm = {
+  $queryRawUnsafe: vi.fn(),
+  pipelineMetric: {
+    findMany: vi.fn(),
+    aggregate: vi.fn(),
+    groupBy: vi.fn(),
   },
-}));
+  nodeMetric: {
+    findMany: vi.fn(),
+  },
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/timescaledb", () => ({
   isTimescaleDbAvailable: vi.fn(),

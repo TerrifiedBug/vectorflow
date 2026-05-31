@@ -8,9 +8,7 @@ import type {
   AlertCorrelationGroup,
 } from "@/generated/prisma";
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/drift-metrics", () => ({
   getConfigDrift: vi.fn(),

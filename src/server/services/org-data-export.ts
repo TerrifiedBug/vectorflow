@@ -27,7 +27,7 @@
 import { createHash } from "node:crypto";
 import { ulid } from "ulid";
 import { prisma } from "@/lib/prisma";
-import type { PrismaClient } from "@/generated/prisma";
+import type { Prisma } from "@/generated/prisma";
 
 export const ORG_DATA_EXPORT_SCHEMA_VERSION = 1 as const;
 
@@ -96,7 +96,7 @@ export interface OrgDataExportPayload {
  * OSS callers can use the default.
  */
 export type OrgDataExportPrisma = Pick<
-  PrismaClient,
+  Prisma.TransactionClient,
   | "organization"
   | "organizationSettings"
   | "team"
@@ -162,7 +162,12 @@ export async function buildOrgDataExport(
       `buildOrgDataExport: perTableLimit must be a positive finite number (got ${limit}). Non-positive values would make every table look truncated.`,
     );
   }
-  const db: OrgDataExportPrisma = opts.client ?? prisma;
+  // Default to the org-scoped client (the export endpoint runs inside the
+  // org's runWithOrgContext). The extended client and a withOrgTx `tx` expose
+  // the same delegate methods at runtime; only their generic arg shapes
+  // (Exact vs SelectSubset) differ, a type-level mismatch with no runtime
+  // effect — hence the boundary cast.
+  const db: OrgDataExportPrisma = opts.client ?? (prisma as unknown as OrgDataExportPrisma);
   const signal = opts.signal;
   const now = opts.now ?? new Date();
   const checkpoint = () => {

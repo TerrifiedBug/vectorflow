@@ -27,6 +27,14 @@ const runtimeEnvSchema = z
     DATABASE_URL: isBuildPhase
       ? z.string().optional().default("build-placeholder")
       : z.string().min(1, "DATABASE_URL is required"),
+    // Admin / owner connection used ONLY for legitimate pre-context and
+    // cross-org work (credential→org resolution before a tenancy scope
+    // exists, operator/platform reads, migrations). In multi-tenant cloud
+    // this points at the table-owner (BYPASSRLS) role while DATABASE_URL
+    // points at the fenced `vectorflow_app` (NOBYPASSRLS) role. Unset in
+    // OSS — the app falls back to DATABASE_URL, which already bypasses RLS
+    // as the table owner, so behaviour is unchanged.
+    DATABASE_ADMIN_URL: z.string().optional(),
     NEXTAUTH_SECRET: isBuildPhase
       ? z.string().optional().default("build-placeholder-secret-min-16-chars")
       : z.string().min(16, "NEXTAUTH_SECRET must be at least 16 characters"),
@@ -67,6 +75,12 @@ const runtimeEnvSchema = z
     // may be derived from NEXTAUTH_SECRET (i.e. VF_ENCRYPTION_KEY_V2 is unset).
     // Only the literal "true" opts in; see the production boot guard below.
     VF_ALLOW_NEXTAUTH_DERIVED_KEY: z.string().optional(),
+    // GA gate for the RLS rollout. When "true", the boot probe
+    // (`assertRlsEnforcementBoot`) refuses to start unless the DB role is
+    // NOBYPASSRLS and the `app.org_id` policy actually fires. Read directly
+    // from `process.env` in the boot probe; declared here so the contract
+    // is validated and documented in one place.
+    VF_ENFORCE_RLS: z.string().optional(),
     SENTRY_AUTH_TOKEN: z.string().optional(),
     SENTRY_DSN: z.string().optional(),
     REDIS_URL: z.string().optional(),

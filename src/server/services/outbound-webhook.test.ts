@@ -7,9 +7,7 @@ import crypto from "crypto";
 
 // ─── Module mocks ──────────────────────────────────────────────────────────
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/crypto", () => ({
   ENCRYPTION_DOMAINS: { GENERIC: "generic" } as const,

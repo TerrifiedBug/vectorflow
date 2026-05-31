@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess, requirePlatformOperator, denyInDemo } from "@/trpc/init";
-import { prisma } from "@/lib/prisma";
+import { prisma, adminPrisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { withAudit } from "@/server/middleware/audit";
@@ -168,11 +168,11 @@ export const teamRouter = router({
           message: "Cannot delete the last remaining team",
         });
       }
-      await prisma.$transaction([
-        prisma.auditLog.deleteMany({ where: { teamId: input.teamId } }),
-        prisma.template.deleteMany({ where: { teamId: input.teamId } }),
-        prisma.teamMember.deleteMany({ where: { teamId: input.teamId } }),
-        prisma.team.delete({ where: { id: input.teamId } }),
+      await adminPrisma.$transaction([
+        adminPrisma.auditLog.deleteMany({ where: { teamId: input.teamId } }),
+        adminPrisma.template.deleteMany({ where: { teamId: input.teamId } }),
+        adminPrisma.teamMember.deleteMany({ where: { teamId: input.teamId } }),
+        adminPrisma.team.delete({ where: { id: input.teamId } }),
       ]);
       return { deleted: true };
     }),
@@ -545,7 +545,7 @@ export const teamRouter = router({
           if (!team) {
             throw new TRPCError({ code: "NOT_FOUND", message: "Team not found" });
           }
-          const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, team.organizationId);
+          const dataKeyCiphertext = await loadOrgDataKeyCiphertext(team.organizationId);
           const ciphertext = await encryptForOrgOrFallback(aiApiKey, {
             orgId: team.organizationId,
             dataKeyCiphertext,

@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma";
 import { debugLog } from "@/lib/logger";
 import { getOrgSettings } from "@/lib/org-settings";
 
@@ -59,7 +59,7 @@ export async function loadGroupMappings(
  * 6. Never touch source="manual" records
  */
 export async function reconcileUserTeamMemberships(
-  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  tx: Prisma.TransactionClient,
   userId: string,
   userGroupNames: string[],
   organizationId: string,
@@ -131,7 +131,7 @@ export async function reconcileUserTeamMemberships(
  *
  */
 export async function getScimGroupNamesForUser(
-  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  tx: Prisma.TransactionClient,
   userId: string,
   organizationId: string,
 ): Promise<string[]> {

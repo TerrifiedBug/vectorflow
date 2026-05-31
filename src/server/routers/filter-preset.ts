@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { withAudit } from "@/server/middleware/audit";
 import { prisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import type { Prisma } from "@/generated/prisma";
 
 const MAX_PRESETS_PER_SCOPE = 20;
@@ -142,7 +143,7 @@ export const filterPresetRouter = router({
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("filterPreset.setDefault", "FilterPreset"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const existing = await prisma.filterPreset.findUnique({
         where: { id: input.id },
       });
@@ -152,7 +153,7 @@ export const filterPresetRouter = router({
       }
 
       // Wrap in transaction to prevent race conditions with concurrent default-setting
-      return prisma.$transaction(async (tx) => {
+      return withOrgTx(ctx.organizationId, async (tx) => {
         // Clear existing default for this scope
         await tx.filterPreset.updateMany({
           where: {

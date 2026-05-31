@@ -1,4 +1,6 @@
-import { prisma } from "@/lib/prisma";
+import { adminPrisma, prisma } from "@/lib/prisma";
+import { runWithOrgContext } from "@/lib/org-context";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { getOrgSettings } from "@/lib/org-settings";
 import { fireEventAlert } from "./event-alerts";
 
@@ -12,9 +14,9 @@ import { fireEventAlert } from "./event-alerts";
  * multi-tenant deployment every tenant's fleet was judged by one org's config.
  */
 export async function checkNodeHealth(): Promise<void> {
-  const orgs = await prisma.organization.findMany({ select: { id: true } });
+  const orgs = await adminPrisma.organization.findMany({ select: { id: true } });
   for (const org of orgs) {
-    await checkOrgNodeHealth(org.id);
+    await runWithOrgContext(org.id, () => checkOrgNodeHealth(org.id));
   }
 }
 
@@ -40,7 +42,7 @@ export async function checkOrgNodeHealth(organizationId: string): Promise<void> 
   });
 
   if (goingUnreachable.length > 0) {
-    await prisma.$transaction(async (tx) => {
+    await withOrgTx(organizationId, async (tx) => {
       await tx.nodeStatusEvent.createMany({
         data: goingUnreachable.map((node) => ({
           nodeId: node.id,

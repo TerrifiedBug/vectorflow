@@ -30,9 +30,7 @@ vi.mock("@/server/middleware/audit", () => ({
     t.middleware(({ next, ctx }: { next: (opts: { ctx: unknown }) => unknown; ctx: unknown }) => next({ ctx })),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/event-alerts", () => ({
   isEventMetric: mockIsEventMetric,
@@ -80,6 +78,7 @@ const caller = t.createCallerFactory(alertRulesRouter)({
   session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
   userRole: "ADMIN",
   teamId: "team-1",
+  organizationId: "org-1",
 });
 
 function makeAlertRule(overrides: Record<string, unknown> = {}) {
@@ -620,14 +619,10 @@ describe("alertRulesRouter", () => {
       prismaMock.notificationChannel.count.mockResolvedValue(2);
       prismaMock.alertRule.update.mockResolvedValue(existing as never);
 
-      const mockTx = {
-        alertRuleChannel: {
-          deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
-          createMany: vi.fn().mockResolvedValue({ count: 2 }),
-        },
-      };
+      prismaMock.alertRuleChannel.deleteMany.mockResolvedValue({ count: 1 } as never);
+      prismaMock.alertRuleChannel.createMany.mockResolvedValue({ count: 2 } as never);
       prismaMock.$transaction.mockImplementation(async (fn) => {
-        return (fn as (tx: unknown) => Promise<unknown>)(mockTx);
+        return (fn as (tx: unknown) => Promise<unknown>)(prismaMock);
       });
 
       await caller.updateRule({
@@ -635,10 +630,10 @@ describe("alertRulesRouter", () => {
         channelIds: ["ch-1", "ch-2"],
       });
 
-      expect(mockTx.alertRuleChannel.deleteMany).toHaveBeenCalledWith({
+      expect(prismaMock.alertRuleChannel.deleteMany).toHaveBeenCalledWith({
         where: { alertRuleId: "rule-1" },
       });
-      expect(mockTx.alertRuleChannel.createMany).toHaveBeenCalledWith({
+      expect(prismaMock.alertRuleChannel.createMany).toHaveBeenCalledWith({
         data: [
           { alertRuleId: "rule-1", channelId: "ch-1" },
           { alertRuleId: "rule-1", channelId: "ch-2" },

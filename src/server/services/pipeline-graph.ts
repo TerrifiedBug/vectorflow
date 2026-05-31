@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { prisma } from "@/lib/prisma";
+import { withOrgTxFromContext } from "@/lib/with-org-tx";
 import { ComponentKind, Prisma } from "@/generated/prisma";
 import { encryptNodeConfig, decryptNodeConfig } from "@/server/services/config-crypto";
 import { copyPipelineGraph } from "@/server/services/copy-pipeline-graph";
@@ -281,7 +282,7 @@ export async function promotePipeline(
     allStrippedCertificates.push(...globalResult.strippedCertificates);
   }
 
-  const promoted = await prisma.$transaction(async (tx) => {
+  const promoted = await withOrgTxFromContext(async (tx) => {
     // Check name collision inside transaction to avoid TOCTOU race
     const existing = await tx.pipeline.findFirst({
       where: {
@@ -377,7 +378,7 @@ export async function discardPipelineChanges(
   const nodes = latestVersion.nodesSnapshot as Array<Record<string, unknown>>;
   const edges = latestVersion.edgesSnapshot as Array<Record<string, unknown>>;
 
-  await prisma.$transaction(async (tx) => {
+  await withOrgTxFromContext(async (tx) => {
     await tx.pipeline.update({
       where: { id: pipelineId },
       data: {

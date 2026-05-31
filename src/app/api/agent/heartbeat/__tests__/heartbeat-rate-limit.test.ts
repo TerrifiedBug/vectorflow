@@ -42,27 +42,25 @@ vi.mock("@/server/services/agent-auth", () => ({
   ),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    pipeline: { findMany: vi.fn(() => Promise.resolve([])) },
-    vectorNode: {
-      findUnique: vi.fn(() => Promise.resolve({ status: "HEALTHY" })),
-      update: vi.fn(() =>
-        Promise.resolve({ id: "node-1", environmentId: "env-1" }),
-      ),
-    },
-    nodePipelineStatus: {
-      findMany: vi.fn(() => Promise.resolve([])),
-      deleteMany: vi.fn(() => Promise.resolve({ count: 0 })),
-    },
-    nodeMetric: { create: vi.fn(() => Promise.resolve()) },
-    nodeStatusEvent: { create: vi.fn(() => Promise.resolve()) },
-    eventSampleRequest: {
-      updateMany: vi.fn(() => Promise.resolve()),
-      deleteMany: vi.fn(() => Promise.resolve()),
-    },
+vi.mock("@/lib/prisma", () => { const __pm = {
+  pipeline: { findMany: vi.fn(() => Promise.resolve([])) },
+  vectorNode: {
+    findUnique: vi.fn(() => Promise.resolve({ status: "HEALTHY" })),
+    update: vi.fn(() =>
+      Promise.resolve({ id: "node-1", environmentId: "env-1" }),
+    ),
   },
-}));
+  nodePipelineStatus: {
+    findMany: vi.fn(() => Promise.resolve([])),
+    deleteMany: vi.fn(() => Promise.resolve({ count: 0 })),
+  },
+  nodeMetric: { create: vi.fn(() => Promise.resolve()) },
+  nodeStatusEvent: { create: vi.fn(() => Promise.resolve()) },
+  eventSampleRequest: {
+    updateMany: vi.fn(() => Promise.resolve()),
+    deleteMany: vi.fn(() => Promise.resolve()),
+  },
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/fleet-health", () => ({
   checkNodeHealth: vi.fn(() => Promise.resolve()),

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { runWithOrgContext } from "@/lib/org-context";
+import { withOrgTx } from "@/lib/with-org-tx";
+import type { Prisma } from "@/generated/prisma";
 import { fireScimSyncFailedAlert, writeScimAuditLog } from "@/server/services/scim";
 import { debugLog } from "@/lib/logger";
 import { authenticateScim } from "../auth";
@@ -45,47 +48,49 @@ export async function GET(req: NextRequest) {
     return scimError("Unauthorized", 401);
   }
 
-  const url = new URL(req.url);
-  const filter = url.searchParams.get("filter") ?? undefined;
-  const startIndexRaw = parseInt(url.searchParams.get("startIndex") ?? "1");
-  const countRaw = parseInt(url.searchParams.get("count") ?? "100");
-  const startIndex =
-    Number.isFinite(startIndexRaw) && startIndexRaw >= 1 ? startIndexRaw : 1;
-  const count =
-    Number.isFinite(countRaw) && countRaw >= 1
-      ? Math.min(countRaw, 1000)
-      : 100;
+  return runWithOrgContext(auth.organizationId, async () => {
+    const url = new URL(req.url);
+    const filter = url.searchParams.get("filter") ?? undefined;
+    const startIndexRaw = parseInt(url.searchParams.get("startIndex") ?? "1");
+    const countRaw = parseInt(url.searchParams.get("count") ?? "100");
+    const startIndex =
+      Number.isFinite(startIndexRaw) && startIndexRaw >= 1 ? startIndexRaw : 1;
+    const count =
+      Number.isFinite(countRaw) && countRaw >= 1
+        ? Math.min(countRaw, 1000)
+        : 100;
 
-  const where: Record<string, unknown> = { organizationId: auth.organizationId };
-  if (filter) {
-    const nameMatch = filter.match(/displayName\s+eq\s+"(.+?)"/);
-    if (nameMatch) where.displayName = nameMatch[1];
-  }
+    const where: Record<string, unknown> = { organizationId: auth.organizationId };
+    if (filter) {
+      const nameMatch = filter.match(/displayName\s+eq\s+"(.+?)"/);
+      if (nameMatch) where.displayName = nameMatch[1];
+    }
 
-  const [groups, total] = await Promise.all([
-    prisma.scimGroup.findMany({
-      where,
-      skip: startIndex - 1,
-      take: count,
-      orderBy: { createdAt: "asc" },
-      include: {
-        members: { select: { userId: true, user: { select: { email: true } } } },
-      },
-    }),
-    prisma.scimGroup.count({ where }),
-  ]);
+    const [groups, total] = await Promise.all([
+      prisma.scimGroup.findMany({
+        where,
+        skip: startIndex - 1,
+        take: count,
+        orderBy: { createdAt: "asc" },
+        include: {
+          members: { select: { userId: true, user: { select: { email: true } } } },
+        },
+      }),
+      prisma.scimGroup.count({ where }),
+    ]);
 
-  return NextResponse.json({
-    schemas: ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
-    totalResults: total,
-    startIndex,
-    itemsPerPage: count,
-    Resources: groups.map((g) =>
-      toScimGroupResponse(
-        g,
-        g.members.map((m) => ({ value: m.userId, display: m.user.email })),
+    return NextResponse.json({
+      schemas: ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
+      totalResults: total,
+      startIndex,
+      itemsPerPage: count,
+      Resources: groups.map((g) =>
+        toScimGroupResponse(
+          g,
+          g.members.map((m) => ({ value: m.userId, display: m.user.email })),
+        ),
       ),
-    ),
+    });
   });
 }
 
@@ -95,94 +100,96 @@ export async function POST(req: NextRequest) {
     return scimError("Unauthorized", 401);
   }
 
-  let displayNameForAudit = "unknown";
-  let failureAction:
-    | "scim.group_created"
-    | "scim.group_adopted"
-    | "scim.group_updated" = "scim.group_created";
+  return runWithOrgContext(auth.organizationId, async () => {
+    let displayNameForAudit = "unknown";
+    let failureAction:
+      | "scim.group_created"
+      | "scim.group_adopted"
+      | "scim.group_updated" = "scim.group_created";
 
-  try {
-    const body = await req.json();
-    debugLog("scim", `POST /Groups`, { displayName: body.displayName, memberCount: Array.isArray(body.members) ? body.members.length : 0 });
-    const displayName = body.displayName;
-    displayNameForAudit = typeof displayName === "string" ? displayName : "unknown";
-    if (!displayName || typeof displayName !== "string") {
-      return scimError("displayName is required", 400);
-    }
-
-    const { group, memberResponses, auditAction } = await prisma.$transaction(async (tx) => {
-      // Adoption is scoped per-org: composite uniqueness (orgId, displayName)
-      // means the same displayName can exist in peer orgs without collision.
-      const existing = await tx.scimGroup.findUnique({
-        where: {
-          organizationId_displayName: {
-            organizationId: auth.organizationId,
-            displayName,
-          },
-        },
-      });
-
-      let scimGroup;
-      let action: "scim.group_created" | "scim.group_adopted" | null = null;
-
-      if (existing) {
-        scimGroup = existing;
-        failureAction =
-          body.externalId && body.externalId !== existing.externalId
-            ? "scim.group_adopted"
-            : "scim.group_updated";
-        if (body.externalId && body.externalId !== existing.externalId) {
-          scimGroup = await tx.scimGroup.update({
-            where: { id: existing.id },
-            data: { externalId: body.externalId },
-          });
-          action = "scim.group_adopted";
-        }
-        // If nothing changed, skip audit (avoids flooding on every sync cycle)
-      } else {
-        scimGroup = await tx.scimGroup.create({
-          data: {
-            organizationId: auth.organizationId,
-            displayName,
-            externalId: body.externalId ?? null,
-          },
-        });
-        action = "scim.group_created";
+    try {
+      const body = await req.json();
+      debugLog("scim", `POST /Groups`, { displayName: body.displayName, memberCount: Array.isArray(body.members) ? body.members.length : 0 });
+      const displayName = body.displayName;
+      displayNameForAudit = typeof displayName === "string" ? displayName : "unknown";
+      if (!displayName || typeof displayName !== "string") {
+        return scimError("displayName is required", 400);
       }
 
-      const members = await processGroupMembers(tx, scimGroup.id, body.members, auth.organizationId);
+      const { group, memberResponses, auditAction } = await withOrgTx(auth.organizationId, async (tx) => {
+        // Adoption is scoped per-org: composite uniqueness (orgId, displayName)
+        // means the same displayName can exist in peer orgs without collision.
+        const existing = await tx.scimGroup.findUnique({
+          where: {
+            organizationId_displayName: {
+              organizationId: auth.organizationId,
+              displayName,
+            },
+          },
+        });
 
-      return { group: scimGroup, memberResponses: members, auditAction: action };
-    });
+        let scimGroup;
+        let action: "scim.group_created" | "scim.group_adopted" | null = null;
 
-    if (auditAction) {
-      await writeScimAuditLog({
-        action: auditAction,
-        entityType: "ScimGroup",
-        entityId: group.id,
-        metadata: { displayName },
-        status: "success",
+        if (existing) {
+          scimGroup = existing;
+          failureAction =
+            body.externalId && body.externalId !== existing.externalId
+              ? "scim.group_adopted"
+              : "scim.group_updated";
+          if (body.externalId && body.externalId !== existing.externalId) {
+            scimGroup = await tx.scimGroup.update({
+              where: { id: existing.id },
+              data: { externalId: body.externalId },
+            });
+            action = "scim.group_adopted";
+          }
+          // If nothing changed, skip audit (avoids flooding on every sync cycle)
+        } else {
+          scimGroup = await tx.scimGroup.create({
+            data: {
+              organizationId: auth.organizationId,
+              displayName,
+              externalId: body.externalId ?? null,
+            },
+          });
+          action = "scim.group_created";
+        }
+
+        const members = await processGroupMembers(tx, scimGroup.id, body.members, auth.organizationId);
+
+        return { group: scimGroup, memberResponses: members, auditAction: action };
       });
-    }
 
-    return NextResponse.json(
-      toScimGroupResponse(group, memberResponses),
-      { status: auditAction === "scim.group_created" ? 201 : 200 },
-    );
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to create group";
-    await writeScimAuditLog({
-      action: failureAction,
-      entityType: "ScimGroup",
-      entityId: displayNameForAudit,
-      metadata: { displayName: displayNameForAudit },
-      status: "failure",
-      error,
-    });
-    void fireScimSyncFailedAlert(message);
-    return scimError(message, 400);
-  }
+      if (auditAction) {
+        await writeScimAuditLog({
+          action: auditAction,
+          entityType: "ScimGroup",
+          entityId: group.id,
+          metadata: { displayName },
+          status: "success",
+        });
+      }
+
+      return NextResponse.json(
+        toScimGroupResponse(group, memberResponses),
+        { status: auditAction === "scim.group_created" ? 201 : 200 },
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to create group";
+      await writeScimAuditLog({
+        action: failureAction,
+        entityType: "ScimGroup",
+        entityId: displayNameForAudit,
+        metadata: { displayName: displayNameForAudit },
+        status: "failure",
+        error,
+      });
+      void fireScimSyncFailedAlert(message);
+      return scimError(message, 400);
+    }
+  });
 }
 
 /**
@@ -192,7 +199,7 @@ export async function POST(req: NextRequest) {
  * and member processing in a single atomic transaction.
  */
 async function processGroupMembers(
-  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  tx: Prisma.TransactionClient,
   scimGroupId: string,
   members: unknown,
   organizationId: string,

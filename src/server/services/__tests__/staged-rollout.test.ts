@@ -11,9 +11,7 @@ import type { PrismaClient } from "@/generated/prisma";
 
 // ─── Mocks (must come before imports that use them) ─────────────────────────
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/pipeline-version", () => ({
   createVersion: vi.fn(),

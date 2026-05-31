@@ -7,6 +7,7 @@ import {
 } from "@/server/middleware/api-auth";
 import { rateLimiter, type RateLimitTier } from "./rate-limiter";
 import { errorLog } from "@/lib/logger";
+import { runWithOrgContext } from "@/lib/org-context";
 
 /** BigInt-safe NextResponse.json() — converts BigInts to numbers before serialization. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -67,7 +68,12 @@ export function apiRoute(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     try {
       const resolvedParams = params ? await params : undefined;
-      const response = await handler(req, ctx, resolvedParams);
+      // Scope all DB work in the handler to the key's org. The credential→org
+      // resolution itself (authenticateApiKey) runs on the admin connection
+      // before this scope exists.
+      const response = await runWithOrgContext(ctx.organizationId, () =>
+        handler(req, ctx, resolvedParams),
+      );
       // Add rate limit headers to successful responses
       response.headers.set("X-RateLimit-Remaining", String(rateResult.remaining));
       return response;

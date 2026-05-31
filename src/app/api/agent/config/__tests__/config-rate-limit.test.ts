@@ -16,25 +16,23 @@ vi.mock("@/server/services/agent-auth", () => ({
   ),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    vectorNode: {
-      findUnique: vi.fn(() =>
-        Promise.resolve({ pendingAction: null, maintenanceMode: false, labels: {} }),
-      ),
-    },
-    environment: {
-      findUnique: vi.fn(() =>
-        Promise.resolve({ id: "env-1", secretBackend: "BUILTIN", secretBackendConfig: null }),
-      ),
-    },
-    pipeline: { findMany: vi.fn(() => Promise.resolve([])) },
-    eventSampleRequest: { findMany: vi.fn(() => Promise.resolve([])) },
-    organizationSettings: {
-      findUnique: vi.fn(() => Promise.resolve({ fleetPollIntervalMs: 15000 })),
-    },
+vi.mock("@/lib/prisma", () => { const __pm = {
+  vectorNode: {
+    findUnique: vi.fn(() =>
+      Promise.resolve({ pendingAction: null, maintenanceMode: false, labels: {} }),
+    ),
   },
-}));
+  environment: {
+    findUnique: vi.fn(() =>
+      Promise.resolve({ id: "env-1", secretBackend: "BUILTIN", secretBackendConfig: null }),
+    ),
+  },
+  pipeline: { findMany: vi.fn(() => Promise.resolve([])) },
+  eventSampleRequest: { findMany: vi.fn(() => Promise.resolve([])) },
+  organizationSettings: {
+    findUnique: vi.fn(() => Promise.resolve({ fleetPollIntervalMs: 15000 })),
+  },
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/secret-resolver", () => ({
   collectSecretRefs: vi.fn(() => []),

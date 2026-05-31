@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { diffLines } from "diff";
 import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
+import { withOrgTxFromContext } from "@/lib/with-org-tx";
 import { createVersion } from "@/server/services/pipeline-version";
 import { applyRecommendationToYaml } from "@/server/services/cost-optimizer-apply";
 import type { SuggestedAction } from "@/server/services/cost-optimizer-types";
@@ -169,7 +170,7 @@ export async function applyRecommendation(
   // Without this, deployAgent regenerates YAML from stale graph state,
   // effectively reverting the recommendation.
   if (suggestedAction.type === "add_filter" || suggestedAction.type === "add_sampling") {
-    await prisma.$transaction(async (tx) => {
+    await withOrgTxFromContext(async (tx) => {
       const sinkNode = await tx.pipelineNode.findFirst({
         where: { pipelineId, componentKey: targetSinkKey },
       });

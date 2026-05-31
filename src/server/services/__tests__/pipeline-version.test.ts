@@ -5,9 +5,7 @@ import { TRPCError } from "@trpc/server";
 
 // ─── Module mocks ───────────────────────────────────────────────────────────
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/push-broadcast", () => ({
   relayPush: vi.fn(),
@@ -20,6 +18,7 @@ vi.mock("@/server/services/sse-registry", () => ({
 // ─── Import the mocked modules + SUT ───────────────────────────────────────
 
 import { prisma } from "@/lib/prisma";
+import { runWithOrgContext } from "@/lib/org-context";
 import { relayPush } from "@/server/services/push-broadcast";
 import {
   listVersionsSummary,
@@ -236,7 +235,9 @@ describe("deployFromVersion", () => {
 
     relayPushMock.mockReturnValue(true);
 
-    const result = await deployFromVersion("pipeline-1", "source-v1", "user-1");
+    const result = await runWithOrgContext("org-1", () =>
+      deployFromVersion("pipeline-1", "source-v1", "user-1"),
+    );
 
     // Verify a new version was created
     expect(prismaMock.pipelineVersion.create).toHaveBeenCalledWith(
@@ -281,7 +282,9 @@ describe("deployFromVersion", () => {
     ] as never);
     relayPushMock.mockReturnValue(true);
 
-    const result = await deployFromVersion("pipeline-1", "version-1", "user-1", "Custom changelog");
+    const result = await runWithOrgContext("org-1", () =>
+      deployFromVersion("pipeline-1", "version-1", "user-1", "Custom changelog"),
+    );
 
     expect(result).toHaveProperty("version");
     expect(result).toHaveProperty("pushedNodeIds");
@@ -311,7 +314,9 @@ describe("deployFromVersion", () => {
     } as never);
     prismaMock.vectorNode.findMany.mockResolvedValue([] as never);
 
-    const result = await deployFromVersion("pipeline-1", "version-1", "user-1");
+    const result = await runWithOrgContext("org-1", () =>
+      deployFromVersion("pipeline-1", "version-1", "user-1"),
+    );
 
     // Should not attempt to delete/recreate nodes
     expect(prismaMock.pipelineEdge.deleteMany).not.toHaveBeenCalled();
@@ -335,7 +340,9 @@ describe("deployFromVersion", () => {
     // Make pipeline.findUnique throw to trigger the catch block
     prismaMock.pipeline.findUnique.mockRejectedValue(new Error("DB connection lost"));
 
-    const result = await deployFromVersion("pipeline-1", "version-1", "user-1");
+    const result = await runWithOrgContext("org-1", () =>
+      deployFromVersion("pipeline-1", "version-1", "user-1"),
+    );
 
     // Should still return successfully — push failure is non-fatal
     expect(result.version).toBeDefined();
@@ -376,7 +383,9 @@ describe("rollback", () => {
     prismaMock.pipelineVersion.create.mockResolvedValue(rollbackVersion as never);
     prismaMock.pipeline.update.mockResolvedValue({} as never);
 
-    const result = await rollback("pipeline-1", "target-v1", "user-1");
+    const result = await runWithOrgContext("org-1", () =>
+      rollback("pipeline-1", "target-v1", "user-1"),
+    );
 
     // rollback() returns a version — the caller (router layer) is responsible for push/SSE
     expect(result).toBeDefined();

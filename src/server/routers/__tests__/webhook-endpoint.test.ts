@@ -29,9 +29,7 @@ vi.mock("@/server/middleware/audit", () => ({
     t.middleware(({ next, ctx }: { next: (opts: { ctx: unknown }) => unknown; ctx: unknown }) => next({ ctx })),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/crypto", () => ({
   ENCRYPTION_DOMAINS: { GENERIC: "generic" } as const,
@@ -113,22 +111,9 @@ describe("webhookEndpointRouter", () => {
   describe("create", () => {
     it("encrypts secret inside a transaction with the real endpoint.id as AAD rowId", async () => {
       const endpoint = makeEndpoint();
-      // Mock the $transaction to run the callback with mocked tx methods
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      prismaMock.$transaction.mockImplementation(async (fn: (tx: any) => unknown) => {
-        const tx = {
-          webhookEndpoint: {
-            create: vi.fn().mockResolvedValue(endpoint),
-            update: vi.fn().mockResolvedValue(endpoint),
-          },
-        };
-        const result = await fn(tx);
-        // Copy calls to the outer mock so assertions below still work
-        prismaMock.webhookEndpoint.create.mockResolvedValue(endpoint);
-        (prismaMock.webhookEndpoint.create as ReturnType<typeof vi.fn>).mock.calls.push(...tx.webhookEndpoint.create.mock.calls);
-        (prismaMock.webhookEndpoint.update as ReturnType<typeof vi.fn>).mock.calls.push(...tx.webhookEndpoint.update.mock.calls);
-        return result;
-      });
+      prismaMock.webhookEndpoint.create.mockResolvedValue(endpoint);
+      prismaMock.webhookEndpoint.update.mockResolvedValue(endpoint);
+      prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(prismaMock));
 
       await caller.create({
         teamId: "team-1",

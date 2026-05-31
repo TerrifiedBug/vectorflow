@@ -1,4 +1,5 @@
-import { prisma } from "@/lib/prisma";
+import { adminPrisma, prisma } from "@/lib/prisma";
+import { runWithOrgContext } from "@/lib/org-context";
 import type { AlertRule, AlertEvent } from "@/generated/prisma";
 import { checkCondition, FLEET_METRICS } from "@/server/services/alert-evaluator";
 import type { ChannelPayload } from "@/server/services/channels/types";
@@ -93,7 +94,7 @@ export class FleetAlertService {
     try {
       let orgs: Array<{ id: string }>;
       try {
-        orgs = await prisma.organization.findMany({
+        orgs = await adminPrisma.organization.findMany({
           where: { suspendedAt: null, deletedAt: null },
           select: { id: true },
         });
@@ -107,7 +108,9 @@ export class FleetAlertService {
       }
       for (const org of orgs) {
         try {
-          await this.evaluateFleetAlerts({ organizationId: org.id });
+          await runWithOrgContext(org.id, () =>
+            this.evaluateFleetAlerts({ organizationId: org.id }),
+          );
         } catch (err) {
           errorLog(
             "fleet-alert",

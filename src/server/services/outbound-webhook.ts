@@ -134,7 +134,7 @@ export async function deliverOutboundWebhook(
   // ciphertext is routed through the v3-or-v2 wrapper so orgs with a
   // provisioned DEK envelope-decrypt while OSS / self-hosted stays on v2.
   if (endpoint.encryptedSecret) {
-    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, endpoint.organizationId);
+    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(endpoint.organizationId);
     const secret = await decryptForOrgOrFallback(endpoint.encryptedSecret, {
       orgId: endpoint.organizationId,
       dataKeyCiphertext,

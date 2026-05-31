@@ -1,4 +1,5 @@
-import { prisma } from "@/lib/prisma";
+import { adminPrisma, prisma } from "@/lib/prisma";
+import { runWithOrgContext } from "@/lib/org-context";
 import {
   evaluateAllPipelines,
   ANOMALY_CONFIG,
@@ -84,7 +85,7 @@ export class AnomalyDetectionService {
     // return is the correct failure mode: next tick gets another go.
     let orgs: Array<{ id: string }>;
     try {
-      orgs = await prisma.organization.findMany({
+      orgs = await adminPrisma.organization.findMany({
         where: { suspendedAt: null, deletedAt: null },
         select: { id: true },
       });
@@ -99,7 +100,9 @@ export class AnomalyDetectionService {
 
     for (const org of orgs) {
       try {
-        await evaluateAllPipelines({ organizationId: org.id });
+        await runWithOrgContext(org.id, () =>
+          evaluateAllPipelines({ organizationId: org.id }),
+        );
       } catch (err) {
         errorLog(
           "anomaly-detection",
@@ -113,7 +116,7 @@ export class AnomalyDetectionService {
     if (this.tickCount % CLEANUP_INTERVAL_TICKS === 0) {
       for (const org of orgs) {
         try {
-          await this.cleanupForOrg(org.id);
+          await runWithOrgContext(org.id, () => this.cleanupForOrg(org.id));
         } catch (err) {
           errorLog(
             "anomaly-detection",

@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { adminPrisma } from "@/lib/prisma";
 import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 import {
   extractBearerToken,
@@ -49,7 +49,7 @@ async function authenticateByIndexInOrg(
   tokenId: string,
   orgId: string,
 ): Promise<AgentIdentity | null> {
-  const node = await prisma.vectorNode.findFirst({
+  const node = await adminPrisma.vectorNode.findFirst({
     where: {
       nodeTokenId: tokenId,
       organizationId: orgId,  // hard org boundary — never cross-tenant
@@ -69,7 +69,7 @@ async function authenticateLegacyInOrg(
 ): Promise<AgentIdentity | null> {
   // Legacy tokens don't have an identifier, so we must scan.
   // We scope to this org's un-migrated nodes to keep the blast radius bounded.
-  const nodes = await prisma.vectorNode.findMany({
+  const nodes = await adminPrisma.vectorNode.findMany({
     where: {
       nodeTokenHash: { not: null },
       nodeTokenId: null,

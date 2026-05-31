@@ -59,12 +59,10 @@ vi.mock("node-cron", () => ({
   schedule: mocks.cronSchedule,
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    organization: { findMany: mocks.findManyOrgs, findUnique: mocks.findUniqueOrg },
-    environment: { findMany: vi.fn().mockResolvedValue([]) },
-  },
-}));
+vi.mock("@/lib/prisma", () => { const __pm = {
+  organization: { findMany: mocks.findManyOrgs, findUnique: mocks.findUniqueOrg },
+  environment: { findMany: vi.fn().mockResolvedValue([]) },
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/backup", () => ({
   createBackup: mocks.createBackup,

@@ -26,9 +26,7 @@ vi.mock("@/server/middleware/audit", () => ({
     t.middleware(({ next, ctx }: { next: (opts: { ctx: unknown }) => unknown; ctx: unknown }) => next({ ctx })),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 import { prisma } from "@/lib/prisma";
 import { filterPresetRouter } from "@/server/routers/filter-preset";
@@ -36,6 +34,7 @@ import { filterPresetRouter } from "@/server/routers/filter-preset";
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const caller = t.createCallerFactory(filterPresetRouter)({
   session: { user: { id: "user-1" } },
+  organizationId: "org-1",
 });
 
 const NOW = new Date("2026-03-01T12:00:00Z");

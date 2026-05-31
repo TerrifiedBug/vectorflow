@@ -12,9 +12,7 @@ vi.mock("@/server/services/agent-auth", () => ({
   authenticateAgentInOrg: vi.fn(() => null),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {},
-}));
+vi.mock("@/lib/prisma", () => { const __pm = {}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/lib/logger", () => ({
   errorLog: vi.fn(),

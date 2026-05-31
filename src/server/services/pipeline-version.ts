@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { withOrgTxFromContext } from "@/lib/with-org-tx";
 import { type Prisma, type ComponentKind } from "@/generated/prisma";
 import { TRPCError } from "@trpc/server";
 import { relayPush } from "@/server/services/push-broadcast";
@@ -131,7 +132,7 @@ export async function rollback(
   }
 
   // Restore pipeline state atomically: globalConfig + nodes/edges from snapshots
-  await prisma.$transaction(async (tx) => {
+  await withOrgTxFromContext(async (tx) => {
     if (targetVersion.globalConfig !== undefined) {
       await tx.pipeline.update({
         where: { id: pipelineId },
@@ -229,7 +230,7 @@ export async function deployFromVersion(
   }
 
   // 2. Restore pipeline graph state from source version's snapshots
-  await prisma.$transaction(async (tx) => {
+  await withOrgTxFromContext(async (tx) => {
     if (sourceVersion.globalConfig !== undefined) {
       await tx.pipeline.update({
         where: { id: pipelineId },

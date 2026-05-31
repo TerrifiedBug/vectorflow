@@ -3,6 +3,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess, requirePlatformOperator, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { withAudit } from "@/server/middleware/audit";
 import { generateEnrollmentToken } from "@/server/services/agent-token";
 import { DEFAULT_ORG_ID, DEFAULT_ORG_SLUG } from "@/lib/org-constants";
@@ -302,7 +303,7 @@ export const environmentRouter = router({
         } else {
           // PR 9-B — wrap through v3-or-v2. Same `GENERIC` HKDF domain
           // as the legacy v2 path keeps historical ciphertexts readable.
-          const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, existing.organizationId);
+          const dataKeyCiphertext = await loadOrgDataKeyCiphertext(existing.organizationId);
           data.gitToken = await encryptForOrgOrFallback(gitToken, {
             orgId: existing.organizationId,
             dataKeyCiphertext,
@@ -442,7 +443,7 @@ export const environmentRouter = router({
         if (!env?.gitToken) {
           return { success: false, error: "No access token configured" };
         }
-        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, env.organizationId);
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(env.organizationId);
         resolvedToken = await decryptForOrgOrFallback(env.gitToken, {
           orgId: env.organizationId,
           dataKeyCiphertext,
@@ -494,7 +495,7 @@ export const environmentRouter = router({
     .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("environment.deleted", "Environment"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const existing = await prisma.environment.findUnique({
         where: { id: input.id },
         include: { pipelines: { select: { id: true } } },
@@ -512,12 +513,12 @@ export const environmentRouter = router({
         });
       }
       const pipelineIds = existing.pipelines.map((p) => p.id);
-      return prisma.$transaction([
+      return withOrgTx(ctx.organizationId, async (tx) => [
         // PipelineVersion lacks onDelete: Cascade, clean up explicitly
-        prisma.pipelineVersion.deleteMany({ where: { pipelineId: { in: pipelineIds } } }),
-        prisma.pipeline.deleteMany({ where: { environmentId: input.id } }),
-        prisma.vectorNode.deleteMany({ where: { environmentId: input.id } }),
-        prisma.environment.delete({ where: { id: input.id } }),
+        await tx.pipelineVersion.deleteMany({ where: { pipelineId: { in: pipelineIds } } }),
+        await tx.pipeline.deleteMany({ where: { environmentId: input.id } }),
+        await tx.vectorNode.deleteMany({ where: { environmentId: input.id } }),
+        await tx.environment.delete({ where: { id: input.id } }),
       ]);
     }),
 

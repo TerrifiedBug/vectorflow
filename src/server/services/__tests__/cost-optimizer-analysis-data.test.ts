@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 // Mock prisma to prevent env validation from running at import time
-vi.mock("@/lib/prisma", () => ({ prisma: {} }));
+vi.mock("@/lib/prisma", () => { const __pm = {}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 import { detectLowReduction, detectHighErrorRate } from "@/server/services/cost-optimizer";
 import type { PipelineAggregates } from "@/server/services/cost-optimizer-types";

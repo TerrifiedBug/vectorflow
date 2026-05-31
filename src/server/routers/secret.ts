@@ -65,7 +65,7 @@ export const secretRouter = router({
         select: { organizationId: true },
       });
       const envOrgId = env?.organizationId ?? input.environmentId;
-      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, envOrgId);
+      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(envOrgId);
       const encryptedValue = await encryptForOrgOrFallback(input.value, {
         orgId: envOrgId,
         dataKeyCiphertext,
@@ -108,7 +108,7 @@ export const secretRouter = router({
         select: { organizationId: true },
       });
       const envOrgId = env?.organizationId ?? secret.environmentId;
-      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, envOrgId);
+      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(envOrgId);
       const encryptedValue = await encryptForOrgOrFallback(input.value, {
         orgId: envOrgId,
         dataKeyCiphertext,
@@ -156,7 +156,7 @@ export const secretRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: `Secret "${input.name}" not found` });
       }
       const envOrgId = env?.organizationId ?? input.environmentId;
-      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, envOrgId);
+      const dataKeyCiphertext = await loadOrgDataKeyCiphertext(envOrgId);
       const value = await decryptForOrgOrFallback(secret.encryptedValue, {
         orgId: envOrgId,
         dataKeyCiphertext,

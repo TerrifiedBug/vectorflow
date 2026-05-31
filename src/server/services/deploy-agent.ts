@@ -229,7 +229,7 @@ export async function deployAgent(
     // Service account IDs are prefixed with "sa:" — skip the User lookup for them
     const isServiceAccount = userId.startsWith("sa:");
     const user = isServiceAccount ? null : await prisma.user.findUnique({ where: { id: userId } });
-    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, environment.organizationId);
+    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(environment.organizationId);
     const result = await gitSyncCommitPipeline(
       {
         repoUrl: environment.gitRepoUrl,

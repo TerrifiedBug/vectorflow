@@ -13,7 +13,7 @@
  * transparently so existing agents require no changes.
  */
 
-import { prisma } from "@/lib/prisma";
+import { adminPrisma } from "@/lib/prisma";
 import { DEFAULT_ORG_ID, DEFAULT_ORG_SLUG } from "@/lib/org-constants";
 import { extractBearerToken, parseTokenSlug, isLegacyNodeToken, isLegacyEnrollmentToken } from "./agent-token";
 import { warnLog } from "@/lib/logger";
@@ -127,7 +127,9 @@ async function lookupOrg(
   slug: string,
   isLegacy: boolean,
 ): Promise<AgentOrgContext | Response> {
-  const org = await prisma.organization.findUnique({
+  // Pre-context org resolution by slug against the (fenced) Organization
+  // table — runs on the admin connection before runWithOrgContext is set.
+  const org = await adminPrisma.organization.findUnique({
     where: { slug },
     select: { id: true, slug: true, suspendedAt: true, deletedAt: true },
   });
