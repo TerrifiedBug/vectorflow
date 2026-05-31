@@ -68,15 +68,19 @@ export function contentSecurityPolicy(nonce?: string): string {
     ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`
     : "script-src 'self' 'unsafe-eval' 'unsafe-inline'";
 
-  // style-src: 'unsafe-inline' on the OSS/no-nonce path (Tailwind JIT
-  // and React element-level style="" attributes).  In strict multi-tenant
-  // mode the same per-request nonce used for script-src is also supplied
-  // here so Next.js-emitted <style> blocks are allowed.  React's SSR
-  // element-level style="" attributes are re-applied via DOM property
-  // assignments during client hydration, which bypass style-src entirely.
-  const styleSrc = nonce
-    ? `style-src 'self' 'nonce-${nonce}'`
-    : "style-src 'self' 'unsafe-inline'";
+  // style-src: 'unsafe-inline' in BOTH profiles. Inline styles cannot be
+  // locked down the way scripts are. React emits element-level style=""
+  // attributes during SSR -- e.g. shadcn's SidebarProvider sets
+  // `--sidebar-width`, which the entire dashboard shell layout depends on
+  // -- and a CSP nonce can NEVER cover a style ATTRIBUTE (nonces match
+  // `<style>` ELEMENTS only). Worse, when a nonce IS present in style-src,
+  // browsers ignore 'unsafe-inline' for attributes too -- so a nonce-only
+  // style-src silently drops every SSR inline style: the sidebar gap
+  // collapses to 0 and the whole dashboard renders underneath the fixed
+  // sidebar. The CSP's real protection is script-src (nonce +
+  // strict-dynamic, no unsafe-inline); injected CSS executes no script and
+  // exfiltration is already bounded by connect-src 'self'.
+  const styleSrc = "style-src 'self' 'unsafe-inline'";
 
   return [
     "default-src 'self'",

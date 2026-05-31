@@ -23,15 +23,20 @@ describe("contentSecurityPolicy", () => {
     expect(scriptDirective).not.toMatch(/'unsafe-eval'/);
   });
 
-  it("Strict multi-tenant mode (with nonce): removes 'unsafe-inline' from style-src and uses nonce", () => {
+  it("Strict multi-tenant mode: keeps 'unsafe-inline' in style-src (a nonce cannot cover SSR style='' attributes like shadcn's --sidebar-width; nonce-gating styles silently collapses the dashboard layout)", () => {
     const csp = contentSecurityPolicy("abc123nonceXYZ==");
     const styleDirective = csp
       .split(";")
       .map((d) => d.trim())
       .find((d) => d.startsWith("style-src"));
     expect(styleDirective).toBeDefined();
-    expect(styleDirective).not.toMatch(/'unsafe-inline'/);
-    expect(styleDirective).toMatch(/'nonce-abc123nonceXYZ=='/);
+    expect(styleDirective).toMatch(/'unsafe-inline'/);
+    // The strict protection lives in script-src, not style-src.
+    const scriptDirective = csp
+      .split(";")
+      .map((d) => d.trim())
+      .find((d) => d.startsWith("script-src"));
+    expect(scriptDirective).not.toMatch(/'unsafe-inline'/);
   });
 
   it("OSS default: keeps 'unsafe-inline' in style-src", () => {
