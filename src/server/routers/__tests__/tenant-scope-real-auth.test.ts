@@ -16,9 +16,7 @@ vi.mock("next/headers", () => ({
   headers: vi.fn(async () => new Headers()),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/metric-store", () => ({
   metricStore: {

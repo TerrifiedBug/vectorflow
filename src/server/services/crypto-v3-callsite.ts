@@ -56,6 +56,7 @@ import {
   type EncryptionDomain,
   type OrgEncryptionContext,
 } from "@/server/services/crypto";
+import { adminPrisma } from "@/lib/prisma";
 
 /**
  * Context for a callsite-level encrypt / decrypt. `dataKeyCiphertext`
@@ -137,10 +138,18 @@ function toOrgEncryptionContext(
 }
 
 /**
- * Resolve an org's `dataKeyCiphertext` via a single Prisma round-trip.
+ * Resolve an org's `dataKeyCiphertext` via a single round-trip.
  * Returns `null` when the org has no DEK (OSS / self-hosted) — the
  * signal to fall through to v2 in `encryptForOrgOrFallback` /
  * `decryptForOrgOrFallback`.
+ *
+ * Reads on the ADMIN connection deliberately: the wrapped DEK is per-org
+ * key-management infrastructure (like the per-org JWT signing key) and the
+ * `orgId` is always derived from a row the caller is already authorized for
+ * (env/team/endpoint). It must resolve regardless of the active RLS scope —
+ * the Organization table is fenced, so a scoped read would return `null`
+ * whenever the caller's context org differs from `orgId` (or no scope is set,
+ * e.g. during auth-instance construction), silently breaking v3 decryption.
  *
  * Returns `null` (not a thrown error) for "org row missing" so OSS /
  * default-org callsites where the row may not yet be materialised do
@@ -148,17 +157,9 @@ function toOrgEncryptionContext(
  * time any callsite reaches this code path.
  */
 export async function loadOrgDataKeyCiphertext(
-  prisma: {
-    organization: {
-      findUnique: (a: {
-        where: { id: string };
-        select: { dataKeyCiphertext: true };
-      }) => Promise<{ dataKeyCiphertext: string | null } | null>;
-    };
-  },
   orgId: string,
 ): Promise<string | null> {
-  const row = await prisma.organization.findUnique({
+  const row = await adminPrisma.organization.findUnique({
     where: { id: orgId },
     select: { dataKeyCiphertext: true },
   });

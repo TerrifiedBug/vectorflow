@@ -1,5 +1,6 @@
 import cron, { type ScheduledTask } from "node-cron";
-import { prisma } from "@/lib/prisma";
+import { adminPrisma } from "@/lib/prisma";
+import { runWithOrgContext } from "@/lib/org-context";
 import { debugLog, infoLog, errorLog } from "@/lib/logger";
 import { runCostAnalysis } from "@/server/services/cost-optimizer";
 import {
@@ -61,13 +62,15 @@ function scheduleJob(cronExpression: string): void {
  * are isolated per-org so a failure on one tenant does not stall the rest.
  */
 export async function runDailyCostAnalysisAllOrgs(): Promise<void> {
-  const orgs = await prisma.organization.findMany({
+  const orgs = await adminPrisma.organization.findMany({
     where: { suspendedAt: null, deletedAt: null },
     select: { id: true },
   });
   for (const org of orgs) {
     try {
-      await runDailyCostAnalysisForOrg(org.id);
+      await runWithOrgContext(org.id, () =>
+        runDailyCostAnalysisForOrg(org.id),
+      );
     } catch (err) {
       errorLog(
         "cost-optimizer",

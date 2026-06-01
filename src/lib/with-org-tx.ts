@@ -1,74 +1,107 @@
 /**
- * `withOrgTx(orgId, fn)` — canonical pattern for tenant-scoped DB work.
+ * `withOrgTx(orgId, fn)` — canonical pattern for tenant-scoped DB work
+ * that spans more than one statement (multi-step transactions).
  *
- * `SET LOCAL app.org_id = '<orgId>'` is only honoured inside an explicit
- * Postgres transaction; setting it on a pooled connection without a
- * transaction would leak the value into the next request that checks
- * out the same connection. Wrapping every tenant-scoped piece of work
- * in `prisma.$transaction` makes RLS the hard backstop:
+ * Single bare queries do NOT need this: the Prisma RLS extension
+ * (`src/lib/prisma.ts`) already wraps every model query in a
+ * `set_config('app.org_id', …)` transaction off the active org context
+ * (`src/lib/org-context.ts`). `withOrgTx` exists for the cases the
+ * extension cannot cover on its own — an explicit, interactive
+ * `$transaction` block where several statements must commit atomically.
  *
- *   - Even if a router has a missing `organizationId` WHERE clause,
- *     RLS policies return zero rows.
- *   - Even if PgBouncer is in front of Postgres in transaction-pooling
- *     mode, the `SET LOCAL` is scoped to the transaction's checkout.
+ * It runs on the BASE (un-extended) client deliberately: routing the
+ * inner statements through the extended client would make each one open
+ * its own separate transaction on a different connection, breaking
+ * atomicity. Here a single `SET LOCAL app.org_id` (via
+ * `set_config(name, value, true)`) covers every statement in the block.
  *
- * Every `orgProcedure` and every agent route handler MUST route DB work
- * through this helper. Background schedulers iterating orgs MUST open
- * one `withOrgTx` per org rather than running fleet-wide queries.
+ *   - `set_config(_, _, true)` scopes the GUC to this transaction's
+ *     connection checkout, so it survives PgBouncer transaction pooling
+ *     and never leaks to the next request.
+ *   - The block also runs inside `runWithOrgContext(orgId, …)` so any
+ *     incidental logging or service call inside observes the same org.
  *
- * Implementation note: we use `set_config(name, value, true)`. The
- * `true` argument scopes the setting to the current transaction; no
- * literal interpolation is performed on `orgId` (`set_config` parameter
- * binding handles the value), and the orgId is validated against the
- * stable identifier grammar before reaching the DB anyway.
+ * Every background scheduler iterating orgs MUST open one `withOrgTx`
+ * per org rather than running a fleet-wide query.
  */
 
-import { prisma as defaultPrisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma";
+import { basePrisma } from "@/lib/prisma";
+import { assertValidOrgId, getOrgId, runWithOrgContext } from "@/lib/org-context";
 
-const ORG_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+type TenantTxFn<T> = (tx: Prisma.TransactionClient) => Promise<T>;
 
-type PrismaTxClient = {
-  $executeRaw(
-    template: TemplateStringsArray,
-    ...values: unknown[]
-  ): Promise<number>;
+/**
+ * Options forwarded to the underlying interactive `$transaction`. The
+ * isolation-level union is derived from the generated enum value so it tracks
+ * Prisma without depending on a type export that this version does not expose.
+ */
+type OrgTransactionOptions = {
+  maxWait?: number;
+  timeout?: number;
+  isolationLevel?: (typeof Prisma.TransactionIsolationLevel)[keyof typeof Prisma.TransactionIsolationLevel];
 };
 
-interface PrismaLike {
-  $transaction<T>(fn: (tx: PrismaTxClient) => Promise<T>): Promise<T>;
-}
-
-function validateOrgId(orgId: string): void {
-  if (typeof orgId !== "string" || orgId.length === 0 || orgId.length > 64) {
-    throw new Error("withOrgTx: orgId must be a non-empty string ≤ 64 chars");
-  }
-  if (!ORG_ID_PATTERN.test(orgId)) {
-    throw new Error(
-      "withOrgTx: orgId must match /^[A-Za-z0-9_-]+$/ — got invalid characters",
-    );
-  }
+/** Minimal client surface needed to open an interactive transaction. */
+interface TxCapableClient {
+  $transaction<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+    options?: OrgTransactionOptions,
+  ): Promise<T>;
 }
 
 /**
  * Run `fn` inside a transaction with `app.org_id` set to `orgId`.
- * Uses the supplied Prisma client — exposed for unit testing.
+ * Uses the supplied client — exposed for unit testing. `options` forwards
+ * Prisma transaction options (e.g. `{ isolationLevel: "Serializable" }`).
  */
 export async function withOrgTxOn<T>(
-  prisma: PrismaLike,
+  client: TxCapableClient,
   orgId: string,
-  fn: (tx: PrismaTxClient) => Promise<T>,
+  fn: TenantTxFn<T>,
+  options?: OrgTransactionOptions,
 ): Promise<T> {
-  validateOrgId(orgId);
-  return prisma.$transaction(async (tx) => {
+  // Validate BEFORE the transaction: the value is parameter-bound into
+  // set_config, but a malformed id must never reach the DB at all.
+  assertValidOrgId(orgId, "withOrgTx");
+  return client.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.org_id', ${orgId}, ${true})`;
-    return fn(tx);
-  });
+    return runWithOrgContext(orgId, () => fn(tx));
+  }, options);
 }
 
-/** Convenience binding to the default app Prisma client. */
+/** Convenience binding to the base app Prisma client. */
 export async function withOrgTx<T>(
   orgId: string,
-  fn: (tx: PrismaTxClient) => Promise<T>,
+  fn: TenantTxFn<T>,
+  options?: OrgTransactionOptions,
 ): Promise<T> {
-  return withOrgTxOn(defaultPrisma as PrismaLike, orgId, fn);
+  return withOrgTxOn(basePrisma, orgId, fn, options);
+}
+
+/**
+ * Like `withOrgTx`, but derives the org from the active request/loop scope
+ * (`getOrgId()`) instead of an explicit argument. For service-layer
+ * multi-statement transactions that operate on the current request's org but
+ * do not carry an `organizationId` parameter — the entry point (tRPC / REST /
+ * agent) or background loop has already established the scope via
+ * `runWithOrgContext` / `withOrgTx`.
+ *
+ * Throws when no scope is active rather than silently running unscoped, so an
+ * un-wired caller (e.g. a scheduler that forgot to iterate per org) fails
+ * loudly instead of leaking or returning nothing.
+ */
+export async function withOrgTxFromContext<T>(
+  fn: TenantTxFn<T>,
+  options?: OrgTransactionOptions,
+): Promise<T> {
+  const orgId = getOrgId();
+  if (orgId === undefined) {
+    throw new Error(
+      "withOrgTxFromContext: no active org context — call within " +
+        "runWithOrgContext(orgId, …) / withOrgTx(orgId, …), or pass an " +
+        "explicit org via withOrgTx(orgId, fn).",
+    );
+  }
+  return withOrgTx(orgId, fn, options);
 }

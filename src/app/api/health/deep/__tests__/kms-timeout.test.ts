@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: { $queryRaw: vi.fn() },
-}));
+vi.mock("@/lib/prisma", () => { const __pm = { $queryRaw: vi.fn() }; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 vi.mock("@/server/services/kms", () => ({
   getKmsProvider: vi.fn(),
 }));

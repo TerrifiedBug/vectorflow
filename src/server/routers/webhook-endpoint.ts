@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { AlertMetric } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { ENCRYPTION_DOMAINS } from "@/server/services/crypto";
@@ -72,7 +73,7 @@ export const webhookEndpointRouter = router({
       const plaintextSecret: string | null = input.secret ?? null;
 
       if (input.secret) {
-        const endpoint = await prisma.$transaction(async (tx) => {
+        const endpoint = await withOrgTx(ctx.organizationId, async (tx) => {
           const row = await tx.webhookEndpoint.create({
             data: {
               teamId: input.teamId,
@@ -86,7 +87,7 @@ export const webhookEndpointRouter = router({
           });
           // Encrypt inside the transaction. If KMS/encryption fails, the
           // transaction rolls back and no orphan row is left.
-          const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+          const dataKeyCiphertext = await loadOrgDataKeyCiphertext(ctx.organizationId);
           const encryptedSecret = await encryptForOrgOrFallback(input.secret!, {
             orgId: ctx.organizationId,
             dataKeyCiphertext,
@@ -137,7 +138,7 @@ export const webhookEndpointRouter = router({
     .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("webhookEndpoint.updated", "WebhookEndpoint"))
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ input }) => {
       // Verify ownership
       const existing = await prisma.webhookEndpoint.findFirst({
         where: { id: input.id, teamId: input.teamId },
@@ -162,7 +163,7 @@ export const webhookEndpointRouter = router({
         // For endpoints created before the organizationId column was populated,
         // the persisted value is the source of truth because delivery uses it.
         const rowOrgId = existing.organizationId;
-        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, rowOrgId);
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(rowOrgId);
         updateData.encryptedSecret = await encryptForOrgOrFallback(input.secret, {
           orgId: rowOrgId,
           dataKeyCiphertext,

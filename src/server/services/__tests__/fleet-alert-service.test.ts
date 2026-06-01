@@ -5,9 +5,7 @@ import type { AlertRule, AlertEvent } from "@/generated/prisma";
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 // Mock fleet-metrics functions
 vi.mock("@/server/services/fleet-metrics", () => ({

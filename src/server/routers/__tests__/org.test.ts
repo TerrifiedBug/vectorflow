@@ -28,9 +28,7 @@ vi.mock("@/trpc/init", () => {
   };
 });
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 const auditMocks = vi.hoisted(() => ({ writeAuditLog: vi.fn() }));
 vi.mock("@/server/services/audit", () => ({

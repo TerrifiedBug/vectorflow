@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { Prisma, ComponentKind } from "@/generated/prisma";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { withAudit } from "@/server/middleware/audit";
 import { encryptNodeConfig, decryptNodeConfig } from "@/server/services/config-crypto";
 
@@ -123,8 +124,8 @@ export const sharedComponentRouter = router({
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("shared_component.created", "SharedComponent"))
-    .mutation(async ({ input }) => {
-      return prisma.$transaction(async (tx) => {
+    .mutation(async ({ input, ctx }) => {
+      return withOrgTx(ctx.organizationId, async (tx) => {
         // Check unique constraint inside transaction to prevent TOCTOU race
         const existing = await tx.sharedComponent.findUnique({
           where: {
@@ -167,7 +168,7 @@ export const sharedComponentRouter = router({
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("shared_component.created", "SharedComponent"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const node = await prisma.pipelineNode.findUnique({
         where: { id: input.nodeId },
         include: { pipeline: { select: { environmentId: true } } },
@@ -187,7 +188,7 @@ export const sharedComponentRouter = router({
         });
       }
 
-      return prisma.$transaction(async (tx) => {
+      return withOrgTx(ctx.organizationId, async (tx) => {
         // Check unique constraint inside transaction to prevent TOCTOU race
         const existing = await tx.sharedComponent.findUnique({
           where: {
@@ -241,8 +242,8 @@ export const sharedComponentRouter = router({
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("shared_component.updated", "SharedComponent"))
-    .mutation(async ({ input }) => {
-      return prisma.$transaction(async (tx) => {
+    .mutation(async ({ input, ctx }) => {
+      return withOrgTx(ctx.organizationId, async (tx) => {
         const sc = await tx.sharedComponent.findUnique({
           where: { id: input.id },
         });
@@ -357,7 +358,7 @@ export const sharedComponentRouter = router({
     .input(z.object({ pipelineId: z.string() }))
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("shared_component.bulk_update_accepted", "Pipeline"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const pipeline = await prisma.pipeline.findUnique({
         where: { id: input.pipelineId },
       });
@@ -388,17 +389,17 @@ export const sharedComponentRouter = router({
         return { updated: 0 };
       }
 
-      await prisma.$transaction(
-        staleNodes.map((n) =>
-          prisma.pipelineNode.update({
+      await withOrgTx(ctx.organizationId, async (tx) => {
+        for (const n of staleNodes) {
+          await tx.pipelineNode.update({
             where: { id: n.id },
             data: {
               config: n.sharedComponent!.config ?? undefined,
               sharedComponentVersion: n.sharedComponent!.version,
             },
-          }),
-        ),
-      );
+          });
+        }
+      });
 
       return { updated: staleNodes.length };
     }),

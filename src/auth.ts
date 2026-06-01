@@ -30,6 +30,8 @@ import {
 } from "@/server/services/login-protection";
 import { getOrgSettings } from "@/lib/org-settings";
 import { resolveOrgIdFromHost } from "@/lib/host-to-org";
+import { runWithOrgContext } from "@/lib/org-context";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { getRequestHostFromHeaders } from "@/lib/request-host";
 import { webauthnProvider } from "@/server/services/auth/webauthn-provider";
 import { getJwtSecretForOrg } from "@/server/services/auth/jwt-key";
@@ -95,7 +97,7 @@ async function getOidcSettings(orgIdOverride?: string) {
     if (settings?.oidcIssuer && settings?.oidcClientId && settings?.oidcClientSecret) {
       let clientSecret: string;
       try {
-        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, orgId);
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(orgId);
         clientSecret = await decryptForOrgOrFallback(settings.oidcClientSecret, {
           orgId,
           dataKeyCiphertext,
@@ -397,6 +399,16 @@ async function getAuthInstance() {
             // For OIDC sign-ins, auto-create user and team membership with role mapping
             if (account?.provider === "oidc" && user.email) {
               const oidcOrgId = await resolveOrgIdFromHost(await getRequestHost());
+              // Scope the OIDC provisioning/group-sync to the resolved org so
+              // the fenced role's reads (OrganizationSettings, ScimGroup,
+              // OrgMember) and the reconcile write see this org's rows. oidcOrgId
+              // is resolved above on the admin connection (host→org, pre-scope).
+              return runWithOrgContext(oidcOrgId, async () => {
+              // Re-assert the outer `user.email` guard inside this closure so
+              // TS keeps the narrowing (the new function scope drops it). The
+              // outer `if (... && user.email)` already guarantees this, so the
+              // branch never runs.
+              if (!user.email) return true;
               const settings = await getOrgSettings(oidcOrgId);
               const profileData = profile as Record<string, unknown> | undefined;
 
@@ -484,7 +496,7 @@ async function getAuthInstance() {
 
                 debugLog("oidc", `User ${user.email} scimEnabled=${settings.scimEnabled}, final groups:`, userGroupNames);
                 const { reconcileUserTeamMemberships } = await import("@/server/services/group-mappings");
-                await prisma.$transaction(async (tx) => {
+                await withOrgTx(oidcOrgId, async (tx) => {
                   await reconcileUserTeamMemberships(tx, dbUser.id, userGroupNames, oidcOrgId);
                 });
 
@@ -516,6 +528,8 @@ async function getAuthInstance() {
                 userId: dbUser.id, action: "auth.login_success", entityType: "Auth", entityId: "oidc",
                 ipAddress, userEmail: dbUser.email, userName: dbUser.name,
               }).catch(() => {});
+              return true;
+              });
             }
             return true;
           },

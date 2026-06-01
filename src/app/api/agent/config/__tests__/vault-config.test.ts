@@ -14,66 +14,64 @@ vi.mock("@/server/services/agent-auth", () => ({
   ),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    vectorNode: {
-      findUnique: vi.fn(() =>
-        Promise.resolve({ pendingAction: null, maintenanceMode: false, labels: {} }),
-      ),
-    },
-    environment: {
-      findUnique: vi.fn(() =>
-        Promise.resolve({
-          id: "env-1",
-          secretBackend: "VAULT",
-          secretBackendConfig: {
-            address: "https://vault.example.com",
-            authMethod: "token",
-            mountPath: "secret",
-            basePath: "vectorflow",
-            token: "encrypted:vault-token",
-          },
-        }),
-      ),
-    },
-    pipeline: {
-      findMany: vi.fn(() => Promise.resolve([
-        {
-          id: "pipe-1",
-          name: "Vault Pipeline",
-          nodeSelector: {},
-          versions: [
-            {
-              version: 7,
-              configYaml: "sources:\n  in:\n    type: demo_logs\nsinks:\n  out:\n    type: console\n    auth:\n      password: SECRET[db-password]\n",
-              logLevel: "info",
-            },
-          ],
-        },
-        {
-          id: "pipe-2",
-          name: "Second Vault Pipeline",
-          nodeSelector: {},
-          versions: [
-            {
-              version: 8,
-              configYaml: "sinks:\n  out:\n    type: console\n    auth:\n      token: SECRET[api-token]\n",
-              logLevel: "debug",
-            },
-          ],
-        },
-      ])),
-    },
-    eventSampleRequest: { findMany: vi.fn(() => Promise.resolve([])) },
-     systemSettings: {
-       findUnique: vi.fn(() => Promise.resolve({ fleetPollIntervalMs: 15000 })),
-     },
-     organizationSettings: {
-       findUnique: vi.fn(),
-       create: vi.fn(),
-     },
+vi.mock("@/lib/prisma", () => { const __pm = {
+  vectorNode: {
+    findUnique: vi.fn(() =>
+      Promise.resolve({ pendingAction: null, maintenanceMode: false, labels: {} }),
+    ),
   },
-}));
+  environment: {
+    findUnique: vi.fn(() =>
+      Promise.resolve({
+        id: "env-1",
+        secretBackend: "VAULT",
+        secretBackendConfig: {
+          address: "https://vault.example.com",
+          authMethod: "token",
+          mountPath: "secret",
+          basePath: "vectorflow",
+          token: "encrypted:vault-token",
+        },
+      }),
+    ),
+  },
+  pipeline: {
+    findMany: vi.fn(() => Promise.resolve([
+      {
+        id: "pipe-1",
+        name: "Vault Pipeline",
+        nodeSelector: {},
+        versions: [
+          {
+            version: 7,
+            configYaml: "sources:\n  in:\n    type: demo_logs\nsinks:\n  out:\n    type: console\n    auth:\n      password: SECRET[db-password]\n",
+            logLevel: "info",
+          },
+        ],
+      },
+      {
+        id: "pipe-2",
+        name: "Second Vault Pipeline",
+        nodeSelector: {},
+        versions: [
+          {
+            version: 8,
+            configYaml: "sinks:\n  out:\n    type: console\n    auth:\n      token: SECRET[api-token]\n",
+            logLevel: "debug",
+          },
+        ],
+      },
+    ])),
+  },
+  eventSampleRequest: { findMany: vi.fn(() => Promise.resolve([])) },
+   systemSettings: {
+     findUnique: vi.fn(() => Promise.resolve({ fleetPollIntervalMs: 15000 })),
+   },
+   organizationSettings: {
+     findUnique: vi.fn(),
+     create: vi.fn(),
+   },
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/crypto", () => ({
   decrypt: vi.fn((value: string) => value.replace("encrypted:", "")),

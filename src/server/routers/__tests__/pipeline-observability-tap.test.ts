@@ -35,24 +35,22 @@ vi.mock("@/generated/prisma", () => ({
   },
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    pipelineMetric: { findMany: vi.fn() },
-    pipelineLog: { findMany: vi.fn() },
-    pipeline: { findUnique: vi.fn() },
-    eventSampleRequest: { create: vi.fn(), findUnique: vi.fn() },
-    eventSample: { findMany: vi.fn() },
-    nodePipelineStatus: { findMany: vi.fn() },
-    pipelineSli: { findMany: vi.fn(), upsert: vi.fn(), findUnique: vi.fn(), delete: vi.fn() },
-    activeTap: {
-      create: vi.fn(),
-      findUnique: vi.fn(),
-      delete: vi.fn(),
-      deleteMany: vi.fn(),
-      findMany: vi.fn(),
-    },
+vi.mock("@/lib/prisma", () => { const __pm = {
+  pipelineMetric: { findMany: vi.fn() },
+  pipelineLog: { findMany: vi.fn() },
+  pipeline: { findUnique: vi.fn() },
+  eventSampleRequest: { create: vi.fn(), findUnique: vi.fn() },
+  eventSample: { findMany: vi.fn() },
+  nodePipelineStatus: { findMany: vi.fn() },
+  pipelineSli: { findMany: vi.fn(), upsert: vi.fn(), findUnique: vi.fn(), delete: vi.fn() },
+  activeTap: {
+    create: vi.fn(),
+    findUnique: vi.fn(),
+    delete: vi.fn(),
+    deleteMany: vi.fn(),
+    findMany: vi.fn(),
   },
-}));
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/sli-evaluator", () => ({
   evaluatePipelineHealth: vi.fn(),

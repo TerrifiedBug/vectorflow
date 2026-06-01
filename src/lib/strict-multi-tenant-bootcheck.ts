@@ -207,6 +207,16 @@ export async function assertRlsEnforcementBoot(opts?: {
   }
 
   const failures: string[] = [];
+  if (!process.env.DATABASE_ADMIN_URL) {
+    failures.push(
+      "DATABASE_ADMIN_URL is not set. With DATABASE_URL pointed at the fenced " +
+        "vectorflow_app role, the admin connection falls back to that same fenced " +
+        "role — so every pre-context / cross-org path (credential→org resolution, " +
+        "operator and platform reads, the per-org maintenance loops, the DEK " +
+        "ciphertext loader) inherits the fence and returns zero rows. Point " +
+        "DATABASE_ADMIN_URL at the owner (BYPASSRLS) role.",
+    );
+  }
   if (bypassesRls) {
     failures.push(
       "the app connects as a BYPASSRLS Postgres role (rolbypassrls = true) — " +

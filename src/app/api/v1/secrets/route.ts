@@ -71,7 +71,7 @@ export const POST = apiRoute(
       select: { organizationId: true },
     });
     const envOrgId = envRow?.organizationId ?? ctx.environmentId;
-    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, envOrgId);
+    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(envOrgId);
     const encryptedValue = await encryptForOrgOrFallback(body.value, {
       orgId: envOrgId,
       dataKeyCiphertext,
@@ -159,7 +159,7 @@ export const PUT = apiRoute(
       select: { organizationId: true },
     });
     const envOrgId2 = envRow2?.organizationId ?? secret.environmentId;
-    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, envOrgId2);
+    const dataKeyCiphertext = await loadOrgDataKeyCiphertext(envOrgId2);
     const encryptedValue = await encryptForOrgOrFallback(body.value, {
       orgId: envOrgId2,
       dataKeyCiphertext,

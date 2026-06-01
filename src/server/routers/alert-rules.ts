@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { AlertMetric, AlertCondition } from "@/generated/prisma";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { withAudit } from "@/server/middleware/audit";
 import { isEventMetric } from "@/server/services/event-alerts";
 import { FLEET_METRICS, PIPELINE_FLEET_METRICS } from "@/server/services/alert-evaluator";
@@ -215,7 +216,7 @@ export const alertRulesRouter = router({
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("alertRule.updated", "AlertRule"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const { id, channelIds, keyword, keywordSeverityFilter, keywordWindowMinutes, ...data } = input;
       const existing = await prisma.alertRule.findUnique({
         where: { id },
@@ -255,7 +256,7 @@ export const alertRulesRouter = router({
 
       if (channelIds !== undefined) {
         // Replace all channel links atomically
-        await prisma.$transaction(async (tx) => {
+        await withOrgTx(ctx.organizationId, async (tx) => {
           await tx.alertRuleChannel.deleteMany({
             where: { alertRuleId: id },
           });

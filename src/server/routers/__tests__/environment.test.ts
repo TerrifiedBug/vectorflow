@@ -29,9 +29,7 @@ vi.mock("@/server/middleware/audit", () => ({
     t.middleware(({ next, ctx }: { next: (opts: { ctx: unknown }) => unknown; ctx: unknown }) => next({ ctx })),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/agent-token", () => ({
   generateEnrollmentToken: vi.fn(),
@@ -57,12 +55,14 @@ const adminCaller = t.createCallerFactory(environmentRouter)({
   session: { user: { id: "user-1", email: "admin@test.com" } },
   userRole: "ADMIN",
   teamId: "team-1",
+  organizationId: "org-1",
 });
 
 const editorCaller = t.createCallerFactory(environmentRouter)({
   session: { user: { id: "user-1", email: "editor@test.com" } },
   userRole: "EDITOR",
   teamId: "team-1",
+  organizationId: "org-1",
 });
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -321,7 +321,9 @@ describe("environment router", () => {
       prismaMock.environment.findUnique.mockResolvedValue(
         makeEnvironment({ pipelines: [{ id: "p-1" }, { id: "p-2" }] }) as never,
       );
-      prismaMock.$transaction.mockResolvedValue([{}, {}, {}, {}] as never);
+      prismaMock.$transaction.mockImplementation(async (fn) =>
+        (fn as (tx: unknown) => Promise<unknown>)(prismaMock),
+      );
 
       await adminCaller.delete({ id: "env-1" });
 

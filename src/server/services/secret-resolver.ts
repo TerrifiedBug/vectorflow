@@ -48,7 +48,7 @@ export async function resolveSecretRefs(
     throw new Error(`Environment "${environmentId}" not found`);
   }
 
-  const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, environment.organizationId);
+  const dataKeyCiphertext = await loadOrgDataKeyCiphertext(environment.organizationId);
 
   const secretMap = new Map<string, string>();
   for (const secret of secrets) {

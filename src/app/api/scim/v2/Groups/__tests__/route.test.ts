@@ -4,6 +4,8 @@ import type { PrismaClient } from "@/generated/prisma";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: mockDeep<PrismaClient>(),
+  basePrisma: mockDeep<PrismaClient>(),
+  adminPrisma: mockDeep<PrismaClient>(),
 }));
 
 vi.mock("@/server/services/scim", () => ({
@@ -24,11 +26,12 @@ vi.mock("@/server/services/group-mappings", () => ({
   getScimGroupNamesForUser: vi.fn().mockResolvedValue([]),
 }));
 
-import { prisma } from "@/lib/prisma";
+import { prisma, basePrisma } from "@/lib/prisma";
 import { writeScimAuditLog } from "@/server/services/scim";
 import { POST } from "../route";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
+const basePrismaMock = basePrisma as unknown as DeepMockProxy<PrismaClient>;
 const writeScimAuditLogMock = vi.mocked(writeScimAuditLog);
 
 function scimRequest(body: unknown) {
@@ -41,12 +44,13 @@ function scimRequest(body: unknown) {
 
 beforeEach(() => {
   mockReset(prismaMock);
+  mockReset(basePrismaMock);
   writeScimAuditLogMock.mockClear();
 });
 
 describe("SCIM Groups POST audit status logging", () => {
   it("preserves the group adoption action when POST adoption fails", async () => {
-    prismaMock.$transaction.mockImplementation(async (callback) => {
+    basePrismaMock.$transaction.mockImplementation(async (callback) => {
       const tx = mockDeep<PrismaClient>();
       tx.scimGroup.findUnique.mockResolvedValue({
         id: "group-1",

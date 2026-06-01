@@ -15,9 +15,13 @@ import type { PrismaClient } from "@/generated/prisma";
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => {
+  const client = mockDeep<PrismaClient>();
+  // `authenticateAgentInOrg` resolves the node credential via `adminPrisma`
+  // (a pre-context lookup that must bypass RLS); share one deep mock so the
+  // existing `prismaMock.vectorNode.*` assertions observe those calls.
+  return { prisma: client, adminPrisma: client };
+});
 
 vi.mock("@/lib/logger", () => ({
   warnLog: vi.fn(),

@@ -1,17 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
 
 // Mock dependencies
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    environment: { findMany: vi.fn() },
-    pipeline: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
-    pipelineNode: { create: vi.fn(), deleteMany: vi.fn() },
-    pipelineEdge: { create: vi.fn(), deleteMany: vi.fn() },
-    promotionRequest: { updateMany: vi.fn(), findUnique: vi.fn() },
-    deployRequest: { create: vi.fn() },
-    $transaction: vi.fn(),
-  },
-}));
+vi.mock("@/lib/prisma", () => { const __pm = {
+  environment: { findMany: vi.fn() },
+  pipeline: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+  pipelineNode: { create: vi.fn(), deleteMany: vi.fn() },
+  pipelineEdge: { create: vi.fn(), deleteMany: vi.fn() },
+  promotionRequest: { updateMany: vi.fn(), findUnique: vi.fn() },
+  deployRequest: { create: vi.fn() },
+  $transaction: vi.fn(),
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/crypto", () => ({
   decrypt: vi.fn((val: string) => val),

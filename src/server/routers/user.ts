@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, denyInDemo } from "@/trpc/init";
-import { prisma } from "@/lib/prisma";
+import { prisma, adminPrisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { isOrgWideAdmin } from "@/lib/org-admin";
 import { withAudit } from "@/server/middleware/audit";
@@ -389,7 +389,7 @@ export const userRouter = router({
       // and well under the 320-char RFC limit even with the cuid suffix.
       const anonEmail = `erased+${user.id}@anon.invalid`;
 
-      await prisma.$transaction(async (tx) => {
+      await adminPrisma.$transaction(async (tx) => {
         // Sole-OWNER orphan check — run INSIDE the transaction so a
         // concurrent OrgMember mutation between the check and the
         // OrgMember.deleteMany below cannot orphan an organisation.
@@ -567,7 +567,7 @@ export const userRouter = router({
       // THIS org first; only escalate to full User-row pseudonymisation
       // when the target has no other org memberships left after that.
       // A caller cannot reach into another customer's data.
-      const result = await prisma.$transaction(async (tx) => {
+      const result = await adminPrisma.$transaction(async (tx) => {
         // Codex PR #378 round-2 P1 — serialise concurrent
         // erase/membership writes on the same user. Without the lock
         // a peer org could OrgMember.create the target between our

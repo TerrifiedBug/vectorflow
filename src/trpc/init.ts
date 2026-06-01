@@ -2,12 +2,13 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { headers } from "next/headers";
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { prisma, adminPrisma } from "@/lib/prisma";
 import { isDemoMode } from "@/lib/is-demo-mode";
 import type { Role, OrgMemberRole, PlatformOperatorRole } from "@/generated/prisma";
 import { isOrgWideAdmin } from "@/lib/org-admin";
 import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 import { runWithLogContext } from "@/lib/log-context";
+import { runWithOrgContext } from "@/lib/org-context";
 import { isStrictMultiTenantMode } from "@/lib/security-headers";
 
 /**
@@ -43,7 +44,12 @@ export const createContext = async () => {
   let organizationId: string = DEFAULT_ORG_ID;
   let orgMemberRole: OrgMemberRole | null = null;
   if (session?.user?.id) {
-    const membership = await prisma.orgMember.findFirst({
+    // Resolving the caller's org reads OrgMember (a fenced tenant table)
+    // BEFORE any org scope exists — so it must use the admin connection,
+    // keyed by the authenticated session userId. Under the fenced app role a
+    // scoped read here would return zero rows and collapse every caller to
+    // DEFAULT_ORG_ID.
+    const membership = await adminPrisma.orgMember.findFirst({
       where: {
         userId: session.user.id,
         // Prefer any real org over the OSS default backfill row.
@@ -52,7 +58,7 @@ export const createContext = async () => {
       },
       select: { organizationId: true, role: true },
       orderBy: { createdAt: "desc" },
-    }) ?? await prisma.orgMember.findFirst({
+    }) ?? await adminPrisma.orgMember.findFirst({
       where: { userId: session.user.id },
       select: { organizationId: true, role: true },
     });
@@ -93,12 +99,12 @@ export async function isCallerOrgSuspended(): Promise<{
   // Resolve the caller's org the same way `createContext` does, but
   // without touching the rest of the ctx graph.
   const membership =
-    (await prisma.orgMember.findFirst({
+    (await adminPrisma.orgMember.findFirst({
       where: { userId, NOT: { organizationId: DEFAULT_ORG_ID } },
       select: { organizationId: true },
       orderBy: { createdAt: "desc" },
     })) ??
-    (await prisma.orgMember.findFirst({
+    (await adminPrisma.orgMember.findFirst({
       where: { userId },
       select: { organizationId: true },
     }));
@@ -109,7 +115,7 @@ export async function isCallerOrgSuspended(): Promise<{
     return { suspended: false, deleted: false };
   }
 
-  const org = await prisma.organization.findUnique({
+  const org = await adminPrisma.organization.findUnique({
     where: { id: organizationId },
     select: { suspendedAt: true, deletedAt: true },
   });
@@ -135,9 +141,15 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   if (!ctx.session?.user) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
   }
-  return next({
-    ctx: { session: ctx.session },
-  });
+  // Establish the DB tenancy scope for the entire downstream chain (every
+  // nested authorization middleware AND the handler). Bare `prisma` queries
+  // inside are then auto-scoped to this org by the RLS extension; under the
+  // fenced role an unwrapped path would simply see zero rows.
+  return runWithOrgContext(ctx.organizationId, () =>
+    next({
+      ctx: { session: ctx.session },
+    }),
+  );
 });
 
 export const orgProcedure = protectedProcedure.use(async ({ ctx, next }) => {

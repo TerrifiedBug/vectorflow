@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { prisma } from "@/lib/prisma";
+import { withOrgTxFromContext } from "@/lib/with-org-tx";
 import { collectSecretRefs, convertSecretRefsToEnvVars } from "./secret-resolver";
 import { collectVarRefs } from "@/server/services/variable-resolver";
 import { decryptNodeConfig } from "./config-crypto";
@@ -185,7 +186,7 @@ export async function executePromotion(
   const teamId = request.sourcePipeline.environment.teamId;
 
   // Execute in a transaction: create target pipeline + copy graph + update request
-  const { targetPipelineId } = await prisma.$transaction(async (tx) => {
+  const { targetPipelineId } = await withOrgTxFromContext(async (tx) => {
     // Check for name collision in target environment
     const existing = await tx.pipeline.findFirst({
       where: {

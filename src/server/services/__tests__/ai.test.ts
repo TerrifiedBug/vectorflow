@@ -2,9 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 // `crypto.ts` is mocked with shape-stable stubs so the v2 / v3 wrapper
 // branches resolve deterministically. The wrapper itself stays real so

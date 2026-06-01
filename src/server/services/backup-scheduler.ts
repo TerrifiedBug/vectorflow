@@ -1,5 +1,6 @@
 import cron, { type ScheduledTask } from "node-cron";
-import { prisma } from "@/lib/prisma";
+import { adminPrisma, prisma } from "@/lib/prisma";
+import { runWithOrgContext } from "@/lib/org-context";
 import { getOrgSettings } from "@/lib/org-settings";
 import { debugLog, infoLog, errorLog } from "@/lib/logger";
 import { createBackup, runRetentionCleanup, runOrphanCleanup } from "./backup";
@@ -27,15 +28,17 @@ const scheduledTasks = new Map<string, ScheduledTask>();
 
 /** Initialise scheduler from every active Organization's settings. */
 export async function initBackupScheduler(): Promise<void> {
-  const orgs = await prisma.organization.findMany({
+  const orgs = await adminPrisma.organization.findMany({
     where: { suspendedAt: null, deletedAt: null },
     select: { id: true, slug: true },
   });
   for (const org of orgs) {
-    const settings = await getOrgSettings(org.id);
-    if (settings.backupEnabled && settings.backupCron) {
-      scheduleJobForOrg(org.id, settings.backupCron);
-    }
+    await runWithOrgContext(org.id, async () => {
+      const settings = await getOrgSettings(org.id);
+      if (settings.backupEnabled && settings.backupCron) {
+        scheduleJobForOrg(org.id, settings.backupCron);
+      }
+    });
   }
   infoLog(
     "backup-scheduler",

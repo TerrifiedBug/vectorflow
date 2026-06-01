@@ -1,4 +1,5 @@
-import { prisma } from "@/lib/prisma";
+import { adminPrisma, prisma } from "@/lib/prisma";
+import { runWithOrgContext } from "@/lib/org-context";
 import { debugLog, infoLog, errorLog } from "@/lib/logger";
 import { gitSyncCommitPipeline, gitSyncDeletePipeline } from "@/server/services/git-sync";
 import { fireEventAlert } from "@/server/services/event-alerts";
@@ -71,7 +72,7 @@ export class GitSyncRetryService {
     try {
       let orgs: Array<{ id: string }>;
       try {
-        orgs = await prisma.organization.findMany({
+        orgs = await adminPrisma.organization.findMany({
           where: { suspendedAt: null, deletedAt: null },
           select: { id: true },
         });
@@ -85,7 +86,9 @@ export class GitSyncRetryService {
       }
       for (const org of orgs) {
         try {
-          await this.processRetries({ organizationId: org.id });
+          await runWithOrgContext(org.id, () =>
+            this.processRetries({ organizationId: org.id }),
+          );
         } catch (err) {
           errorLog(
             "git-sync-retry",
@@ -153,7 +156,7 @@ export class GitSyncRetryService {
           continue;
         }
 
-        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, env.organizationId);
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(env.organizationId);
         const config = {
           repoUrl: env.gitRepoUrl,
           branch: env.gitBranch ?? "main",

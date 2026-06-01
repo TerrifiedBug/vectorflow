@@ -9,16 +9,14 @@ const mocks = vi.hoisted(() => ({
   $executeRaw: vi.fn(async () => 1),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    organization: { findUnique: mocks.orgFindUnique },
-    vectorNode: { count: mocks.vectorNodeCount },
-    pipeline: { count: mocks.pipelineCount },
-    environment: { count: mocks.environmentCount },
-    $transaction: mocks.$transaction,
-    $executeRaw: mocks.$executeRaw,
-  },
-}));
+vi.mock("@/lib/prisma", () => { const __pm = {
+  organization: { findUnique: mocks.orgFindUnique },
+  vectorNode: { count: mocks.vectorNodeCount },
+  pipeline: { count: mocks.pipelineCount },
+  environment: { count: mocks.environmentCount },
+  $transaction: mocks.$transaction,
+  $executeRaw: mocks.$executeRaw,
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 import {
   PLAN_QUOTAS,

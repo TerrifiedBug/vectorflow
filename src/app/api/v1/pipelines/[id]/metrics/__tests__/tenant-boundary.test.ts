@@ -3,9 +3,7 @@ import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 import { NextRequest } from "next/server";
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/middleware/api-auth", () => ({
   authenticateApiKey: vi.fn(),
@@ -28,6 +26,7 @@ const CTX = {
   serviceAccountId: "sa-1",
   serviceAccountName: "ci-bot",
   environmentId: "env-1",
+  organizationId: "org-1",
   permissions: ["metrics.read"],
   rateLimit: null,
 };

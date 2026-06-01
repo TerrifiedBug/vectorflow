@@ -8,19 +8,17 @@ const mocks = vi.hoisted(() => ({
   platformAuditChainTailUpsert: vi.fn(),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    $transaction: mocks.$transaction,
-    $executeRaw: mocks.$executeRaw,
-    platformAuditLog: {
-      create: mocks.platformAuditLogCreate,
-    },
-    platformAuditChainTail: {
-      findUnique: mocks.platformAuditChainTailFindUnique,
-      upsert: mocks.platformAuditChainTailUpsert,
-    },
+vi.mock("@/lib/prisma", () => { const __pm = {
+  $transaction: mocks.$transaction,
+  $executeRaw: mocks.$executeRaw,
+  platformAuditLog: {
+    create: mocks.platformAuditLogCreate,
   },
-}));
+  platformAuditChainTail: {
+    findUnique: mocks.platformAuditChainTailFindUnique,
+    upsert: mocks.platformAuditChainTailUpsert,
+  },
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 import {
   writePlatformAuditLog,

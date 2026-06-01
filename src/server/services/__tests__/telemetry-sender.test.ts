@@ -3,9 +3,7 @@ import { mockDeep, type DeepMockProxy } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 
 // Mock prisma using factory (avoids hoisting issues with top-level variables)
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 // Sentry mock — use vi.fn() inside factory, access via vi.mocked() after imports.
 vi.mock("@sentry/nextjs", () => ({

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { withAudit } from "@/server/middleware/audit";
 import { Prisma } from "@/generated/prisma";
 
@@ -51,7 +52,7 @@ export const aiRouter = router({
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.ai_suggestion_applied", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
-      return prisma.$transaction(async (tx) => {
+      return withOrgTx(ctx.organizationId, async (tx) => {
         const message = await tx.aiMessage.findUnique({
           where: { id: input.messageId },
           include: {
@@ -136,7 +137,7 @@ export const aiRouter = router({
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.vrl_ai_suggestion_applied", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
-      return prisma.$transaction(async (tx) => {
+      return withOrgTx(ctx.organizationId, async (tx) => {
         const message = await tx.aiMessage.findUnique({
           where: { id: input.messageId },
           include: {

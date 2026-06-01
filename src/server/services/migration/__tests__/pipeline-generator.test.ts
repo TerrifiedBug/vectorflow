@@ -3,13 +3,11 @@ import type { TranslationResult } from "../types";
 
 // Mock Prisma
 const mockPrismaCreate = vi.fn();
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    pipeline: {
-      create: (...args: unknown[]) => mockPrismaCreate(...args),
-    },
+vi.mock("@/lib/prisma", () => { const __pm = {
+  pipeline: {
+    create: (...args: unknown[]) => mockPrismaCreate(...args),
   },
-}));
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 // Mock nanoid
 vi.mock("nanoid", () => ({

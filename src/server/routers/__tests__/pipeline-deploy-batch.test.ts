@@ -3,9 +3,7 @@ import { mockDeep } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 import { z } from "zod";
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/deploy-agent", () => ({
   deployAgent: vi.fn(),

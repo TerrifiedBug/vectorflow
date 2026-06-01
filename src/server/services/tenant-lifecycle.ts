@@ -32,6 +32,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { writeAuditLog } from "@/server/services/audit";
 import { errorLog } from "@/lib/logger";
 
@@ -72,7 +73,7 @@ export async function requestOrgDeletion(
   by: DeletionRequestor,
 ): Promise<RequestOrgDeletionResult> {
   // Step 1: atomic org update (advisory lock not needed; updateMany CAS is sufficient).
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await withOrgTx(organizationId, async (tx) => {
     // Verify the org exists before attempting the atomic update.
     const org = await tx.organization.findUnique({
       where: { id: organizationId },
@@ -185,7 +186,7 @@ export async function cancelOrgDeletion(
   by: DeletionRequestor,
 ): Promise<CancelOrgDeletionResult> {
   // Step 1: atomic org update.
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await withOrgTx(organizationId, async (tx) => {
     const org = await tx.organization.findUnique({
       where: { id: organizationId },
       select: { id: true, deletedAt: true },

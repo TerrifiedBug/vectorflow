@@ -2,9 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mockDeep, mockReset } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 vi.mock("@/lib/logger", () => ({ debugLog: vi.fn(), infoLog: vi.fn(), errorLog: vi.fn() }));
 
 import { prisma } from "@/lib/prisma";

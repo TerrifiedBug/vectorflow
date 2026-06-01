@@ -28,7 +28,6 @@
  * their IdP at an attacker-controlled discovery endpoint).
  */
 
-import type { PrismaClient } from "@/generated/prisma";
 import { normaliseDomain } from "./domain-claim";
 
 /** Result returned by {@link assertVerifiedDomainForIssuer}. */
@@ -92,7 +91,14 @@ export function hostnameMatchesClaimDomain(
  * TRPCError message.
  */
 export async function assertVerifiedDomainForIssuer(args: {
-  prisma: PrismaClient;
+  prisma: {
+    organizationDomainClaim: {
+      findMany: (a: {
+        where: { organizationId: string; verifiedAt: { not: null } };
+        select: { id: true; domain: true };
+      }) => Promise<Array<{ id: string; domain: string }>>;
+    };
+  };
   organizationId: string;
   issuerUrl: string;
   /**

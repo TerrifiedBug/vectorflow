@@ -138,9 +138,9 @@ export async function warmDekCacheForActiveOrgs(
 // ─── Defaults (lazy so tests can inject without pulling in Prisma) ──────────
 
 async function defaultListOrgs() {
-  const { prisma } = await import("@/lib/prisma");
+  const { adminPrisma } = await import("@/lib/prisma");
   return async () =>
-    prisma.organization.findMany({
+    adminPrisma.organization.findMany({
       where: {
         suspendedAt: null,
         deletedAt: null,

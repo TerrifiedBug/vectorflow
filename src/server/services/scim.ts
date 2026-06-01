@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { writeAuditLog } from "@/server/services/audit";
 import { fireEventAlert } from "./event-alerts";
 import { debugLog } from "@/lib/logger";
@@ -480,7 +481,7 @@ export async function scimDeleteUser(organizationId: string, id: string) {
   debugLog("scim", `DELETE /Users/${id} org=${organizationId}`);
   if (!(await requireOrgMember(organizationId, id))) return null;
   try {
-    await prisma.$transaction(async (tx) => {
+    await withOrgTx(organizationId, async (tx) => {
       // Step 1: clear EVERY team membership for this user on teams owned
       // by the deprovisioning org. `OrgMember.delete` alone is not enough
       // — `withTeamAccess` and the team-based authorisation paths read

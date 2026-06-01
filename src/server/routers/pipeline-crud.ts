@@ -2,7 +2,8 @@ import { join } from "path";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess, requirePlatformOperator } from "@/trpc/init";
-import { prisma } from "@/lib/prisma";
+import { prisma, adminPrisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { Prisma } from "@/generated/prisma";
 
 // Literal enum values for use in Zod schemas where nativeEnum causes
@@ -169,7 +170,7 @@ export const pipelineCrudRouter = router({
     .mutation(async ({ ctx }) => {
       const systemEnv = await getOrCreateSystemEnvironment();
 
-      return prisma.$transaction(async (tx) => {
+      return adminPrisma.$transaction(async (tx) => {
         const existing = await tx.pipeline.findFirst({
           where: { isSystem: true },
         });
@@ -341,7 +342,7 @@ export const pipelineCrudRouter = router({
         const dbUser = user?.id
           ? await prisma.user.findUnique({ where: { id: user.id } })
           : null;
-        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, environment.organizationId);
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(environment.organizationId);
         await gitSyncDeletePipeline(
           {
             repoUrl: environment.gitRepoUrl,
@@ -385,7 +386,7 @@ export const pipelineCrudRouter = router({
         });
       }
 
-      return prisma.$transaction(async (tx) => {
+      return withOrgTx(ctx.organizationId, async (tx) => {
         const cloned = await tx.pipeline.create({
           data: {
             name: `${source.name} (Copy)`,
@@ -462,7 +463,7 @@ export const pipelineCrudRouter = router({
       const userId = ctx.session.user?.id ?? null;
       const { environmentId, pipelines } = input;
 
-      const created = await prisma.$transaction(async (tx) => {
+      const created = await withOrgTx(ctx.organizationId, async (tx) => {
         const results: Array<{ id: string; name: string }> = [];
 
         for (const pipeline of pipelines) {

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { readJsonCapped } from "@/app/api/_lib/read-json-capped";
 import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
+import { runWithOrgContext } from "@/lib/org-context";
+import { withOrgTxFromContext } from "@/lib/with-org-tx";
 import { authenticateAgentInOrg } from "@/server/services/agent-auth";
 import { resolveAgentOrg } from "@/server/services/agent-org-binding";
 import { checkOrgNodeHealth } from "@/server/services/fleet-health";
@@ -138,6 +140,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  return runWithOrgContext(orgResult.orgId, async () => {
   try {
     const read = await readJsonCapped(request);
     if (!read.ok) return read.response;
@@ -238,11 +241,11 @@ export async function POST(request: Request) {
     // Uses a single atomic operation to avoid TOCTOU race with fleet.updateLabels:
     // agent labels are the base, existing DB labels override on top.
     if (parsed.data.labels) {
-      await prisma.$executeRaw`
+      await withOrgTxFromContext(async (tx) => tx.$executeRaw`
         UPDATE "VectorNode"
         SET labels = ${JSON.stringify(parsed.data.labels)}::jsonb || labels
         WHERE id = ${node.id}
-      `;
+      `);
     }
 
     // Read previous snapshots BEFORE upserting so we can compute deltas correctly
@@ -410,16 +413,16 @@ export async function POST(request: Request) {
     }
 
     if (componentLatencyRows.length > 0) {
-      prisma.$transaction([
-        prisma.pipelineMetric.deleteMany({
+      withOrgTxFromContext(async (tx) => {
+        await tx.pipelineMetric.deleteMany({
           where: {
             nodeId: agent.nodeId,
             componentId: { not: null },
             timestamp: minuteTimestamp,
           },
-        }),
-        prisma.pipelineMetric.createMany({ data: componentLatencyRows }),
-      ]).catch((err) => errorLog("agent-heartbeat", "Per-component latency upsert error", err));
+        });
+        await tx.pipelineMetric.createMany({ data: componentLatencyRows });
+      }).catch((err) => errorLog("agent-heartbeat", "Per-component latency upsert error", err));
     }
 
     // Feed per-component metrics into the in-memory MetricStore for editor overlays
@@ -512,4 +515,5 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+  });
 }

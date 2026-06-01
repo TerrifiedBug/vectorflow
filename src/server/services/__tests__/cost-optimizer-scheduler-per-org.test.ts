@@ -41,9 +41,7 @@ vi.mock("node-cron", () => ({
   schedule: mocks.cronSchedule,
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: { organization: { findMany: mocks.findManyOrgs } },
-}));
+vi.mock("@/lib/prisma", () => { const __pm = { organization: { findMany: mocks.findManyOrgs } }; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/cost-optimizer", () => ({
   runCostAnalysis: mocks.runCostAnalysis,

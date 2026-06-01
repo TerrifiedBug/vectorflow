@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { readJsonCapped } from "@/app/api/_lib/read-json-capped";
 import { prisma } from "@/lib/prisma";
+import { runWithOrgContext } from "@/lib/org-context";
 import {
   verifyEnrollmentToken,
   generateNodeToken,
@@ -58,6 +59,7 @@ export async function POST(request: Request) {
     warnLog("enroll", "enrollment via legacy (pre-slug) token — consider regenerating");
   }
 
+  return runWithOrgContext(orgResult.orgId, async () => {
   try {
 
     const { token, hostname, os, agentVersion, vectorVersion, labels: agentLabels } = parsed.data;
@@ -265,4 +267,5 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+  });
 }

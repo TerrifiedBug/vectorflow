@@ -3,7 +3,7 @@ import type { PipelineAggregates } from "@/server/services/cost-optimizer-types"
 import { DEFAULT_THRESHOLDS } from "@/server/services/cost-optimizer-types";
 
 // Mock prisma to prevent env validation from running at import time
-vi.mock("@/lib/prisma", () => ({ prisma: {} }));
+vi.mock("@/lib/prisma", () => { const __pm = {}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 import {
   detectLowReduction,

@@ -46,7 +46,7 @@ vi.mock("next-auth/providers/credentials", () => ({
   default: () => ({ id: "credentials", name: "Credentials" }),
 }));
 vi.mock("@auth/prisma-adapter", () => ({ PrismaAdapter: () => ({}) }));
-vi.mock("@/lib/prisma", () => ({ prisma: mockDeep<PrismaClient>() }));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 vi.mock("@/lib/logger", () => ({
   debugLog: vi.fn(),
   infoLog: vi.fn(),

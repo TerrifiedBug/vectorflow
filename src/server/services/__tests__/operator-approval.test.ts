@@ -16,9 +16,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {},
-}));
+vi.mock("@/lib/prisma", () => { const __pm = {}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 import {
   ApprovalRequestNotFound,

@@ -18,7 +18,7 @@
  * starts with a letter. This shared grammar is what makes
  * `<orgSlug>.vectorflow.sh` and `vf_enroll_<orgSlug>_…` consistent.
  */
-import { prisma } from "@/lib/prisma";
+import { adminPrisma } from "@/lib/prisma";
 import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 import { isValidOrgSlug } from "@/server/services/agent-token";
 
@@ -71,7 +71,9 @@ export async function resolveOrgIdFromHost(
   const slug = extractSlugFromHost(normalizeHost(host));
   if (!slug) return DEFAULT_ORG_ID;
   try {
-    const org = await prisma.organization.findUnique({
+    // Subdomain→org resolution runs before any tenancy scope and reads the
+    // (fenced) Organization table by slug, so it uses the admin connection.
+    const org = await adminPrisma.organization.findUnique({
       where: { slug },
       select: { id: true },
     });
