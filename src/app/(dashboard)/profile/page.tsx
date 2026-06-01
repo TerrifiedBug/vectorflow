@@ -21,7 +21,7 @@ import {
 import { TotpSetupCard } from "@/components/totp-setup-card";
 import { useTeamStore } from "@/stores/team-store";
 import { PageHeader } from "@/components/page-header";
-import { signOut } from "next-auth/react";
+import { signIn, signOut } from "next-auth/react";
 import { isDemoMode } from "@/lib/is-demo-mode";
 import {
   Dialog,
@@ -107,6 +107,33 @@ export default function ProfilePage() {
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deletePassword, setDeletePassword] = useState("");
   const demo = isDemoMode();
+  const [reauthedForErase, setReauthedForErase] = useState(false);
+
+  // OIDC self-erasure requires a fresh re-auth at the IdP — the server trusts
+  // the just-issued session and delegates re-auth to the client (see
+  // user.eraseSelf). After signIn(prompt=login) returns to
+  // /profile?reauth=erase, resume in the confirm phase and strip the marker
+  // so a refresh cannot replay it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("reauth") !== "erase") return;
+    // Resume the OIDC self-erase after the prompt=login redirect. Done in an
+    // effect (not lazy initial state) so the first client render matches the
+    // server and there's no hydration mismatch.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setReauthedForErase(true);
+    setDeleteOpen(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+    window.history.replaceState(null, "", "/profile");
+  }, []);
+
+  function handleReauthForErase() {
+    void signIn(
+      "oidc",
+      { callbackUrl: "/profile?reauth=erase" },
+      { prompt: "login" },
+    );
+  }
 
   const eraseSelfMutation = useMutation(
     trpc.user.eraseSelf.mutationOptions({
@@ -324,29 +351,52 @@ export default function ProfilePage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            {isLocalUser && (
+            {isLocalUser ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="erase-self-password">Current password</Label>
+                  <Input
+                    id="erase-self-password"
+                    type="password"
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    autoComplete="current-password"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="erase-self-confirm">
+                    Type <span className="font-mono">{ERASE_CONFIRM}</span> to confirm
+                  </Label>
+                  <Input
+                    id="erase-self-confirm"
+                    value={deleteConfirm}
+                    onChange={(e) => setDeleteConfirm(e.target.value)}
+                    autoComplete="off"
+                  />
+                </div>
+              </>
+            ) : reauthedForErase ? (
               <div className="space-y-2">
-                <Label htmlFor="erase-self-password">Current password</Label>
+                <p className="text-sm text-muted-foreground">
+                  Re-authenticated. Type the phrase below to permanently erase your
+                  account.
+                </p>
+                <Label htmlFor="erase-self-confirm">
+                  Type <span className="font-mono">{ERASE_CONFIRM}</span> to confirm
+                </Label>
                 <Input
-                  id="erase-self-password"
-                  type="password"
-                  value={deletePassword}
-                  onChange={(e) => setDeletePassword(e.target.value)}
-                  autoComplete="current-password"
+                  id="erase-self-confirm"
+                  value={deleteConfirm}
+                  onChange={(e) => setDeleteConfirm(e.target.value)}
+                  autoComplete="off"
                 />
               </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                For security, you&apos;ll be redirected to your identity provider to
+                re-authenticate before your account can be erased.
+              </p>
             )}
-            <div className="space-y-2">
-              <Label htmlFor="erase-self-confirm">
-                Type <span className="font-mono">{ERASE_CONFIRM}</span> to confirm
-              </Label>
-              <Input
-                id="erase-self-confirm"
-                value={deleteConfirm}
-                onChange={(e) => setDeleteConfirm(e.target.value)}
-                autoComplete="off"
-              />
-            </div>
           </div>
           <DialogFooter>
             <Button
@@ -356,25 +406,31 @@ export default function ProfilePage() {
             >
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              disabled={!eraseValid || eraseSelfMutation.isPending}
-              onClick={() =>
-                eraseSelfMutation.mutate({
-                  confirmation: ERASE_CONFIRM,
-                  currentPassword: isLocalUser ? deletePassword : undefined,
-                })
-              }
-            >
-              {eraseSelfMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Erasing...
-                </>
-              ) : (
-                "Delete my account"
-              )}
-            </Button>
+            {!isLocalUser && !reauthedForErase ? (
+              <Button variant="destructive" onClick={handleReauthForErase}>
+                Re-authenticate to continue
+              </Button>
+            ) : (
+              <Button
+                variant="destructive"
+                disabled={!eraseValid || eraseSelfMutation.isPending}
+                onClick={() =>
+                  eraseSelfMutation.mutate({
+                    confirmation: ERASE_CONFIRM,
+                    currentPassword: isLocalUser ? deletePassword : undefined,
+                  })
+                }
+              >
+                {eraseSelfMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Erasing...
+                  </>
+                ) : (
+                  "Delete my account"
+                )}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
