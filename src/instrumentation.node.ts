@@ -5,6 +5,8 @@ import {
   warnTrustForwardedHostIfOn,
   assertRlsEnforcementBoot,
 } from "@/lib/strict-multi-tenant-bootcheck";
+import { runWithOrgContext } from "@/lib/org-context";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
 export async function registerNodeInstrumentation() {
   // refuse to boot if env signals say this is a strict
@@ -48,34 +50,36 @@ export async function registerNodeInstrumentation() {
   // Start system Vector process if a deployed system pipeline exists.
   // NOTE: System Vector runs on every instance — it's not a singleton service.
   try {
-    const { prisma } = await import("@/lib/prisma");
-    const { startSystemVector } = await import(
-      "@/server/services/system-vector"
-    );
+    await runWithOrgContext(DEFAULT_ORG_ID, async () => {
+      const { prisma } = await import("@/lib/prisma");
+      const { startSystemVector } = await import(
+        "@/server/services/system-vector"
+      );
 
-    // Ensure the system environment has a team (backfill for pre-system-team installs)
-    const { getOrCreateSystemEnvironment } = await import(
-      "@/server/services/system-environment"
-    );
-    await getOrCreateSystemEnvironment();
+      // Ensure the system environment has a team (backfill for pre-system-team installs)
+      const { getOrCreateSystemEnvironment } = await import(
+        "@/server/services/system-environment"
+      );
+      await getOrCreateSystemEnvironment();
 
-    const systemPipeline = await prisma.pipeline.findFirst({
-      where: { isSystem: true, isDraft: false, deployedAt: { not: null } },
-      select: { id: true },
-    });
-
-    if (systemPipeline) {
-      const latestVersion = await prisma.pipelineVersion.findFirst({
-        where: { pipelineId: systemPipeline.id },
-        orderBy: { version: "desc" },
-        select: { configYaml: true },
+      const systemPipeline = await prisma.pipeline.findFirst({
+        where: { isSystem: true, isDraft: false, deployedAt: { not: null } },
+        select: { id: true },
       });
 
-      if (latestVersion?.configYaml) {
-        infoLog("instrumentation", "Starting system Vector process for deployed system pipeline");
-        await startSystemVector(latestVersion.configYaml);
+      if (systemPipeline) {
+        const latestVersion = await prisma.pipelineVersion.findFirst({
+          where: { pipelineId: systemPipeline.id },
+          orderBy: { version: "desc" },
+          select: { configYaml: true },
+        });
+
+        if (latestVersion?.configYaml) {
+          infoLog("instrumentation", "Starting system Vector process for deployed system pipeline");
+          await startSystemVector(latestVersion.configYaml);
+        }
       }
-    }
+    });
   } catch (error) {
     // Startup failure should not prevent the server from booting.
     errorLog("instrumentation", "Failed to start system Vector on boot", error);
@@ -129,7 +133,7 @@ export async function registerNodeInstrumentation() {
       const { seedDlpTemplates } = await import(
         "@/server/services/dlp-template-seed"
       );
-      await seedDlpTemplates();
+      await runWithOrgContext(DEFAULT_ORG_ID, () => seedDlpTemplates());
       infoLog("instrumentation", "DLP templates seeded");
     } catch (error) {
       errorLog("instrumentation", "Failed to seed DLP templates", error);
