@@ -560,13 +560,54 @@ describe("userRouter", () => {
       expect(prismaMock.platformOperator.update).not.toHaveBeenCalled();
     });
 
-    it("OIDC auth skips password confirmation", async () => {
+    it("OIDC erase succeeds with a recent re-auth", async () => {
       setupHappyPath({ authMethod: "OIDC" });
-      const result = await caller.eraseSelf({
+      const reauthedCaller = callerFactory({
+        session: {
+          user: {
+            id: "user-1",
+            email: "test@test.com",
+            name: "Test User",
+            authedAt: Date.now(),
+          },
+        },
+        userRole: "ADMIN",
+        teamId: "team-1",
+      });
+      const result = await reauthedCaller.eraseSelf({
         confirmation: "erase my account",
       });
       expect(result).toEqual({ id: "user-1", erased: true });
       expect(prismaMock.user.update).toHaveBeenCalled();
+    });
+
+    it("OIDC erase rejects without a recent re-auth", async () => {
+      setupHappyPath({ authMethod: "OIDC" });
+      // The shared `caller` session carries no `authedAt`.
+      await expect(
+        caller.eraseSelf({ confirmation: "erase my account" }),
+      ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+      expect(prismaMock.user.update).not.toHaveBeenCalled();
+    });
+
+    it("OIDC erase rejects a stale re-auth (older than the window)", async () => {
+      setupHappyPath({ authMethod: "OIDC" });
+      const staleCaller = callerFactory({
+        session: {
+          user: {
+            id: "user-1",
+            email: "test@test.com",
+            name: "Test User",
+            authedAt: Date.now() - 10 * 60 * 1000,
+          },
+        },
+        userRole: "ADMIN",
+        teamId: "team-1",
+      });
+      await expect(
+        staleCaller.eraseSelf({ confirmation: "erase my account" }),
+      ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+      expect(prismaMock.user.update).not.toHaveBeenCalled();
     });
 
     it("rejects when confirmation literal is missing", async () => {

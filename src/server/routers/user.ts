@@ -383,6 +383,20 @@ export const userRouter = router({
             message: "Current password is incorrect.",
           });
         }
+      } else {
+        // Non-LOCAL (OIDC): there is no password to check, so require a recent
+        // interactive re-auth instead. The client runs signIn(prompt=login)
+        // before erasing; verifying freshness here (not a client-supplied
+        // marker) is what stops a stale / unattended session from erasing the
+        // account. 5-minute window.
+        const authedAt = ctx.session?.user?.authedAt;
+        if (typeof authedAt !== "number" || Date.now() - authedAt > 5 * 60 * 1000) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message:
+              "Please re-authenticate with your identity provider before erasing your account.",
+          });
+        }
       }
 
       // Unguessable placeholder address. Length keeps the row index-able

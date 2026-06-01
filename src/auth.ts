@@ -539,6 +539,10 @@ async function getAuthInstance() {
             }
             if (account) {
               token.provider = account.provider;
+              // Stamp the interactive sign-in time so sensitive mutations can
+              // require a recent re-auth (e.g. OIDC self-erasure). Set only on
+              // a fresh provider sign-in (account present), never on refresh.
+              token.authedAt = Date.now();
             }
             // Cross-org token replay guard (H7). On any request that presents
             // an existing JWT (not a fresh sign-in), verify the org_id claim
@@ -608,6 +612,8 @@ async function getAuthInstance() {
               // (tRPC context, server components) can read it without
               // decoding the JWT themselves.
               session.user.org_id = token.org_id as string;
+              session.user.authedAt =
+                typeof token.authedAt === "number" ? token.authedAt : undefined;
             }
             return session;
           },
