@@ -398,6 +398,29 @@ export default function FleetPage() {
     : "";
   const bulkChecksum = `sha256:${agentChecksums["vf-agent-linux-amd64"] ?? ""}`;
 
+  // Bulk update targets the latest STABLE release for every node, so it must
+  // exclude anything the single-node path would not offer an update for:
+  // dev-channel agents (different release stream), Docker (image-pull, not
+  // binary), unreachable/mid-update nodes, and anything not strictly behind
+  // stable. Without this the backend (which only skips exact-version matches)
+  // would treat a dev or newer agent as eligible and downgrade / cross-channel
+  // it.
+  const bulkEligibleNodeIds = useMemo(() => {
+    if (!latestAgentVersion) return [];
+    return nodes
+      .filter(
+        (node) =>
+          selectedNodeIds.has(node.id) &&
+          node.agentVersion != null &&
+          !node.agentVersion.startsWith("dev-") &&
+          node.deploymentMode !== "DOCKER" &&
+          node.status !== "UNREACHABLE" &&
+          !node.pendingAction &&
+          isVersionOlder(node.agentVersion, latestAgentVersion),
+      )
+      .map((node) => node.id);
+  }, [nodes, selectedNodeIds, latestAgentVersion]);
+
   if (nodesQuery.isError) {
     return (
       <div className="space-y-6">
@@ -469,11 +492,18 @@ export default function FleetPage() {
 
       {selectedNodeIds.size > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-[3px] border border-line bg-bg-2 px-4 py-2">
-          <span className="text-sm font-medium">{selectedNodeIds.size} selected</span>
+          <span className="text-sm font-medium">
+            {selectedNodeIds.size} selected
+            {bulkEligibleNodeIds.length !== selectedNodeIds.size && (
+              <span className="font-normal text-muted-foreground">
+                {" "}· {bulkEligibleNodeIds.length} updatable
+              </span>
+            )}
+          </span>
           <Button
             size="sm"
             variant="primary"
-            disabled={!latestAgentVersion}
+            disabled={!latestAgentVersion || bulkEligibleNodeIds.length === 0}
             onClick={() => setBulkPreviewOpen(true)}
           >
             Update selected
@@ -481,11 +511,20 @@ export default function FleetPage() {
           <Button size="sm" variant="ghost" onClick={() => setSelectedNodeIds(new Set())}>
             Clear
           </Button>
-          {!latestAgentVersion && (
+          {!latestAgentVersion ? (
             <span className="text-xs text-muted-foreground">
               Latest agent version unavailable
             </span>
-          )}
+          ) : bulkEligibleNodeIds.length === 0 ? (
+            <span className="text-xs text-muted-foreground">
+              No selected agent has a stable update available (custom/dev channel,
+              already current, Docker, unreachable, or updating).
+            </span>
+          ) : bulkEligibleNodeIds.length !== selectedNodeIds.size ? (
+            <span className="text-xs text-muted-foreground">
+              Only stable-channel agents behind {latestAgentVersion} will be updated.
+            </span>
+          ) : null}
         </div>
       )}
 
@@ -863,7 +902,7 @@ export default function FleetPage() {
         open={bulkPreviewOpen}
         onOpenChange={setBulkPreviewOpen}
         environmentId={activeEnvId}
-        nodeIds={[...selectedNodeIds]}
+        nodeIds={bulkEligibleNodeIds}
         targetVersion={latestAgentVersion}
         downloadUrl={bulkDownloadUrl}
         checksum={bulkChecksum}

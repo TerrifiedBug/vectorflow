@@ -48,12 +48,12 @@ const JUSTIFICATIONS: Justification[] = [
     mustContain: ["teamRole", "teamMember.findUnique"],
   },
 
-  // audit.list / audit.deployments / audit.exportDeployments enforce
+  // audit.list / audit.deployments / audit.exportDeployments / audit.exportAuditLog enforce
   // tenancy via getAuditScope(userId) + pushAuditScope(conditions) — a
   // custom scoping helper that injects accessible (teamId, environmentId)
   // pairs into the Prisma WHERE.
   {
-    procedure: "audit.list / deployments / exportDeployments",
+    procedure: "audit.list / deployments / exportDeployments / exportAuditLog",
     file: "src/server/routers/audit.ts",
     mustContain: ["getAuditScope", "pushAuditScope"],
   },
