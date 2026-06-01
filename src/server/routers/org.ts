@@ -375,18 +375,34 @@ export const orgRouter = router({
           message: "Listing domain claims requires an org OWNER or ADMIN.",
         });
       }
-      return prisma.organizationDomainClaim.findMany({
+      const claims = await prisma.organizationDomainClaim.findMany({
         where: { organizationId: ctx.organizationId },
         orderBy: { createdAt: "desc" },
         select: {
           id: true,
           domain: true,
+          verificationToken: true,
           verifiedAt: true,
           lastCheckedAt: true,
           lastCheckError: true,
           createdAt: true,
         },
       });
+      // Expose the DNS-TXT instructions for still-pending claims so the
+      // claimant can finish verification after a reload / on another device
+      // without re-claiming (which rotates the token and invalidates any
+      // record they already published). The token IS the public DNS value,
+      // so surfacing it to an org OWNER/ADMIN is not a secret leak.
+      return claims.map(({ verificationToken, ...claim }) => ({
+        ...claim,
+        instructions: claim.verifiedAt
+          ? null
+          : {
+              host: `${DNS_VERIFICATION_PREFIX}.${claim.domain}`,
+              type: "TXT" as const,
+              value: `${TXT_VALUE_PREFIX}${verificationToken}`,
+            },
+      }));
     }),
 
   /**

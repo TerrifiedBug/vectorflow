@@ -11,6 +11,7 @@ import { FleetKpiCards } from "@/components/fleet/fleet-kpi-cards";
 import { FleetVolumeChart } from "@/components/fleet/fleet-volume-chart";
 import { FleetThroughputChart } from "@/components/fleet/fleet-throughput-chart";
 import { FleetCapacityChart } from "@/components/fleet/fleet-capacity-chart";
+import { FleetCpuHeatmap } from "@/components/fleet/fleet-cpu-heatmap";
 import { DataLossTable } from "@/components/fleet/data-loss-table";
 import { DeploymentMatrix } from "@/components/fleet/deployment-matrix";
 import { DeploymentMatrixToolbar } from "@/components/fleet/DeploymentMatrixToolbar";
@@ -76,6 +77,15 @@ export default function FleetOverviewPage() {
 
   const nodeCapacity = useQuery({
     ...trpc.fleet.nodeCapacity.queryOptions({
+      environmentId: selectedEnvironmentId ?? "",
+      range,
+    }),
+    enabled: !!selectedEnvironmentId,
+    refetchInterval: polling,
+  });
+
+  const cpuHeatmap = useQuery({
+    ...trpc.fleet.cpuHeatmap.queryOptions({
       environmentId: selectedEnvironmentId ?? "",
       range,
     }),
@@ -239,6 +249,12 @@ export default function FleetOverviewPage() {
       <FleetCapacityChart
         data={nodeCapacity.data}
         isLoading={nodeCapacity.isLoading}
+        range={range}
+      />
+
+      <FleetCpuHeatmap
+        data={cpuHeatmap.data}
+        isLoading={cpuHeatmap.isLoading}
         range={range}
       />
 

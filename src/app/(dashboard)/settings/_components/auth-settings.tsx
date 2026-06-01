@@ -50,6 +50,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { DemoDisabledBadge, DemoDisabledFieldset } from "@/components/demo-disabled";
+import { DomainClaimsCard } from "./domain-claims-card";
 
 // ─── Auth Tab ──────────────────────────────────────────────────────────────────
 
@@ -232,19 +233,22 @@ export function AuthSettings() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [isDirty]);
 
-  if (settingsQuery.isError) return <QueryError message="Failed to load auth settings" onRetry={() => settingsQuery.refetch()} />;
 
-  if (settingsQuery.isLoading) {
-    return (
+  return (
+    <div className="space-y-6">
+    <DomainClaimsCard />
+    {settingsQuery.isError ? (
+      <QueryError
+        message="Failed to load auth settings"
+        onRetry={() => settingsQuery.refetch()}
+      />
+    ) : settingsQuery.isLoading ? (
       <div className="space-y-4">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-32 w-full" />
       </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
+    ) : (
+      <>
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
@@ -277,6 +281,11 @@ export function AuthSettings() {
             />
             <p className="text-xs text-muted-foreground">
               The OIDC issuer URL (must support .well-known/openid-configuration)
+            </p>
+            <p className="text-xs text-muted-foreground">
+              The issuer hostname must be covered by a verified domain claim
+              (see <span className="font-medium">Domain claims</span> above)
+              before these settings can be saved.
             </p>
             {touched.issuer && fieldErrors.issuer && (
               <p className="text-xs text-destructive mt-1">{fieldErrors.issuer}</p>
@@ -639,6 +648,8 @@ export function AuthSettings() {
        </DemoDisabledFieldset>
       </CardContent>
     </Card>
+      </>
+    )}
     </div>
   );
 }

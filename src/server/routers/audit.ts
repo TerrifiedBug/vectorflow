@@ -652,7 +652,13 @@ export const auditRouter = router({
       return { items: enrichedItems };
     }),
 
-  /** Export audit log entries — same filters as list but returns all records (up to 10,000), no cursor */
+  /**
+   * Export audit log entries — same filters as list but returns all records
+   * (up to 10,000), no cursor. Authorization mirrors `list`/`exportChain`:
+   * a plain session scoped by `getAuditScope`, so it works on the default
+   * org-wide view (no team/environment selected). It exposes nothing the
+   * paginated `list` does not.
+   */
   exportAuditLog: protectedProcedure
     .input(
       z.object({
@@ -666,7 +672,6 @@ export const auditRouter = router({
         endDate: z.string().optional(),
       })
     )
-    .use(withTeamAccess("ADMIN"))
     .query(async ({ input, ctx }) => {
       const userIdFromSession = ctx.session?.user?.id;
       const scope = await getAuditScope(userIdFromSession, ctx.organizationId);

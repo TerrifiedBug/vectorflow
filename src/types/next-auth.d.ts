@@ -10,6 +10,12 @@ declare module "next-auth" {
        * middleware contexts (auth.ts + auth.config.ts).
        */
       org_id: string;
+      /**
+       * Epoch millis of the last interactive sign-in (set by the jwt callback
+       * when an account is present). Lets sensitive mutations — e.g. OIDC
+       * self-erasure — require a recent re-authentication.
+       */
+      authedAt?: number;
     } & DefaultSession["user"];
   }
 }

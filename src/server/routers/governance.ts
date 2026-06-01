@@ -8,7 +8,6 @@ import {
   summarizeGovernancePosture,
 } from "@/server/services/governance";
 import { getOrgSettings } from "@/lib/org-settings";
-import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
 const sinkPolicySchema = z.object({
   allowedSinkTypes: z.array(z.string().min(1)).optional(),
@@ -19,7 +18,7 @@ export const governanceRouter = router({
   report: protectedProcedure
     .input(z.object({ teamId: z.string() }))
     .use(withTeamAccess("VIEWER"))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const [pipelines, settings, auditLogCount, auditShippingPipeline, teamMembers] = await Promise.all([
         prisma.pipeline.findMany({
           where: { environment: { teamId: input.teamId } },
@@ -46,10 +45,10 @@ export const governanceRouter = router({
           },
           orderBy: { updatedAt: "desc" },
         }),
-        getOrgSettings(DEFAULT_ORG_ID),
+        getOrgSettings(ctx.organizationId),
         prisma.auditLog.count({ where: { teamId: input.teamId } }),
         prisma.pipeline.findFirst({
-          where: { isSystem: true, isDraft: false, deployedAt: { not: null } },
+          where: { isSystem: true, isDraft: false, deployedAt: { not: null }, organizationId: ctx.organizationId },
           select: { id: true },
         }),
         prisma.teamMember.findMany({

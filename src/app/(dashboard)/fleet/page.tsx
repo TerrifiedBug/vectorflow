@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/popover";
 import { Tag, Wrench } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { formatLastSeen } from "@/lib/format";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
@@ -39,6 +40,7 @@ import { toast } from "sonner";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { FleetListToolbar } from "@/components/fleet/fleet-list-toolbar";
+import { AgentUpgradePreviewDialog } from "@/components/fleet/agent-upgrade-preview-dialog";
 import { ArrowUp, ArrowDown } from "lucide-react";
 import { useFleetListFilters } from "@/hooks/use-fleet-list-filters";
 import { useAgentUpdateTracker } from "@/hooks/use-agent-update-tracker";
@@ -348,6 +350,77 @@ export default function FleetPage() {
     checksum: string;
   } | null>(null);
 
+  const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
+  const [bulkPreviewOpen, setBulkPreviewOpen] = useState(false);
+
+  // Selections never span environments.
+  useEffect(() => {
+    setSelectedNodeIds(new Set());
+  }, [activeEnvId]);
+
+  const toggleNodeSelection = useCallback((id: string) => {
+    setSelectedNodeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedNodeIds((prev) => {
+      const next = new Set(prev);
+      const everySelected = nodes.length > 0 && nodes.every((node) => next.has(node.id));
+      for (const node of nodes) {
+        if (everySelected) next.delete(node.id);
+        else next.add(node.id);
+      }
+      return next;
+    });
+  }, [nodes]);
+
+  const selectedInFilter = useMemo(() => {
+    let count = 0;
+    for (const node of nodes) if (selectedNodeIds.has(node.id)) count++;
+    return count;
+  }, [nodes, selectedNodeIds]);
+
+  const headerChecked: boolean | "indeterminate" =
+    nodes.length > 0 && selectedInFilter === nodes.length
+      ? true
+      : selectedInFilter > 0
+        ? "indeterminate"
+        : false;
+
+  const stableAgentTag = latestAgentVersion ? `v${latestAgentVersion}` : null;
+  const bulkDownloadUrl = stableAgentTag
+    ? `https://github.com/${AGENT_REPO}/releases/download/${stableAgentTag}/vf-agent-linux-amd64`
+    : "";
+  const bulkChecksum = `sha256:${agentChecksums["vf-agent-linux-amd64"] ?? ""}`;
+
+  // Bulk update targets the latest STABLE release for every node, so it must
+  // exclude anything the single-node path would not offer an update for:
+  // dev-channel agents (different release stream), Docker (image-pull, not
+  // binary), unreachable/mid-update nodes, and anything not strictly behind
+  // stable. Without this the backend (which only skips exact-version matches)
+  // would treat a dev or newer agent as eligible and downgrade / cross-channel
+  // it.
+  const bulkEligibleNodeIds = useMemo(() => {
+    if (!latestAgentVersion) return [];
+    return nodes
+      .filter(
+        (node) =>
+          selectedNodeIds.has(node.id) &&
+          node.agentVersion != null &&
+          !node.agentVersion.startsWith("dev-") &&
+          node.deploymentMode !== "DOCKER" &&
+          node.status !== "UNREACHABLE" &&
+          !node.pendingAction &&
+          isVersionOlder(node.agentVersion, latestAgentVersion),
+      )
+      .map((node) => node.id);
+  }, [nodes, selectedNodeIds, latestAgentVersion]);
+
   if (nodesQuery.isError) {
     return (
       <div className="space-y-6">
@@ -417,6 +490,44 @@ export default function FleetPage() {
         />
       )}
 
+      {selectedNodeIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-[3px] border border-line bg-bg-2 px-4 py-2">
+          <span className="text-sm font-medium">
+            {selectedNodeIds.size} selected
+            {bulkEligibleNodeIds.length !== selectedNodeIds.size && (
+              <span className="font-normal text-muted-foreground">
+                {" "}· {bulkEligibleNodeIds.length} updatable
+              </span>
+            )}
+          </span>
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={!latestAgentVersion || bulkEligibleNodeIds.length === 0}
+            onClick={() => setBulkPreviewOpen(true)}
+          >
+            Update selected
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelectedNodeIds(new Set())}>
+            Clear
+          </Button>
+          {!latestAgentVersion ? (
+            <span className="text-xs text-muted-foreground">
+              Latest agent version unavailable
+            </span>
+          ) : bulkEligibleNodeIds.length === 0 ? (
+            <span className="text-xs text-muted-foreground">
+              No selected agent has a stable update available (custom/dev channel,
+              already current, Docker, unreachable, or updating).
+            </span>
+          ) : bulkEligibleNodeIds.length !== selectedNodeIds.size ? (
+            <span className="text-xs text-muted-foreground">
+              Only stable-channel agents behind {latestAgentVersion} will be updated.
+            </span>
+          ) : null}
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -447,6 +558,13 @@ export default function FleetPage() {
         <Table density="dense">
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[40px]">
+                <Checkbox
+                  checked={headerChecked}
+                  onCheckedChange={toggleSelectAll}
+                  aria-label="Select all agents"
+                />
+              </TableHead>
               <TableHead>
                 <button
                   type="button"
@@ -492,11 +610,18 @@ export default function FleetPage() {
           <StaggerList as="tbody" className="[&_tr:last-child]:border-0">
             {topPadding > 0 && (
               <tr aria-hidden="true">
-                <td colSpan={10} style={{ height: topPadding }} />
+                <td colSpan={11} style={{ height: topPadding }} />
               </tr>
             )}
             {visibleNodes.map((node) => (
               <StaggerItem as="tr" key={node.id} className="hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors cursor-pointer">
+                <TableCell className="w-[40px]" onClick={(e) => e.stopPropagation()}>
+                  <Checkbox
+                    checked={selectedNodeIds.has(node.id)}
+                    onCheckedChange={() => toggleNodeSelection(node.id)}
+                    aria-label={`Select ${node.name}`}
+                  />
+                </TableCell>
                 <TableCell className="font-medium">
                   <Link
                     href={`/fleet/${node.id}`}
@@ -684,7 +809,7 @@ export default function FleetPage() {
             ))}
             {bottomPadding > 0 && (
               <tr aria-hidden="true">
-                <td colSpan={10} style={{ height: bottomPadding }} />
+                <td colSpan={11} style={{ height: bottomPadding }} />
               </tr>
             )}
           </StaggerList>
@@ -771,6 +896,17 @@ export default function FleetPage() {
             );
           }
         }}
+      />
+
+      <AgentUpgradePreviewDialog
+        open={bulkPreviewOpen}
+        onOpenChange={setBulkPreviewOpen}
+        environmentId={activeEnvId}
+        nodeIds={bulkEligibleNodeIds}
+        targetVersion={latestAgentVersion}
+        downloadUrl={bulkDownloadUrl}
+        checksum={bulkChecksum}
+        onCompleted={() => setSelectedNodeIds(new Set())}
       />
 
       </div>
