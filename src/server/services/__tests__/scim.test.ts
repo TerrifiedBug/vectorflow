@@ -25,6 +25,7 @@ import {
   scimDeleteUser,
   scimGetUser,
   scimListUsers,
+  ScimProtectedMemberError,
 } from "@/server/services/scim";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
@@ -220,6 +221,89 @@ describe("SCIM cross-tenant isolation", () => {
     prismaMock.orgMember.findUnique.mockResolvedValue(null);
     const result = await scimDeleteUser("org-A", "user-from-org-B");
     expect(result).toBeNull();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("SCIM/local coexistence", () => {
+  it("tags SCIM-provisioned memberships with provisionedVia=SCIM", async () => {
+    prismaMock.user.findUnique.mockResolvedValue(null);
+    prismaMock.user.create.mockResolvedValue({
+      id: "user-1",
+      email: "ada@example.com",
+      name: "Ada",
+      scimExternalId: "ext-1",
+      lockedAt: null,
+    } as never);
+
+    await scimCreateUser("org-1", {
+      schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"],
+      userName: "ada@example.com",
+      externalId: "ext-1",
+      emails: [{ value: "ada@example.com", primary: true, type: "work" }],
+    });
+
+    expect(prismaMock.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          orgMemberships: {
+            create: expect.objectContaining({
+              organizationId: "org-1",
+              role: "MEMBER",
+              provisionedVia: "SCIM",
+            }),
+          },
+        }),
+      }),
+    );
+  });
+
+  it("refuses to deprovision a LOCAL member and leaves the row intact", async () => {
+    prismaMock.orgMember.findUnique.mockResolvedValue({
+      role: "MEMBER",
+      provisionedVia: "LOCAL",
+    } as never);
+
+    const err = await scimDeleteUser("org-1", "local-user").catch((e) => e);
+    expect(err).toBeInstanceOf(ScimProtectedMemberError);
+    expect(err.reason).toBe("local_member");
+    expect(prismaMock.orgMember.delete).not.toHaveBeenCalled();
+  });
+
+  it("refuses to deprovision the OWNER even when SCIM-provisioned", async () => {
+    prismaMock.orgMember.findUnique.mockResolvedValue({
+      role: "OWNER",
+      provisionedVia: "SCIM",
+    } as never);
+
+    const err = await scimDeleteUser("org-1", "owner-user").catch((e) => e);
+    expect(err).toBeInstanceOf(ScimProtectedMemberError);
+    expect(err.reason).toBe("owner");
+    expect(prismaMock.orgMember.delete).not.toHaveBeenCalled();
+  });
+
+  it("deprovisions a SCIM-provisioned non-owner member", async () => {
+    prismaMock.orgMember.findUnique.mockResolvedValue({
+      role: "MEMBER",
+      provisionedVia: "SCIM",
+    } as never);
+    // withOrgTx runs its callback against the (mocked) transaction client.
+    prismaMock.$transaction.mockImplementation(
+      (async (cb: (tx: typeof prismaMock) => unknown) => cb(prismaMock)) as never,
+    );
+    prismaMock.teamMember.deleteMany.mockResolvedValue({ count: 0 } as never);
+    prismaMock.orgMember.delete.mockResolvedValue({} as never);
+    prismaMock.orgMember.count.mockResolvedValue(1 as never);
+
+    const result = await scimDeleteUser("org-1", "scim-user");
+
+    expect(result).toEqual({ ok: true });
+    expect(prismaMock.orgMember.delete).toHaveBeenCalledWith({
+      where: {
+        userId_organizationId: { userId: "scim-user", organizationId: "org-1" },
+      },
+    });
+    // Still a member of another org (count=1) → global user is NOT locked.
     expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 });
