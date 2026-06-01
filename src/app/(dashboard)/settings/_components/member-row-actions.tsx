@@ -88,14 +88,20 @@ export function MemberRowActions({
 
   const eraseMutation = useMutation(
     trpc.user.eraseUser.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (data) => {
         queryClient.invalidateQueries({
           queryKey: trpc.org.listMembers.queryKey(),
         });
         setEraseOpen(false);
         setEraseReason("");
         setEraseConfirm("");
-        toast.success(`${label}'s account was erased.`);
+        if (data.erasureScope === "this_org_only") {
+          toast.success(
+            `${label} was removed from this organisation. Their account stays active in ${data.remainingOrgMemberships} other organisation${data.remainingOrgMemberships === 1 ? "" : "s"} — no personal data was erased.`,
+          );
+        } else {
+          toast.success(`${label}'s account was permanently erased.`);
+        }
       },
       onError: (error) =>
         toast.error(error.message || "Failed to erase account", {

@@ -132,6 +132,19 @@ export function FleetDriftReport({ environmentId }: FleetDriftReportProps) {
 
   const { summary, nodes } = report;
 
+  // The report compares every agent against the latest STABLE version, so the
+  // server marks dev-channel agents (a separate release stream) as "current".
+  // Re-bucket them client-side so they don't inflate the stable drift counts
+  // or show a misleading "Current" posture.
+  const isDevChannel = (v: string | null | undefined) => !!v?.startsWith("dev-");
+  const devChannelCount = nodes.filter((n) => isDevChannel(n.agentVersion)).length;
+  const stableNodes = nodes.filter((n) => !isDevChannel(n.agentVersion));
+  const driftCounts = {
+    behind: stableNodes.filter((n) => n.drift === "behind").length,
+    current: stableNodes.filter((n) => n.drift === "current").length,
+    unknown: stableNodes.filter((n) => n.drift === "unknown").length,
+  };
+
   return (
     <div className="space-y-4">
       <Card>
@@ -140,6 +153,9 @@ export function FleetDriftReport({ environmentId }: FleetDriftReportProps) {
           <CardDescription>
             Target agent version{" "}
             <span className="font-mono tabular-nums text-fg">{report.targetVersion}</span>
+            {devChannelCount > 0 && (
+              <> — dev-channel agents track the dev release and are listed separately.</>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -148,9 +164,12 @@ export function FleetDriftReport({ environmentId }: FleetDriftReportProps) {
           ) : (
             <div className="flex flex-wrap gap-3">
               <SummaryStat label="Total" value={summary.total} variant="neutral" />
-              <SummaryStat label="Behind" value={summary.behind} variant={driftVariant.behind} />
-              <SummaryStat label="Current" value={summary.current} variant={driftVariant.current} />
-              <SummaryStat label="Unknown" value={summary.unknown} variant={driftVariant.unknown} />
+              <SummaryStat label="Behind" value={driftCounts.behind} variant={driftVariant.behind} />
+              <SummaryStat label="Current" value={driftCounts.current} variant={driftVariant.current} />
+              <SummaryStat label="Unknown" value={driftCounts.unknown} variant={driftVariant.unknown} />
+              {devChannelCount > 0 && (
+                <SummaryStat label="Dev channel" value={devChannelCount} variant="info" />
+              )}
               <SummaryStat label="Docker" value={summary.docker} variant="info" />
             </div>
           )}
@@ -202,9 +221,13 @@ export function FleetDriftReport({ environmentId }: FleetDriftReportProps) {
                       {node.agentVersion ?? "—"}
                     </TableCell>
                     <TableCell>
-                      <StatusBadge variant={driftVariant[node.drift]}>
-                        {driftLabel[node.drift]}
-                      </StatusBadge>
+                      {isDevChannel(node.agentVersion) ? (
+                        <StatusBadge variant="info">Dev channel</StatusBadge>
+                      ) : (
+                        <StatusBadge variant={driftVariant[node.drift]}>
+                          {driftLabel[node.drift]}
+                        </StatusBadge>
+                      )}
                     </TableCell>
                     <TableCell className="text-center">
                       {node.autoUpdateEligible ? (

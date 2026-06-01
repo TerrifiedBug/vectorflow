@@ -233,20 +233,22 @@ export function AuthSettings() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [isDirty]);
 
-  if (settingsQuery.isError) return <QueryError message="Failed to load auth settings" onRetry={() => settingsQuery.refetch()} />;
-
-  if (settingsQuery.isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-32 w-full" />
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
     <DomainClaimsCard />
+    {settingsQuery.isError ? (
+      <QueryError
+        message="Failed to load auth settings"
+        onRetry={() => settingsQuery.refetch()}
+      />
+    ) : settingsQuery.isLoading ? (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-32 w-full" />
+      </div>
+    ) : (
+      <>
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
@@ -646,6 +648,8 @@ export function AuthSettings() {
        </DemoDisabledFieldset>
       </CardContent>
     </Card>
+      </>
+    )}
     </div>
   );
 }
