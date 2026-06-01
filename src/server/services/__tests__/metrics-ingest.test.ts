@@ -687,14 +687,17 @@ describe("MetricStore memory at target scale", () => {
       if (result != null) samplesStored++;
     }
 
-    vi.useRealTimers();
-
     // 801 calls total, first returns null → 800 samples produced
     expect(samplesStored).toBe(800);
 
-    // But the ring buffer should cap at 720 (MAX_SAMPLES)
+    // Ring buffer caps at 720. Query while fake timers are STILL active so the
+    // retrieval window is relative to the frozen clock. Switching to real
+    // timers first made the fixed 2025-06-01 sample timestamps fall outside the
+    // 365-day window once the wall clock passed 2026-06-01 — a latent time bomb.
     const retrieved = store.getSamples(nodeId, pipelineId, componentId, 60 * 24 * 365);
     expect(retrieved.length).toBe(720);
+
+    vi.useRealTimers();
   });
 
   it("memory estimate for 500 pipelines × 5 components × 720 samples stays under 250 MB", () => {

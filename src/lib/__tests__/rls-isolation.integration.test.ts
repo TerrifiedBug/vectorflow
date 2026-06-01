@@ -34,6 +34,8 @@ interface ScopedClient {
     findMany(args?: Prisma.OrganizationFindManyArgs): Promise<Array<{ id: string }>>;
     findUnique(args: Prisma.OrganizationFindUniqueArgs): Promise<{ id: string } | null>;
   };
+  $queryRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
+  $queryRawUnsafe<T = unknown>(query: string, ...values: unknown[]): Promise<T>;
 }
 
 (ENABLED ? describe : describe.skip)("RLS isolation (integration)", () => {
@@ -149,5 +151,40 @@ interface ScopedClient {
       where: { id: { in: [ORG_A, ORG_B] } },
     });
     expect(unscoped).toEqual([]);
+  });
+
+  it("scopes RAW $queryRaw against fenced tables (the metrics-query/fleet-data case)", async () => {
+    // Raw SQL that reads a fenced table directly — mirrors metrics-query.ts
+    // joining "Pipeline" and fleet-data.ts reading "VectorNode". Under the
+    // fenced role this returns rows only when the extension set app.org_id.
+    const a = await runWithOrgContext(ORG_A, () =>
+      prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Team" WHERE id IN ('it-team-a1', 'it-team-a2', 'it-team-b1') ORDER BY id
+      `,
+    );
+    expect(a.map((r) => r.id)).toEqual(["it-team-a1", "it-team-a2"]);
+
+    const b = await runWithOrgContext(ORG_B, () =>
+      prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Team" WHERE id IN ('it-team-a1', 'it-team-a2', 'it-team-b1')
+      `,
+    );
+    expect(b.map((r) => r.id)).toEqual(["it-team-b1"]);
+
+    // $queryRawUnsafe (positional args) is the exact API metrics-query.ts uses.
+    const aUnsafe = await runWithOrgContext(ORG_A, () =>
+      prisma.$queryRawUnsafe<Array<{ id: string }>>(
+        `SELECT id FROM "Team" WHERE id = ANY($1::text[]) ORDER BY id`,
+        ["it-team-a1", "it-team-a2", "it-team-b1"],
+      ),
+    );
+    expect(aUnsafe.map((r) => r.id)).toEqual(["it-team-a1", "it-team-a2"]);
+  });
+
+  it("returns zero rows for a RAW read of a fenced table with NO context", async () => {
+    const none = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Team" WHERE id IN ('it-team-a1', 'it-team-a2', 'it-team-b1')
+    `;
+    expect(none).toEqual([]);
   });
 });
