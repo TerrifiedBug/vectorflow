@@ -93,33 +93,53 @@ async function getOidcSettings(orgIdOverride?: string) {
   try {
     const orgId =
       orgIdOverride ?? (await resolveOrgIdFromHost(await getRequestHost()));
-    const settings = await getOrgSettings(orgId);
-    if (settings?.oidcIssuer && settings?.oidcClientId && settings?.oidcClientSecret) {
-      let clientSecret: string;
-      try {
-        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(orgId);
-        clientSecret = await decryptForOrgOrFallback(settings.oidcClientSecret, {
-          orgId,
-          dataKeyCiphertext,
-          domain: ENCRYPTION_DOMAINS.GENERIC,
-          rowTable: "OrganizationSettings",
-          rowId: settings.id,
-        });
-      } catch {
-        return null;
+    // These reads hit RLS-fenced tables (OrganizationSettings, and the
+    // Organization DEK ciphertext). getOidcSettings runs PRE-AUTH — e.g. the
+    // login page probing OIDC status to decide whether to render the "Sign in
+    // with SSO" button — so there is no ambient org scope. Without one, the
+    // fenced read returns nothing, the org looks SSO-less, the button is hidden
+    // and magic-link sign-in dead-ends on a phantom "use the SSO button". orgId
+    // was resolved on the admin connection (host→org) above; resolve the
+    // settings within that org's context so the fenced reads see its own rows.
+    // Mirrors the OIDC signIn callback's runWithOrgContext below.
+    return await runWithOrgContext(orgId, async () => {
+      const settings = await getOrgSettings(orgId);
+      if (
+        settings?.oidcIssuer &&
+        settings?.oidcClientId &&
+        settings?.oidcClientSecret
+      ) {
+        let clientSecret: string;
+        try {
+          const dataKeyCiphertext = await loadOrgDataKeyCiphertext(orgId);
+          clientSecret = await decryptForOrgOrFallback(
+            settings.oidcClientSecret,
+            {
+              orgId,
+              dataKeyCiphertext,
+              domain: ENCRYPTION_DOMAINS.GENERIC,
+              rowTable: "OrganizationSettings",
+              rowId: settings.id,
+            },
+          );
+        } catch {
+          return null;
+        }
+        return {
+          issuer: settings.oidcIssuer,
+          clientId: settings.oidcClientId,
+          clientSecret,
+          displayName: settings.oidcDisplayName ?? "SSO",
+          tokenEndpointAuthMethod:
+            settings.oidcTokenEndpointAuthMethod ?? "client_secret_post",
+          groupSyncEnabled: settings.oidcGroupSyncEnabled,
+          groupsScope: settings.oidcGroupsScope,
+          groupsClaim: settings.oidcGroupsClaim ?? "groups",
+          organizationId: orgId,
+        };
       }
-      return {
-        issuer: settings.oidcIssuer,
-        clientId: settings.oidcClientId,
-        clientSecret,
-        displayName: settings.oidcDisplayName ?? "SSO",
-        tokenEndpointAuthMethod: settings.oidcTokenEndpointAuthMethod ?? "client_secret_post",
-        groupSyncEnabled: settings.oidcGroupSyncEnabled,
-        groupsScope: settings.oidcGroupsScope,
-        groupsClaim: settings.oidcGroupsClaim ?? "groups",
-        organizationId: orgId,
-      };
-    }
+      return null;
+    });
   } catch {
     // Database may not be available yet (e.g., during build)
   }
