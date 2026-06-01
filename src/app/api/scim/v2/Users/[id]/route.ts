@@ -62,6 +62,10 @@ export async function PUT(
       if (!user) return scimError("User not found", 404);
       return NextResponse.json(user);
     } catch (error) {
+      // Coexistence policy refusal (local member / owner) — 403, no sync alert.
+      if (error instanceof ScimProtectedMemberError) {
+        return scimError(error.message, 403);
+      }
       const message =
         error instanceof Error ? error.message : "Failed to update user";
       void fireScimSyncFailedAlert(message);
@@ -94,6 +98,10 @@ export async function PATCH(
       }
       return NextResponse.json(user);
     } catch (error) {
+      // Coexistence policy refusal (local member / owner) — 403, no sync alert.
+      if (error instanceof ScimProtectedMemberError) {
+        return scimError(error.message, 403);
+      }
       const message =
         error instanceof Error ? error.message : "Failed to patch user";
       void fireScimSyncFailedAlert(message);
