@@ -74,11 +74,9 @@ vi.mock("@/server/services/anomaly-detection-job", () => ({
 }));
 
 // Mock prisma and other dependencies used by register()
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    pipeline: { findFirst: vi.fn(async () => null) },
-  },
-}));
+vi.mock("@/lib/prisma", () => { const __pm = {
+  pipeline: { findFirst: vi.fn(async () => null) },
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/system-vector", () => ({
   startSystemVector: vi.fn(async () => {}),

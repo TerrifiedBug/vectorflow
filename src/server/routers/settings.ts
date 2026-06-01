@@ -4,6 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { S3Client, HeadBucketCommand, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { router, protectedProcedure, requirePlatformOperator, requireOrgAdmin, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { encrypt, decrypt, ENCRYPTION_DOMAINS } from "@/server/services/crypto";
 import { withAudit } from "@/server/middleware/audit";
 import { invalidateAuthCache } from "@/auth";
@@ -65,7 +66,7 @@ export const settingsRouter = router({
       let maskedClientSecret: string | null = null;
       if (settings.oidcClientSecret) {
         try {
-          const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+          const dataKeyCiphertext = await loadOrgDataKeyCiphertext(ctx.organizationId);
           const decrypted = await decryptForOrgOrFallback(settings.oidcClientSecret, {
             orgId: ctx.organizationId,
             dataKeyCiphertext,
@@ -188,7 +189,7 @@ export const settingsRouter = router({
         // and stays on v2 for OSS / self-hosted. Same `GENERIC` HKDF
         // domain as the existing v2 calls so historical v2 ciphertexts
         // remain decryptable on the read side.
-        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(ctx.organizationId);
         data.oidcClientSecret = await encryptForOrgOrFallback(input.clientSecret, {
           orgId: ctx.organizationId,
           dataKeyCiphertext,
@@ -302,7 +303,7 @@ export const settingsRouter = router({
           distinct: ["userId"],
         });
 
-        await prisma.$transaction(async (tx) => {
+        await withOrgTx(ctx.organizationId, async (tx) => {
           for (const { userId } of usersWithScimGroups) {
             const groupNames = await getScimGroupNamesForUser(tx, userId, ctx.organizationId);
             await reconcileUserTeamMemberships(tx, userId, groupNames, ctx.organizationId);

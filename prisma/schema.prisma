@@ -27,6 +27,16 @@ enum OrgMemberRole {
   MEMBER
 }
 
+/// How an OrgMember row was created — identity provenance that keeps
+/// SCIM/OIDC-provisioned members and locally-created members (signup, invite,
+/// the founding OWNER) from clobbering each other. SCIM deprovisioning only
+/// removes SCIM-managed memberships; LOCAL members are out of the IdP's purview.
+enum OrgMemberProvenance {
+  LOCAL
+  SCIM
+  OIDC
+}
+
 enum PlatformOperatorRole {
   SUPPORT
   INFRA
@@ -83,6 +93,11 @@ model OrgMember {
   userId         String
   organizationId String
   role           OrgMemberRole @default(MEMBER)
+  /// Identity provenance for SCIM/local coexistence guards (see
+  /// OrgMemberProvenance). Defaults to LOCAL so existing rows and every
+  /// non-SCIM creator (signup, invite, first-run setup) are treated as local
+  /// and protected from SCIM deprovisioning. scimCreateUser sets SCIM.
+  provisionedVia OrgMemberProvenance @default(LOCAL)
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdAt      DateTime      @default(now())

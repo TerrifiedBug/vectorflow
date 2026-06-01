@@ -5,14 +5,12 @@ const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    idempotentInboundWebhookEvent: {
-      create: mocks.create,
-      findUnique: mocks.findUnique,
-    },
+vi.mock("@/lib/prisma", () => { const __pm = {
+  idempotentInboundWebhookEvent: {
+    create: mocks.create,
+    findUnique: mocks.findUnique,
   },
-}));
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 import {
   recordInboundWebhookOrSkip,

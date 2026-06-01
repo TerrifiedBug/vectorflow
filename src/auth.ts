@@ -30,6 +30,8 @@ import {
 } from "@/server/services/login-protection";
 import { getOrgSettings } from "@/lib/org-settings";
 import { resolveOrgIdFromHost } from "@/lib/host-to-org";
+import { runWithOrgContext } from "@/lib/org-context";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { getRequestHostFromHeaders } from "@/lib/request-host";
 import { webauthnProvider } from "@/server/services/auth/webauthn-provider";
 import { getJwtSecretForOrg } from "@/server/services/auth/jwt-key";
@@ -91,33 +93,53 @@ async function getOidcSettings(orgIdOverride?: string) {
   try {
     const orgId =
       orgIdOverride ?? (await resolveOrgIdFromHost(await getRequestHost()));
-    const settings = await getOrgSettings(orgId);
-    if (settings?.oidcIssuer && settings?.oidcClientId && settings?.oidcClientSecret) {
-      let clientSecret: string;
-      try {
-        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, orgId);
-        clientSecret = await decryptForOrgOrFallback(settings.oidcClientSecret, {
-          orgId,
-          dataKeyCiphertext,
-          domain: ENCRYPTION_DOMAINS.GENERIC,
-          rowTable: "OrganizationSettings",
-          rowId: settings.id,
-        });
-      } catch {
-        return null;
+    // These reads hit RLS-fenced tables (OrganizationSettings, and the
+    // Organization DEK ciphertext). getOidcSettings runs PRE-AUTH — e.g. the
+    // login page probing OIDC status to decide whether to render the "Sign in
+    // with SSO" button — so there is no ambient org scope. Without one, the
+    // fenced read returns nothing, the org looks SSO-less, the button is hidden
+    // and magic-link sign-in dead-ends on a phantom "use the SSO button". orgId
+    // was resolved on the admin connection (host→org) above; resolve the
+    // settings within that org's context so the fenced reads see its own rows.
+    // Mirrors the OIDC signIn callback's runWithOrgContext below.
+    return await runWithOrgContext(orgId, async () => {
+      const settings = await getOrgSettings(orgId);
+      if (
+        settings?.oidcIssuer &&
+        settings?.oidcClientId &&
+        settings?.oidcClientSecret
+      ) {
+        let clientSecret: string;
+        try {
+          const dataKeyCiphertext = await loadOrgDataKeyCiphertext(orgId);
+          clientSecret = await decryptForOrgOrFallback(
+            settings.oidcClientSecret,
+            {
+              orgId,
+              dataKeyCiphertext,
+              domain: ENCRYPTION_DOMAINS.GENERIC,
+              rowTable: "OrganizationSettings",
+              rowId: settings.id,
+            },
+          );
+        } catch {
+          return null;
+        }
+        return {
+          issuer: settings.oidcIssuer,
+          clientId: settings.oidcClientId,
+          clientSecret,
+          displayName: settings.oidcDisplayName ?? "SSO",
+          tokenEndpointAuthMethod:
+            settings.oidcTokenEndpointAuthMethod ?? "client_secret_post",
+          groupSyncEnabled: settings.oidcGroupSyncEnabled,
+          groupsScope: settings.oidcGroupsScope,
+          groupsClaim: settings.oidcGroupsClaim ?? "groups",
+          organizationId: orgId,
+        };
       }
-      return {
-        issuer: settings.oidcIssuer,
-        clientId: settings.oidcClientId,
-        clientSecret,
-        displayName: settings.oidcDisplayName ?? "SSO",
-        tokenEndpointAuthMethod: settings.oidcTokenEndpointAuthMethod ?? "client_secret_post",
-        groupSyncEnabled: settings.oidcGroupSyncEnabled,
-        groupsScope: settings.oidcGroupsScope,
-        groupsClaim: settings.oidcGroupsClaim ?? "groups",
-        organizationId: orgId,
-      };
-    }
+      return null;
+    });
   } catch {
     // Database may not be available yet (e.g., during build)
   }
@@ -397,6 +419,16 @@ async function getAuthInstance() {
             // For OIDC sign-ins, auto-create user and team membership with role mapping
             if (account?.provider === "oidc" && user.email) {
               const oidcOrgId = await resolveOrgIdFromHost(await getRequestHost());
+              // Scope the OIDC provisioning/group-sync to the resolved org so
+              // the fenced role's reads (OrganizationSettings, ScimGroup,
+              // OrgMember) and the reconcile write see this org's rows. oidcOrgId
+              // is resolved above on the admin connection (host→org, pre-scope).
+              return runWithOrgContext(oidcOrgId, async () => {
+              // Re-assert the outer `user.email` guard inside this closure so
+              // TS keeps the narrowing (the new function scope drops it). The
+              // outer `if (... && user.email)` already guarantees this, so the
+              // branch never runs.
+              if (!user.email) return true;
               const settings = await getOrgSettings(oidcOrgId);
               const profileData = profile as Record<string, unknown> | undefined;
 
@@ -484,7 +516,7 @@ async function getAuthInstance() {
 
                 debugLog("oidc", `User ${user.email} scimEnabled=${settings.scimEnabled}, final groups:`, userGroupNames);
                 const { reconcileUserTeamMemberships } = await import("@/server/services/group-mappings");
-                await prisma.$transaction(async (tx) => {
+                await withOrgTx(oidcOrgId, async (tx) => {
                   await reconcileUserTeamMemberships(tx, dbUser.id, userGroupNames, oidcOrgId);
                 });
 
@@ -516,6 +548,8 @@ async function getAuthInstance() {
                 userId: dbUser.id, action: "auth.login_success", entityType: "Auth", entityId: "oidc",
                 ipAddress, userEmail: dbUser.email, userName: dbUser.name,
               }).catch(() => {});
+              return true;
+              });
             }
             return true;
           },
@@ -525,6 +559,10 @@ async function getAuthInstance() {
             }
             if (account) {
               token.provider = account.provider;
+              // Stamp the interactive sign-in time so sensitive mutations can
+              // require a recent re-auth (e.g. OIDC self-erasure). Set only on
+              // a fresh provider sign-in (account present), never on refresh.
+              token.authedAt = Date.now();
             }
             // Cross-org token replay guard (H7). On any request that presents
             // an existing JWT (not a fresh sign-in), verify the org_id claim
@@ -594,6 +632,8 @@ async function getAuthInstance() {
               // (tRPC context, server components) can read it without
               // decoding the JWT themselves.
               session.user.org_id = token.org_id as string;
+              session.user.authedAt =
+                typeof token.authedAt === "number" ? token.authedAt : undefined;
             }
             return session;
           },

@@ -1,11 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock prisma before importing the module under test
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    $queryRawUnsafe: vi.fn(),
-  },
-}));
+vi.mock("@/lib/prisma", () => { const __pm = {
+  $queryRawUnsafe: vi.fn(),
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 import { prisma } from "@/lib/prisma";
 import {

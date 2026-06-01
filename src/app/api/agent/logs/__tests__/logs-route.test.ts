@@ -19,18 +19,16 @@ vi.mock("@/server/services/log-ingest", () => ({
   ingestLogs: vi.fn(() => Promise.resolve()),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    pipeline: {
-      findMany: vi.fn(() =>
-        Promise.resolve([
-          { id: "pipe-1" },
-          { id: "pipe-2" },
-        ]),
-      ),
-    },
+vi.mock("@/lib/prisma", () => { const __pm = {
+  pipeline: {
+    findMany: vi.fn(() =>
+      Promise.resolve([
+        { id: "pipe-1" },
+        { id: "pipe-2" },
+      ]),
+    ),
   },
-}));
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/sse-broadcast", () => ({
   broadcastSSE: vi.fn(),

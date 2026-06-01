@@ -244,7 +244,7 @@ export const promotionRouter = router({
           null,
         );
 
-        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, targetEnv.organizationId);
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(targetEnv.organizationId);
         const pr = await createPromotionPR({
           encryptedToken: targetEnv.gitToken,
           repoUrl: targetEnv.gitRepoUrl,

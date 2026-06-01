@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { writeAuditLog } from "@/server/services/audit";
 import { fireEventAlert } from "./event-alerts";
 import { debugLog } from "@/lib/logger";
@@ -21,6 +22,25 @@ interface ScimPatchOp {
   op: string;
   path?: string;
   value?: unknown;
+}
+
+/**
+ * Thrown when a SCIM mutation targets a membership the IdP must not manage: a
+ * LOCAL member (created via signup / invite — including the founding OWNER) or
+ * an organization OWNER. SCIM-provisioned and local users coexist; the IdP is
+ * authoritative only over the identities it provisions. The SCIM route maps
+ * this to HTTP 403 WITHOUT firing a sync-failed alert — it is a policy refusal,
+ * not a sync error.
+ */
+export class ScimProtectedMemberError extends Error {
+  readonly _tag = "ScimProtectedMemberError" as const;
+  constructor(
+    public readonly reason: "local_member" | "owner",
+    message: string,
+  ) {
+    super(message);
+    this.name = "ScimProtectedMemberError";
+  }
 }
 
 function toScimUser(user: {
@@ -236,7 +256,7 @@ export async function scimCreateUser(
         lockedAt: scimUser.active === false ? new Date() : null,
         lockedBy: scimUser.active === false ? "SCIM" : null,
         orgMemberships: {
-          create: { organizationId, role: "MEMBER" },
+          create: { organizationId, role: "MEMBER", provisionedVia: "SCIM" },
         },
       },
       select: USER_SELECT,
@@ -478,9 +498,35 @@ export async function fireScimSyncFailedAlert(errorMessage: string): Promise<voi
  */
 export async function scimDeleteUser(organizationId: string, id: string) {
   debugLog("scim", `DELETE /Users/${id} org=${organizationId}`);
-  if (!(await requireOrgMember(organizationId, id))) return null;
+  // Resolve the caller-org membership with its role + provenance. Not a member
+  // of THIS org → null (the route 404s; never reveal peer-org existence).
+  const membership = await prisma.orgMember.findUnique({
+    where: { userId_organizationId: { userId: id, organizationId } },
+    select: { role: true, provisionedVia: true },
+  });
+  if (!membership) return null;
+  // Coexistence: SCIM may only deprovision memberships IT provisioned. A LOCAL
+  // member (signup / invite / first-run owner) is outside the IdP's purview —
+  // the mirror of scimCreateUser refusing to adopt local accounts on the way in.
+  if (membership.provisionedVia === "LOCAL") {
+    throw new ScimProtectedMemberError(
+      "local_member",
+      "Cannot deprovision a locally-managed member via SCIM. This account was not " +
+        "provisioned by the identity provider; an administrator must remove it from " +
+        "the org-management surface.",
+    );
+  }
+  // Owner protection: SCIM must never remove an organization OWNER — even one it
+  // provisioned. Ownership must be transferred to another member first.
+  if (membership.role === "OWNER") {
+    throw new ScimProtectedMemberError(
+      "owner",
+      "Cannot deprovision the organization owner via SCIM. Transfer ownership to " +
+        "another member before removing this account.",
+    );
+  }
   try {
-    await prisma.$transaction(async (tx) => {
+    await withOrgTx(organizationId, async (tx) => {
       // Step 1: clear EVERY team membership for this user on teams owned
       // by the deprovisioning org. `OrgMember.delete` alone is not enough
       // — `withTeamAccess` and the team-based authorisation paths read

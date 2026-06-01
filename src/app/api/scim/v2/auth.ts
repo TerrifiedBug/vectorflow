@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { NextRequest } from "next/server";
-import { getOrgSettings } from "@/lib/org-settings";
+import { adminPrisma } from "@/lib/prisma";
 import { decrypt } from "@/server/services/crypto";
 import { resolveOrgIdFromHost } from "@/lib/host-to-org";
 
@@ -38,7 +38,14 @@ export async function authenticateScim(
       : null) ?? req.headers.get("host") ?? "";
   const organizationId = await resolveOrgIdFromHost(host);
 
-  const settings = await getOrgSettings(organizationId);
+  // The bearer-token credential lookup runs before any tenancy scope is
+  // established, so it reads the (fenced) OrganizationSettings via the admin
+  // connection — the scoped client would see zero rows here under the fenced
+  // role and break SCIM auth.
+  const settings = await adminPrisma.organizationSettings.findUnique({
+    where: { organizationId },
+    select: { scimEnabled: true, scimBearerToken: true },
+  });
   if (!settings?.scimEnabled || !settings?.scimBearerToken) {
     return { ok: false };
   }

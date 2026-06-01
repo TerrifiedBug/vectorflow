@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import yaml from "js-yaml";
 import { prisma } from "@/lib/prisma";
+import { runWithOrgContext } from "@/lib/org-context";
 import { authenticateAgentInOrg } from "@/server/services/agent-auth";
 import { resolveAgentOrg } from "@/server/services/agent-org-binding";
 import { collectSecretRefs, convertSecretRefsToEnvVars, resolveCertRefs, secretNameToEnvVar } from "@/server/services/secret-resolver";
@@ -67,6 +68,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  return runWithOrgContext(orgResult.orgId, async () => {
   try {
     // Fetch the node to check for pending actions (e.g., self-update)
     const node = await prisma.vectorNode.findUnique({
@@ -182,7 +184,7 @@ export async function GET(request: Request) {
           },
           select: { id: true, name: true, encryptedValue: true },
         });
-        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, environment.organizationId);
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(environment.organizationId);
         for (const s of envSecrets) {
           builtinSecretsByName.set(
             s.name,
@@ -375,4 +377,5 @@ export async function GET(request: Request) {
       { status: 500 },
     );
   }
+  });
 }

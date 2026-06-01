@@ -57,7 +57,7 @@ afterEach(() => {
 
 describe("outbound-webhook", () => {
   it("invokes validateOutboundUrl with force:true before fetch", async () => {
-    vi.doMock("@/lib/prisma", () => ({ prisma: {} }));
+    vi.doMock("@/lib/prisma", () => { const __pm = {}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
     vi.doMock("@/server/services/crypto", () => ({
       decrypt: vi.fn().mockReturnValue("test-secret"),
     }));
@@ -93,7 +93,7 @@ describe("outbound-webhook", () => {
     validateOutboundUrlSpy.mockRejectedValueOnce(
       new Error("URL resolves to a private or reserved IP address"),
     );
-    vi.doMock("@/lib/prisma", () => ({ prisma: {} }));
+    vi.doMock("@/lib/prisma", () => { const __pm = {}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
     vi.doMock("@/server/services/crypto", () => ({
       decrypt: vi.fn().mockReturnValue("test-secret"),
     }));
@@ -129,8 +129,8 @@ describe("outbound-webhook", () => {
 
 describe("ai.ts streamCompletion", () => {
   it("invokes validateOutboundUrl without force (OSS Ollama path)", async () => {
-    vi.doMock("@/lib/prisma", () => ({
-      prisma: {
+    vi.doMock("@/lib/prisma", () => {
+      const __pm = {
         team: {
           findUnique: vi.fn().mockResolvedValue({
             organizationId: "org_a",
@@ -144,8 +144,9 @@ describe("ai.ts streamCompletion", () => {
         organization: {
           findUnique: vi.fn().mockResolvedValue({ dataKeyCiphertext: null }),
         },
-      },
-    }));
+      };
+      return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm };
+    });
     vi.doMock("./crypto", () => ({
       ENCRYPTION_DOMAINS: { GENERIC: "generic" } as const,
       encrypt: vi.fn((s: string) => `enc:${s}`),
@@ -206,11 +207,12 @@ describe("cost-optimizer-ai", () => {
       },
     ]);
     const updateMock = vi.fn().mockResolvedValue({});
-    vi.doMock("@/lib/prisma", () => ({
-      prisma: {
+    vi.doMock("@/lib/prisma", () => {
+      const __pm = {
         costRecommendation: { findMany: findManyMock, update: updateMock },
-      },
-    }));
+      };
+      return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm };
+    });
     vi.doMock("@/lib/is-demo-mode", () => ({ isDemoMode: () => false }));
     vi.doMock("@/server/services/ai", () => ({
       getTeamAiConfig: vi.fn().mockResolvedValue({

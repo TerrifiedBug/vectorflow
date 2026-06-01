@@ -5,9 +5,7 @@ import type { PrismaClient } from "@/generated/prisma";
 
 // ─── Module mocks ───────────────────────────────────────────────────────────
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 // ─── Import the mocked modules + SUT ───────────────────────────────────────
 

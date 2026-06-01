@@ -4,9 +4,13 @@ import type { PrismaClient } from "@/generated/prisma";
 
 // ── Mocks (must be declared before importing the module under test) ──
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => {
+  const client = mockDeep<PrismaClient>();
+  // `withOrgTxFromContext` (real module) routes the component-latency upsert
+  // through `basePrisma.$transaction`; point it at the same deep mock so the
+  // transaction is observable via `prismaMock.$transaction`.
+  return { prisma: client, basePrisma: client };
+});
 
 vi.mock("@/server/services/agent-org-binding", () => ({
   resolveAgentOrg: vi.fn().mockResolvedValue({ orgId: "default", orgSlug: "default", isLegacyToken: false }),

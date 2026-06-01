@@ -45,6 +45,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import type { Prisma } from "@/generated/prisma";
 
 export type QuotaName = "agents" | "pipelines" | "environments";
@@ -297,7 +298,7 @@ export async function withQuotaCheck<T>(
   quota: QuotaName,
   create: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
-  return prisma.$transaction(async (tx) => {
+  return withOrgTx(organizationId, async (tx) => {
     const txLike = tx as unknown as PrismaTxLike;
     // Pre-check (locks + verifies headroom).
     await enforceQuotaInTx(txLike, organizationId, quota);

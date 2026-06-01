@@ -9,9 +9,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/server/services/webauthn", () => ({
   finishAuthentication: mocks.finishAuthentication,
 }));
-vi.mock("@/lib/prisma", () => ({
-  prisma: { user: { findUnique: mocks.userFindUnique } },
-}));
+vi.mock("@/lib/prisma", () => { const __pm = { user: { findUnique: mocks.userFindUnique } }; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 vi.mock("@/server/services/audit", () => ({
   writeAuditLog: mocks.writeAuditLog,
 }));

@@ -2,9 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mockDeep, mockReset } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 vi.mock("@/lib/logger", () => ({ debugLog: vi.fn(), errorLog: vi.fn() }));
 vi.mock("@/server/services/pipeline-version", () => ({
   createVersion: vi.fn(),
@@ -20,6 +18,7 @@ import {
   previewRecommendation,
   applyRecommendation,
 } from "@/server/services/cost-recommendation-procedures";
+import { runWithOrgContext } from "@/lib/org-context";
 
 const prismaMock = prisma as unknown as ReturnType<typeof mockDeep<PrismaClient>>;
 const createVersionMock = createVersion as ReturnType<typeof vi.fn>;
@@ -28,6 +27,9 @@ const applyYamlMock = applyRecommendationToYaml as ReturnType<typeof vi.fn>;
 beforeEach(() => {
   mockReset(prismaMock);
   vi.clearAllMocks();
+  prismaMock.$transaction.mockImplementation(async (fn) =>
+    (fn as (tx: unknown) => Promise<unknown>)(prismaMock),
+  );
 });
 
 const SAMPLE_YAML = `sources:
@@ -166,7 +168,9 @@ describe("applyRecommendation", () => {
       status: "APPLIED",
     } as never);
 
-    const result = await applyRecommendation("rec-1", "user-1", "env-1");
+    const result = await runWithOrgContext("org-1", () =>
+      applyRecommendation("rec-1", "user-1", "env-1"),
+    );
 
     expect(result.success).toBe(true);
     expect(result.pipelineId).toBe("pipe-1");

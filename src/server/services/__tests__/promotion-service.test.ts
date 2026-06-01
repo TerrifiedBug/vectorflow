@@ -2,9 +2,7 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/config-crypto", () => ({
   decryptNodeConfig: vi.fn((_: unknown, config: unknown) => config),
@@ -30,6 +28,7 @@ vi.mock("@/lib/config-generator", () => ({
 // ─── Import SUT + mocks ─────────────────────────────────────────────────────
 
 import { prisma } from "@/lib/prisma";
+import { runWithOrgContext } from "@/lib/org-context";
 import { preflightSecrets, executePromotion, generateDiffPreview } from "@/server/services/promotion-service";
 import * as secretResolver from "@/server/services/secret-resolver";
 import * as copyGraph from "@/server/services/copy-pipeline-graph";
@@ -131,21 +130,16 @@ describe("promotion-service", () => {
       };
 
       prismaMock.promotionRequest.findUnique.mockResolvedValue(request as never);
-      prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
-        if (typeof fn !== "function") return;
-        const tx = {
-          pipeline: {
-            findFirst: vi.fn().mockResolvedValue(null),
-            create: vi.fn().mockResolvedValue({ id: "p-target", name: "My Pipeline" }),
-          },
-          promotionRequest: {
-            update: vi.fn().mockResolvedValue({}),
-          },
-        };
-        return fn(tx);
-      });
+      prismaMock.pipeline.findFirst.mockResolvedValue(null as never);
+      prismaMock.pipeline.create.mockResolvedValue({ id: "p-target", name: "My Pipeline" } as never);
+      prismaMock.promotionRequest.update.mockResolvedValue({} as never);
+      prismaMock.$transaction.mockImplementation(async (fn: unknown) =>
+        (fn as (tx: unknown) => unknown)(prismaMock),
+      );
 
-      const result = await executePromotion("req-1", "user-2");
+      const result = await runWithOrgContext("org-1", () =>
+        executePromotion("req-1", "user-2"),
+      );
 
       expect(result.pipelineId).toBe("p-target");
       expect(result.pipelineName).toBe("My Pipeline");

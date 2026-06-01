@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess, requirePlatformOperator, denyInDemo } from "@/trpc/init";
-import { prisma } from "@/lib/prisma";
+import { prisma, adminPrisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { withAudit } from "@/server/middleware/audit";
@@ -168,11 +168,11 @@ export const teamRouter = router({
           message: "Cannot delete the last remaining team",
         });
       }
-      await prisma.$transaction([
-        prisma.auditLog.deleteMany({ where: { teamId: input.teamId } }),
-        prisma.template.deleteMany({ where: { teamId: input.teamId } }),
-        prisma.teamMember.deleteMany({ where: { teamId: input.teamId } }),
-        prisma.team.delete({ where: { id: input.teamId } }),
+      await adminPrisma.$transaction([
+        adminPrisma.auditLog.deleteMany({ where: { teamId: input.teamId } }),
+        adminPrisma.template.deleteMany({ where: { teamId: input.teamId } }),
+        adminPrisma.teamMember.deleteMany({ where: { teamId: input.teamId } }),
+        adminPrisma.team.delete({ where: { id: input.teamId } }),
       ]);
       return { deleted: true };
     }),
@@ -491,7 +491,7 @@ export const teamRouter = router({
   getAiConfig: protectedProcedure
     .use(withTeamAccess("ADMIN"))
     .input(z.object({ teamId: z.string() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const team = await prisma.team.findUniqueOrThrow({
         where: { id: input.teamId },
         select: {
@@ -500,14 +500,27 @@ export const teamRouter = router({
           aiBaseUrl: true,
           aiModel: true,
           aiApiKey: true,
+          organizationId: true,
         },
       });
+      // Surface the org-level custom-base-URL opt-in (and whether the
+      // caller may flip it) so the AI settings page can expose the
+      // OWNER-gated `settings.updateAiBaseUrlOptIn` toggle. `settings.get`
+      // is platform-operator-gated, so this team-scoped query is the
+      // OWNER-readable path for the flag.
+      const orgSettings = await prisma.organizationSettings.findUnique({
+        where: { organizationId: team.organizationId },
+        select: { aiBaseUrlOptIn: true },
+      });
+      const orgMemberRole = (ctx as { orgMemberRole?: string }).orgMemberRole;
       return {
         aiEnabled: team.aiEnabled,
         aiProvider: team.aiProvider,
         aiBaseUrl: team.aiBaseUrl,
         aiModel: team.aiModel,
         hasApiKey: !!team.aiApiKey,
+        aiBaseUrlOptIn: orgSettings?.aiBaseUrlOptIn ?? false,
+        canManageAiBaseUrlOptIn: orgMemberRole === "OWNER",
       };
     }),
 
@@ -545,7 +558,7 @@ export const teamRouter = router({
           if (!team) {
             throw new TRPCError({ code: "NOT_FOUND", message: "Team not found" });
           }
-          const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, team.organizationId);
+          const dataKeyCiphertext = await loadOrgDataKeyCiphertext(team.organizationId);
           const ciphertext = await encryptForOrgOrFallback(aiApiKey, {
             orgId: team.organizationId,
             dataKeyCiphertext,

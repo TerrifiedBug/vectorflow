@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { prisma } from "@/lib/prisma";
+import { adminPrisma } from "@/lib/prisma";
 import {
   SERVICE_ACCOUNT_PERMISSIONS,
   type ServiceAccountPermission,
@@ -27,12 +27,16 @@ export async function authenticateApiKey(
   const rawKey = authHeader.slice(7);
   const hashedKey = crypto.createHash("sha256").update(rawKey).digest("hex");
 
-  const sa = await prisma.serviceAccount.findUnique({ where: { hashedKey } });
+  // ServiceAccount is a fenced tenant table and this lookup resolves the org
+  // BEFORE any scope exists — keyed by the SHA256 of the bearer key (an
+  // unguessable secret), so it runs on the admin connection. The caller wraps
+  // the request handler in runWithOrgContext(ctx.organizationId) afterwards.
+  const sa = await adminPrisma.serviceAccount.findUnique({ where: { hashedKey } });
   if (!sa || !sa.enabled) return null;
   if (sa.expiresAt && sa.expiresAt < new Date()) return null;
 
-  // Fire-and-forget lastUsedAt update
-  prisma.serviceAccount
+  // Fire-and-forget lastUsedAt update (admin: a metadata touch outside scope).
+  adminPrisma.serviceAccount
     .update({
       where: { id: sa.id },
       data: { lastUsedAt: new Date() },

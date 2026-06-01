@@ -1,4 +1,5 @@
-import { prisma } from "@/lib/prisma";
+import { adminPrisma, prisma } from "@/lib/prisma";
+import { runWithOrgContext } from "@/lib/org-context";
 import { deployFromVersion } from "@/server/services/pipeline-version";
 import { fireEventAlert } from "@/server/services/event-alerts";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
@@ -119,7 +120,7 @@ export class AutoRollbackService {
     try {
       let orgs: Array<{ id: string }>;
       try {
-        orgs = await prisma.organization.findMany({
+        orgs = await adminPrisma.organization.findMany({
           where: { suspendedAt: null, deletedAt: null },
           select: { id: true },
         });
@@ -133,7 +134,9 @@ export class AutoRollbackService {
       }
       for (const org of orgs) {
         try {
-          await this.checkPipelines({ organizationId: org.id });
+          await runWithOrgContext(org.id, () =>
+            this.checkPipelines({ organizationId: org.id }),
+          );
         } catch (err) {
           errorLog(
             "auto-rollback",

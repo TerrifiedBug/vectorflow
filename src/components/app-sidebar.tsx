@@ -18,6 +18,7 @@ import {
   ArrowLeft,
   Rocket,
   Lock,
+  ShieldCheck,
 } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { cn } from "@/lib/utils";
@@ -59,6 +60,7 @@ const operateItems = [
   { title: "Incidents", href: "/incidents", icon: Bell },
   { title: "Analytics", href: "/analytics", icon: BarChart3 },
   { title: "Promotions", href: "/promotions", icon: Rocket },
+  { title: "Governance", href: "/governance", icon: ShieldCheck },
   { title: "Audit Log", href: "/audit", icon: ScrollText },
 ];
 

@@ -29,9 +29,7 @@ vi.mock("@/server/middleware/audit", () => ({
     t.middleware(({ next, ctx }: { next: (opts: { ctx: unknown }) => unknown; ctx: unknown }) => next({ ctx })),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/deploy-agent", () => ({
   deployAgent: vi.fn(),
@@ -88,12 +86,14 @@ const caller = t.createCallerFactory(deployRouter)({
   session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
   userRole: "ADMIN",
   teamId: "team-1",
+  organizationId: "org-1",
 });
 
 const editorCaller = t.createCallerFactory(deployRouter)({
   session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
   userRole: "EDITOR",
   teamId: "team-1",
+  organizationId: "org-1",
 });
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -202,20 +202,15 @@ describe("deploy router", () => {
           environment: { id: "env-1", name: "Production", requireDeployApproval: true },
         }) as never,
       );
-      prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
-        if (typeof fn !== "function") return;
-        const tx = {
-          deployRequest: {
-            findFirst: vi.fn().mockResolvedValue(null),
-            create: vi.fn().mockResolvedValue({
-              id: "req-1",
-              pipelineId: "pipeline-1",
-              status: "PENDING",
-            }),
-          },
-        };
-        return fn(tx);
-      });
+      prismaMock.deployRequest.findFirst.mockResolvedValue(null);
+      prismaMock.deployRequest.create.mockResolvedValue({
+        id: "req-1",
+        pipelineId: "pipeline-1",
+        status: "PENDING",
+      } as never);
+      prismaMock.$transaction.mockImplementation(async (fn) =>
+        (fn as (tx: unknown) => Promise<unknown>)(prismaMock),
+      );
 
       const result = await editorCaller.agent({
         pipelineId: "pipeline-1",
@@ -233,16 +228,10 @@ describe("deploy router", () => {
           environment: { id: "env-1", name: "Production", requireDeployApproval: true },
         }) as never,
       );
-      prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
-        if (typeof fn !== "function") return;
-        const tx = {
-          deployRequest: {
-            findFirst: vi.fn().mockResolvedValue({ id: "existing-req" }),
-            create: vi.fn(),
-          },
-        };
-        return fn(tx);
-      });
+      prismaMock.deployRequest.findFirst.mockResolvedValue({ id: "existing-req" } as never);
+      prismaMock.$transaction.mockImplementation(async (fn) =>
+        (fn as (tx: unknown) => Promise<unknown>)(prismaMock),
+      );
 
       await expect(
         editorCaller.agent({

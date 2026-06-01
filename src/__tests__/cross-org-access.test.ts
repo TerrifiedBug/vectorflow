@@ -46,7 +46,7 @@ vi.mock("next-auth/providers/credentials", () => ({
   default: () => ({ id: "credentials", name: "Credentials" }),
 }));
 vi.mock("@auth/prisma-adapter", () => ({ PrismaAdapter: () => ({}) }));
-vi.mock("@/lib/prisma", () => ({ prisma: mockDeep<PrismaClient>() }));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 vi.mock("@/lib/logger", () => ({
   debugLog: vi.fn(),
   infoLog: vi.fn(),
@@ -182,7 +182,7 @@ const INTENTIONALLY_UNGUARDED = new Set<string>([
   // of team existence, so no team-existence side channel.
   "team.teamRole",
 
-  // audit.list / audit.deployments / audit.exportDeployments enforce
+  // audit.list / audit.deployments / audit.exportDeployments / audit.exportAuditLog enforce
   // tenancy via `getAuditScope(userId)` + `pushAuditScope(conditions)`
   // — a custom scoping helper that injects the caller's accessible
   // (teamId, environmentId) pairs into the Prisma WHERE clause. The
@@ -192,6 +192,7 @@ const INTENTIONALLY_UNGUARDED = new Set<string>([
   "audit.list",
   "audit.deployments",
   "audit.exportDeployments",
+  "audit.exportAuditLog",
 
   // dashboard.pipelineCards / metrics.getComponentMetrics do inline
   // authorisation in the handler: load the entity, then assert the

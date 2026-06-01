@@ -21,6 +21,7 @@ const ENV_KEYS = [
   "VF_TRUST_FORWARDED_HOST",
   "VF_TRUST_PROXY_HEADERS",
   "VF_ENFORCE_RLS",
+  "DATABASE_ADMIN_URL",
 ] as const;
 const ORIGINAL: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
 
@@ -198,11 +199,21 @@ describe("assertRlsEnforcementBoot", () => {
 
   it("passes on a non-bypass role where the policy fires", async () => {
     process.env.VF_ENFORCE_RLS = "true";
+    process.env.DATABASE_ADMIN_URL = "postgresql://owner@localhost:5432/db";
     const exit = vi.fn();
     const client = makeProbeClient({ bypass: false, policyTable: "Team", leaked: false });
     await assertRlsEnforcementBoot({ exit: exit as never, client: client as never });
     expect(exit).not.toHaveBeenCalled();
     expect(infoLog).toHaveBeenCalled();
+  });
+
+  it("refuses to boot when DATABASE_ADMIN_URL is unset (admin paths inherit the fence)", async () => {
+    process.env.VF_ENFORCE_RLS = "true";
+    delete process.env.DATABASE_ADMIN_URL;
+    const exit = vi.fn();
+    const client = makeProbeClient({ bypass: false, policyTable: "Team", leaked: false });
+    await assertRlsEnforcementBoot({ exit: exit as never, client: client as never });
+    expect(exit).toHaveBeenCalledWith(1);
   });
 
   it("refuses to boot when the probe query throws", async () => {

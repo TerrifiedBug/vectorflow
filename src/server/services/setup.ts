@@ -11,7 +11,7 @@
  * this function.
  */
 
-import { prisma } from "@/lib/prisma";
+import { prisma, adminPrisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { ulid } from "ulid";
 import { DEFAULT_ORG_ID } from "@/lib/org-constants";
@@ -78,7 +78,12 @@ export async function completeSetup(input: {
 }) {
   const passwordHash = await bcrypt.hash(input.password, 12);
 
-  return prisma.$transaction(async (tx) => {
+  // OSS first-run bootstrap: create the admin user + default-org membership
+  // atomically. Runs on the admin (owner) client so the multi-statement
+  // transaction stays on one connection (the extended client would split each
+  // statement into its own transaction) and the OrgMember insert is not blocked
+  // by RLS before any org context exists. Multi-tenant cloud does not call this.
+  return adminPrisma.$transaction(async (tx) => {
     // serialise the OSS first-run bootstrap. Without
     // this advisory lock two concurrent POST /api/setup calls both
     // pass `isSetupRequired()` (userCount === 0), then both insert a

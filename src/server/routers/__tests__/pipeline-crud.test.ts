@@ -27,9 +27,7 @@ vi.mock("@/server/middleware/audit", () => ({
     t.middleware(({ next, ctx }: { next: (opts: { ctx: unknown }) => unknown; ctx: unknown }) => next({ ctx })),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/config-crypto", () => ({
   decryptNodeConfig: vi.fn((_type: unknown, config: unknown) => config),
@@ -65,6 +63,7 @@ const caller = t.createCallerFactory(pipelineCrudRouter)({
   session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
   userRole: "ADMIN",
   teamId: "team-1",
+  organizationId: "org-1",
 });
 
 describe("pipelineCrudRouter", () => {
@@ -252,28 +251,22 @@ describe("pipelineCrudRouter", () => {
     it("creates a system pipeline with a source node", async () => {
       vi.mocked(getOrCreateSystemEnvironment).mockResolvedValue({ id: "sys-env-1" });
 
-      const mockTx = {
-        pipeline: {
-          findFirst: vi.fn().mockResolvedValue(null),
-          create: vi.fn().mockResolvedValue({ id: "sys-p-1", name: "Audit Log Shipping", isSystem: true }),
-        },
-        pipelineNode: {
-          create: vi.fn().mockResolvedValue({ id: "node-1" }),
-        },
-      };
-      prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(mockTx));
+      prismaMock.pipeline.findFirst.mockResolvedValue(null as never);
+      prismaMock.pipeline.create.mockResolvedValue({ id: "sys-p-1", name: "Audit Log Shipping", isSystem: true } as never);
+      prismaMock.pipelineNode.create.mockResolvedValue({ id: "node-1" } as never);
+      prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(prismaMock));
 
       const result = await caller.createSystemPipeline();
 
       expect(result).toEqual(
         expect.objectContaining({ id: "sys-p-1", name: "Audit Log Shipping", isSystem: true }),
       );
-      expect(mockTx.pipeline.create).toHaveBeenCalledWith(
+      expect(prismaMock.pipeline.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ name: "Audit Log Shipping", isSystem: true }),
         }),
       );
-      expect(mockTx.pipelineNode.create).toHaveBeenCalledWith(
+      expect(prismaMock.pipelineNode.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ componentType: "file", kind: "SOURCE" }),
         }),
@@ -283,12 +276,8 @@ describe("pipelineCrudRouter", () => {
     it("throws CONFLICT when a system pipeline already exists", async () => {
       vi.mocked(getOrCreateSystemEnvironment).mockResolvedValue({ id: "sys-env-1" });
 
-      const mockTx = {
-        pipeline: {
-          findFirst: vi.fn().mockResolvedValue({ id: "existing" }),
-        },
-      };
-      prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(mockTx));
+      prismaMock.pipeline.findFirst.mockResolvedValue({ id: "existing" } as never);
+      prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(prismaMock));
 
       await expect(caller.createSystemPipeline()).rejects.toThrow("A system pipeline already exists");
     });
@@ -413,22 +402,18 @@ describe("pipelineCrudRouter", () => {
       prismaMock.pipeline.findUnique.mockResolvedValue(source as never);
 
       const cloned = { id: "p-clone", name: "Original (Copy)" };
-      const mockTx = {
-        pipeline: {
-          create: vi.fn().mockResolvedValue(cloned),
-        },
-      };
-      prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(mockTx));
+      prismaMock.pipeline.create.mockResolvedValue(cloned as never);
+      prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(prismaMock));
 
       const result = await caller.clone({ pipelineId: "p-1" });
 
       expect(result).toEqual({ id: "p-clone", name: "Original (Copy)" });
-      expect(mockTx.pipeline.create).toHaveBeenCalledWith(
+      expect(prismaMock.pipeline.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ name: "Original (Copy)" }),
         }),
       );
-      expect(copyPipelineGraph).toHaveBeenCalledWith(mockTx, {
+      expect(copyPipelineGraph).toHaveBeenCalledWith(expect.anything(), {
         sourcePipelineId: "p-1",
         targetPipelineId: "p-clone",
       });

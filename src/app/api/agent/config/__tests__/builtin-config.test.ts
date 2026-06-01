@@ -14,33 +14,31 @@ vi.mock("@/server/services/agent-auth", () => ({
   ),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    vectorNode: {
-      findUnique: vi.fn(() =>
-        Promise.resolve({ pendingAction: null, maintenanceMode: false, labels: {} }),
-      ),
-    },
-    environment: {
-      findUnique: vi.fn(() =>
-        Promise.resolve({
-          id: "env-1",
-          organizationId: "org-1",
-          secretBackend: "BUILTIN",
-          secretBackendConfig: null,
-        }),
-      ),
-    },
-    secret: { findMany: vi.fn() },
-    variable: { findMany: vi.fn(() => Promise.resolve([])) },
-    pipeline: { findMany: vi.fn() },
-    eventSampleRequest: { findMany: vi.fn(() => Promise.resolve([])) },
-    organizationSettings: {
-      findUnique: vi.fn(),
-      create: vi.fn(),
-    },
+vi.mock("@/lib/prisma", () => { const __pm = {
+  vectorNode: {
+    findUnique: vi.fn(() =>
+      Promise.resolve({ pendingAction: null, maintenanceMode: false, labels: {} }),
+    ),
   },
-}));
+  environment: {
+    findUnique: vi.fn(() =>
+      Promise.resolve({
+        id: "env-1",
+        organizationId: "org-1",
+        secretBackend: "BUILTIN",
+        secretBackendConfig: null,
+      }),
+    ),
+  },
+  secret: { findMany: vi.fn() },
+  variable: { findMany: vi.fn(() => Promise.resolve([])) },
+  pipeline: { findMany: vi.fn() },
+  eventSampleRequest: { findMany: vi.fn(() => Promise.resolve([])) },
+  organizationSettings: {
+    findUnique: vi.fn(),
+    create: vi.fn(),
+  },
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 // Real secret-resolver / variable-resolver logic is exercised; only the
 // underlying decryption + DEK lookup is stubbed.

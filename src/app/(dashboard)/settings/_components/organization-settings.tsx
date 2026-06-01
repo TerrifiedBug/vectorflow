@@ -43,6 +43,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
 
 import { TransferOwnershipDialog } from "./transfer-ownership-dialog";
+import { MemberRowActions } from "./member-row-actions";
 
 function roleBadgeVariant(role: string): "default" | "secondary" | "outline" {
   if (role === "OWNER") return "default";
@@ -104,6 +105,9 @@ export function OrganizationSettings() {
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Joined</TableHead>
+                  {isOwner && (
+                    <TableHead className="w-[60px] text-right">Actions</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -129,6 +133,14 @@ export function OrganizationSettings() {
                         ? new Date(m.joinedAt).toLocaleDateString()
                         : "—"}
                     </TableCell>
+                    {isOwner && (
+                      <TableCell className="text-right">
+                        <MemberRowActions
+                          member={m}
+                          isSelf={m.userId === selfMember?.userId}
+                        />
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

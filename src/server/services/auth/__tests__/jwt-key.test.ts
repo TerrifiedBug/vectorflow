@@ -9,16 +9,14 @@ const mocks = vi.hoisted(() => ({
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    $transaction: mocks.$transaction,
-    organization: {
-      findUnique: mocks.organizationFindUnique,
-      update: mocks.organizationUpdate,
-    },
-    auditLog: { create: mocks.auditLogCreate },
+vi.mock("@/lib/prisma", () => { const __pm = {
+  $transaction: mocks.$transaction,
+  organization: {
+    findUnique: mocks.organizationFindUnique,
+    update: mocks.organizationUpdate,
   },
-}));
+  auditLog: { create: mocks.auditLogCreate },
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 vi.mock("@/server/services/kms", () => ({
   getDekCache: () => ({ get: mocks.dekCacheGet }),
 }));
@@ -39,6 +37,7 @@ import { deriveJwtSigningKey } from "@/server/services/crypto";
 
 function makeTxStub() {
   return {
+    $executeRaw: vi.fn(),
     organization: {
       findUnique: mocks.organizationFindUnique,
       update: mocks.organizationUpdate,

@@ -27,9 +27,7 @@ vi.mock("@/server/middleware/audit", () => ({
     t.middleware(({ next, ctx }: { next: (opts: { ctx: unknown }) => unknown; ctx: unknown }) => next({ ctx })),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/config-crypto", () => ({
   decryptNodeConfig: vi.fn((_type: unknown, config: unknown) => config),
@@ -71,6 +69,7 @@ const caller = t.createCallerFactory(pipelineCrudRouter)({
   session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
   userRole: "ADMIN",
   teamId: "team-1",
+  organizationId: "org-1",
 });
 
 const makePipeline = (overrides?: Record<string, unknown>) => ({
@@ -115,13 +114,8 @@ describe("pipelineCrudRouter.batchImport", () => {
 
   it("creates all pipelines inside a single transaction and calls saveGraphComponents for each", async () => {
     const createdPipeline = { id: "p-new-1", name: "Imported Pipeline" };
-
-    const mockTx = {
-      pipeline: {
-        create: vi.fn().mockResolvedValue(createdPipeline),
-      },
-    };
-    prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(mockTx));
+    prismaMock.pipeline.create.mockResolvedValue(createdPipeline as never);
+    prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(prismaMock));
     vi.mocked(saveGraphComponents).mockResolvedValue({} as never);
 
     const result = await caller.batchImport({
@@ -130,8 +124,8 @@ describe("pipelineCrudRouter.batchImport", () => {
     });
 
     expect(prismaMock.$transaction).toHaveBeenCalledOnce();
-    expect(mockTx.pipeline.create).toHaveBeenCalledOnce();
-    expect(mockTx.pipeline.create).toHaveBeenCalledWith(
+    expect(prismaMock.pipeline.create).toHaveBeenCalledOnce();
+    expect(prismaMock.pipeline.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           name: "Imported Pipeline",
@@ -144,7 +138,7 @@ describe("pipelineCrudRouter.batchImport", () => {
     );
     expect(saveGraphComponents).toHaveBeenCalledOnce();
     expect(saveGraphComponents).toHaveBeenCalledWith(
-      mockTx,
+      expect.anything(),
       expect.objectContaining({
         pipelineId: "p-new-1",
         userId: "user-1",
@@ -154,14 +148,10 @@ describe("pipelineCrudRouter.batchImport", () => {
   });
 
   it("creates multiple pipelines and returns all created entries", async () => {
-    const mockTx = {
-      pipeline: {
-        create: vi.fn()
-          .mockResolvedValueOnce({ id: "p-1", name: "Pipeline A" })
-          .mockResolvedValueOnce({ id: "p-2", name: "Pipeline B" }),
-      },
-    };
-    prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(mockTx));
+    prismaMock.pipeline.create
+      .mockResolvedValueOnce({ id: "p-1", name: "Pipeline A" } as never)
+      .mockResolvedValueOnce({ id: "p-2", name: "Pipeline B" } as never);
+    prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(prismaMock));
     vi.mocked(saveGraphComponents).mockResolvedValue({} as never);
 
     const result = await caller.batchImport({
@@ -172,7 +162,7 @@ describe("pipelineCrudRouter.batchImport", () => {
       ],
     });
 
-    expect(mockTx.pipeline.create).toHaveBeenCalledTimes(2);
+    expect(prismaMock.pipeline.create).toHaveBeenCalledTimes(2);
     expect(saveGraphComponents).toHaveBeenCalledTimes(2);
     expect(result).toEqual({
       created: [
@@ -188,12 +178,8 @@ describe("pipelineCrudRouter.batchImport", () => {
       .mockReturnValueOnce("node-id-source")
       .mockReturnValueOnce("node-id-sink");
 
-    const mockTx = {
-      pipeline: {
-        create: vi.fn().mockResolvedValue({ id: "p-1", name: "Mapped Pipeline" }),
-      },
-    };
-    prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(mockTx));
+    prismaMock.pipeline.create.mockResolvedValue({ id: "p-1", name: "Mapped Pipeline" } as never);
+    prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(prismaMock));
     vi.mocked(saveGraphComponents).mockResolvedValue({} as never);
 
     await caller.batchImport({
@@ -202,7 +188,7 @@ describe("pipelineCrudRouter.batchImport", () => {
     });
 
     expect(saveGraphComponents).toHaveBeenCalledWith(
-      mockTx,
+      expect.anything(),
       expect.objectContaining({
         nodes: expect.arrayContaining([
           expect.objectContaining({ id: "node-id-source", componentKey: "my_source" }),
@@ -216,12 +202,8 @@ describe("pipelineCrudRouter.batchImport", () => {
   });
 
   it("handles pipelines with no edges", async () => {
-    const mockTx = {
-      pipeline: {
-        create: vi.fn().mockResolvedValue({ id: "p-1", name: "Solo Pipeline" }),
-      },
-    };
-    prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(mockTx));
+    prismaMock.pipeline.create.mockResolvedValue({ id: "p-1", name: "Solo Pipeline" } as never);
+    prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(prismaMock));
     vi.mocked(saveGraphComponents).mockResolvedValue({} as never);
 
     await expect(
@@ -232,18 +214,14 @@ describe("pipelineCrudRouter.batchImport", () => {
     ).resolves.toEqual({ created: [{ id: "p-1", name: "Solo Pipeline" }] });
 
     expect(saveGraphComponents).toHaveBeenCalledWith(
-      mockTx,
+      expect.anything(),
       expect.objectContaining({ edges: [] }),
     );
   });
 
   it("handles null globalConfig", async () => {
-    const mockTx = {
-      pipeline: {
-        create: vi.fn().mockResolvedValue({ id: "p-1", name: "No Config Pipeline" }),
-      },
-    };
-    prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(mockTx));
+    prismaMock.pipeline.create.mockResolvedValue({ id: "p-1", name: "No Config Pipeline" } as never);
+    prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(prismaMock));
     vi.mocked(saveGraphComponents).mockResolvedValue({} as never);
 
     await expect(
@@ -253,7 +231,7 @@ describe("pipelineCrudRouter.batchImport", () => {
       }),
     ).resolves.toBeDefined();
 
-    expect(mockTx.pipeline.create).toHaveBeenCalledWith(
+    expect(prismaMock.pipeline.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ globalConfig: Prisma.DbNull }),
       }),

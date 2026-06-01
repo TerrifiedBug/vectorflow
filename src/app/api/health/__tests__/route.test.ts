@@ -1,10 +1,8 @@
 import { vi, describe, it, expect } from "vitest";
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    $queryRaw: vi.fn(),
-  },
-}));
+vi.mock("@/lib/prisma", () => { const __pm = {
+  $queryRaw: vi.fn(),
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 import { GET } from "../route";
 import { prisma } from "@/lib/prisma";

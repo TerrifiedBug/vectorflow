@@ -14,9 +14,7 @@ const { fakeWebhookDriver } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 // Replace the real webhook driver with a spy so we can assert what config
 // the dispatcher hands it. The driver itself is tested in webhook.test.ts.

@@ -12,7 +12,7 @@
  * between two parallel redeems.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { prisma } from "@/lib/prisma";
+import { prisma, adminPrisma } from "@/lib/prisma";
 
 export const WEBHOOK_CONFIRMATION_TTL_MS = 48 * 60 * 60 * 1000; // 48h
 const TOKEN_BYTES = 32;
@@ -80,7 +80,11 @@ export async function consumeWebhookConfirmation(opts: {
   const now = opts.now ?? (() => new Date());
   const tokenHash = hashToken(opts.token);
 
-  return prisma.$transaction(async (tx) => {
+  // Token → org bootstrap: the confirmation link is clicked by an
+  // unauthenticated user, so there is no org scope yet. The org is read from
+  // the row inside. Keyed by the unguessable tokenHash, so it runs on the
+  // admin connection (no extension → atomic multi-statement tx).
+  return adminPrisma.$transaction(async (tx) => {
     const row = await tx.webhookConfirmation.findUnique({
       where: { tokenHash },
     });
@@ -122,7 +126,8 @@ export async function gcExpiredWebhookConfirmations(
   now: () => Date = () => new Date(),
 ): Promise<number> {
   const cutoff30d = new Date(now().getTime() - 30 * 24 * 60 * 60 * 1000);
-  const { count } = await prisma.webhookConfirmation.deleteMany({
+  // Fleet-wide GC across all orgs → admin connection.
+  const { count } = await adminPrisma.webhookConfirmation.deleteMany({
     where: {
       OR: [
         { expiresAt: { lt: now() }, consumedAt: null },

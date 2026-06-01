@@ -26,7 +26,8 @@
  * negligible.
  */
 
-import { prisma } from "@/lib/prisma";
+import { adminPrisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { deriveJwtSigningKey } from "@/server/services/crypto";
 import { getDekCache } from "@/server/services/kms";
 import { writeAuditLog } from "@/server/services/audit";
@@ -94,7 +95,7 @@ export interface VfJwtPayload {
  * Throws if neither a per-org DEK nor `NEXTAUTH_SECRET` is configured.
  */
 export async function getJwtSecretForOrg(orgId: string): Promise<JwtKeyResult> {
-  const org = await prisma.organization.findUnique({
+  const org = await adminPrisma.organization.findUnique({
     where: { id: orgId },
     select: {
       id: true,
@@ -177,7 +178,7 @@ export async function revokeOrgSessions(
   organizationId: string,
   by: RevokeOrgSessionsRequestor,
 ): Promise<RevokeOrgSessionsResult> {
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await withOrgTx(organizationId, async (tx) => {
     const org = await tx.organization.findUnique({
       where: { id: organizationId },
       select: { id: true, dataKeyCiphertext: true },

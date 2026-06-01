@@ -1,14 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    organization: { findMany: vi.fn().mockResolvedValue([{ id: "default" }]) },
-    costRecommendation: { findMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn(), aggregate: vi.fn() },
-    pipelineMetric: { groupBy: vi.fn() },
-    pipeline: { findMany: vi.fn() },
-    pipelineNode: { findMany: vi.fn() },
-  },
-}));
+vi.mock("@/lib/prisma", () => { const __pm = {
+  organization: { findMany: vi.fn().mockResolvedValue([{ id: "default" }]) },
+  costRecommendation: { findMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn(), aggregate: vi.fn() },
+  pipelineMetric: { groupBy: vi.fn() },
+  pipeline: { findMany: vi.fn() },
+  pipelineNode: { findMany: vi.fn() },
+}; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 vi.mock("@/lib/logger", () => ({ debugLog: vi.fn(), infoLog: vi.fn(), errorLog: vi.fn() }));
 vi.mock("@/server/services/cost-optimizer", () => ({
   runCostAnalysis: vi.fn().mockResolvedValue([]),

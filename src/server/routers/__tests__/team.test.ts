@@ -29,9 +29,7 @@ vi.mock("@/server/middleware/audit", () => ({
     t.middleware(({ next, ctx }: { next: (opts: { ctx: unknown }) => unknown; ctx: unknown }) => next({ ctx })),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: mockDeep<PrismaClient>(),
-}));
+vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/crypto", () => ({
   ENCRYPTION_DOMAINS: { GENERIC: "generic" } as const,
@@ -654,6 +652,63 @@ describe("team router", () => {
   });
 
   // ─── updateAiConfig ───────────────────────────────────────────────────────
+
+  describe("getAiConfig", () => {
+    it("returns aiBaseUrlOptIn and canManageAiBaseUrlOptIn=true for an OWNER", async () => {
+      const ownerCaller = t.createCallerFactory(teamRouter)({
+        session: { user: { id: "user-1", email: "owner@test.com", name: "Owner" } },
+        userRole: "ADMIN",
+        teamId: "team-1",
+        organizationId: "default",
+        orgMemberRole: "OWNER",
+      });
+      prismaMock.team.findUniqueOrThrow.mockResolvedValue({
+        aiEnabled: true,
+        aiProvider: "openai",
+        aiBaseUrl: null,
+        aiModel: "gpt-4o",
+        aiApiKey: "enc:secret",
+        organizationId: "default",
+      } as never);
+      prismaMock.organizationSettings.findUnique.mockResolvedValue({
+        ...mockOrgSettings(),
+        aiBaseUrlOptIn: true,
+      } as never);
+
+      const result = await ownerCaller.getAiConfig({ teamId: "team-1" });
+
+      expect(result).toMatchObject({
+        aiEnabled: true,
+        hasApiKey: true,
+        aiBaseUrlOptIn: true,
+        canManageAiBaseUrlOptIn: true,
+      });
+      // The encrypted key must never leave the server.
+      expect(result).not.toHaveProperty("aiApiKey");
+    });
+
+    it("reports canManageAiBaseUrlOptIn=false when the caller is not an OWNER", async () => {
+      prismaMock.team.findUniqueOrThrow.mockResolvedValue({
+        aiEnabled: false,
+        aiProvider: null,
+        aiBaseUrl: null,
+        aiModel: null,
+        aiApiKey: null,
+        organizationId: "default",
+      } as never);
+      prismaMock.organizationSettings.findUnique.mockResolvedValue({
+        ...mockOrgSettings(),
+        aiBaseUrlOptIn: false,
+      } as never);
+
+      // adminCaller carries no orgMemberRole -> not OWNER.
+      const result = await adminCaller.getAiConfig({ teamId: "team-1" });
+
+      expect(result.canManageAiBaseUrlOptIn).toBe(false);
+      expect(result.aiBaseUrlOptIn).toBe(false);
+      expect(result.hasApiKey).toBe(false);
+    });
+  });
 
   describe("updateAiConfig", () => {
     it("encrypts AI API key when provided (v2 — OSS / no DEK)", async () => {

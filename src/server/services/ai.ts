@@ -111,7 +111,7 @@ export async function getTeamAiConfig(teamId: string, { requireEnabled = true } 
   if (requireEnabled && !team.aiEnabled) throw new Error("AI is not enabled for this team");
   if (!team.aiApiKey) throw new Error("AI API key is not configured");
 
-  const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, team.organizationId);
+  const dataKeyCiphertext = await loadOrgDataKeyCiphertext(team.organizationId);
   const apiKey = await decryptTeamAiApiKey({
     encryptedKey: team.aiApiKey,
     organizationId: team.organizationId,

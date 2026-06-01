@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, denyInDemo } from "@/trpc/init";
-import { prisma } from "@/lib/prisma";
+import { prisma, adminPrisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { isOrgWideAdmin } from "@/lib/org-admin";
 import { withAudit } from "@/server/middleware/audit";
@@ -383,13 +383,27 @@ export const userRouter = router({
             message: "Current password is incorrect.",
           });
         }
+      } else {
+        // Non-LOCAL (OIDC): there is no password to check, so require a recent
+        // interactive re-auth instead. The client runs signIn(prompt=login)
+        // before erasing; verifying freshness here (not a client-supplied
+        // marker) is what stops a stale / unattended session from erasing the
+        // account. 5-minute window.
+        const authedAt = ctx.session?.user?.authedAt;
+        if (typeof authedAt !== "number" || Date.now() - authedAt > 5 * 60 * 1000) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message:
+              "Please re-authenticate with your identity provider before erasing your account.",
+          });
+        }
       }
 
       // Unguessable placeholder address. Length keeps the row index-able
       // and well under the 320-char RFC limit even with the cuid suffix.
       const anonEmail = `erased+${user.id}@anon.invalid`;
 
-      await prisma.$transaction(async (tx) => {
+      await adminPrisma.$transaction(async (tx) => {
         // Sole-OWNER orphan check — run INSIDE the transaction so a
         // concurrent OrgMember mutation between the check and the
         // OrgMember.deleteMany below cannot orphan an organisation.
@@ -567,7 +581,7 @@ export const userRouter = router({
       // THIS org first; only escalate to full User-row pseudonymisation
       // when the target has no other org memberships left after that.
       // A caller cannot reach into another customer's data.
-      const result = await prisma.$transaction(async (tx) => {
+      const result = await adminPrisma.$transaction(async (tx) => {
         // Codex PR #378 round-2 P1 — serialise concurrent
         // erase/membership writes on the same user. Without the lock
         // a peer org could OrgMember.create the target between our
