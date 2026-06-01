@@ -6,6 +6,7 @@ import {
   scimPatchUser,
   scimDeleteUser,
   fireScimSyncFailedAlert,
+  ScimProtectedMemberError,
 } from "@/server/services/scim";
 import { runWithOrgContext } from "@/lib/org-context";
 
@@ -121,6 +122,11 @@ export async function DELETE(
       if (!result) return scimError("User not found", 404);
       return new NextResponse(null, { status: 204 });
     } catch (error) {
+      // Coexistence policy refusal (local member / owner) — 403, and do NOT
+      // fire a sync-failed alert: this is an expected rejection, not an outage.
+      if (error instanceof ScimProtectedMemberError) {
+        return scimError(error.message, 403);
+      }
       const message =
         error instanceof Error ? error.message : "Failed to delete user";
       void fireScimSyncFailedAlert(message);
