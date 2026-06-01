@@ -5,6 +5,7 @@ import { useTeamStore } from "@/stores/team-store";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { FleetHealthDashboard } from "@/components/fleet/fleet-health-dashboard";
+import { FleetDriftReport } from "@/components/fleet/fleet-drift-report";
 import { FleetTabs } from "@/components/fleet/fleet-tabs";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -51,7 +52,10 @@ export default function FleetHealthPage() {
         <FleetTabs active="health" />
 
         {activeEnvId ? (
-          <FleetHealthDashboard environmentId={activeEnvId} />
+          <>
+            <FleetHealthDashboard environmentId={activeEnvId} />
+            <FleetDriftReport environmentId={activeEnvId} />
+          </>
         ) : (
           <EmptyState
             glyph="◇"

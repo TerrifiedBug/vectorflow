@@ -491,7 +491,7 @@ export const teamRouter = router({
   getAiConfig: protectedProcedure
     .use(withTeamAccess("ADMIN"))
     .input(z.object({ teamId: z.string() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const team = await prisma.team.findUniqueOrThrow({
         where: { id: input.teamId },
         select: {
@@ -500,14 +500,27 @@ export const teamRouter = router({
           aiBaseUrl: true,
           aiModel: true,
           aiApiKey: true,
+          organizationId: true,
         },
       });
+      // Surface the org-level custom-base-URL opt-in (and whether the
+      // caller may flip it) so the AI settings page can expose the
+      // OWNER-gated `settings.updateAiBaseUrlOptIn` toggle. `settings.get`
+      // is platform-operator-gated, so this team-scoped query is the
+      // OWNER-readable path for the flag.
+      const orgSettings = await prisma.organizationSettings.findUnique({
+        where: { organizationId: team.organizationId },
+        select: { aiBaseUrlOptIn: true },
+      });
+      const orgMemberRole = (ctx as { orgMemberRole?: string }).orgMemberRole;
       return {
         aiEnabled: team.aiEnabled,
         aiProvider: team.aiProvider,
         aiBaseUrl: team.aiBaseUrl,
         aiModel: team.aiModel,
         hasApiKey: !!team.aiApiKey,
+        aiBaseUrlOptIn: orgSettings?.aiBaseUrlOptIn ?? false,
+        canManageAiBaseUrlOptIn: orgMemberRole === "OWNER",
       };
     }),
 

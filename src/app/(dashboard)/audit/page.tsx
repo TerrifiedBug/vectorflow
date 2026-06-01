@@ -39,6 +39,7 @@ import { DeploymentHistory } from "./deployments/page";
 import { getAuditActionLabel } from "@/lib/audit-actions";
 import { AuditDetailDrawer } from "@/components/ui/audit-detail-drawer";
 import { AuditChainExportButton } from "./_components/audit-chain-export-button";
+import { ExportEntriesButton } from "./_components/export-entries-button";
 
 const ALL_VALUE = "__all__";
 const SCIM_VALUE = "__SCIM__";
@@ -98,8 +99,9 @@ export default function AuditPage() {
       : [entityTypeFilter]
     : undefined;
 
-  const queryInput = {
-    limit: 100,
+  // Shared filter object — fed to both `audit.list` (with a limit) and the
+  // on-demand `audit.exportAuditLog` download, so the two never drift.
+  const filters = {
     ...(actionFilter ? { action: actionFilter } : {}),
     ...(entityTypesParam ? { entityTypes: entityTypesParam } : {}),
     ...(userFilter ? { userId: userFilter } : {}),
@@ -109,6 +111,8 @@ export default function AuditPage() {
     ...(effectiveTeamId ? { teamId: effectiveTeamId } : {}),
     ...(effectiveEnvironmentId ? { environmentId: effectiveEnvironmentId } : {}),
   };
+
+  const queryInput = { limit: 100, ...filters };
 
   // Infinite query for cursor-based pagination
   const logsQuery = useInfiniteQuery(
@@ -150,7 +154,12 @@ export default function AuditPage() {
       <PageHeader
         title="Audit Log"
         description="Track all changes and actions across your VectorFlow instance."
-        actions={<AuditChainExportButton />}
+        actions={
+          <>
+            <ExportEntriesButton filters={filters} />
+            <AuditChainExportButton />
+          </>
+        }
       />
 
       <div className="space-y-6 p-4">

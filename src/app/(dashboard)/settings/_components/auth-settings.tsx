@@ -50,6 +50,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { DemoDisabledBadge, DemoDisabledFieldset } from "@/components/demo-disabled";
+import { DomainClaimsCard } from "./domain-claims-card";
 
 // ─── Auth Tab ──────────────────────────────────────────────────────────────────
 
@@ -245,6 +246,7 @@ export function AuthSettings() {
 
   return (
     <div className="space-y-6">
+    <DomainClaimsCard />
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
@@ -277,6 +279,11 @@ export function AuthSettings() {
             />
             <p className="text-xs text-muted-foreground">
               The OIDC issuer URL (must support .well-known/openid-configuration)
+            </p>
+            <p className="text-xs text-muted-foreground">
+              The issuer hostname must be covered by a verified domain claim
+              (see <span className="font-medium">Domain claims</span> above)
+              before these settings can be saved.
             </p>
             {touched.issuer && fieldErrors.issuer && (
               <p className="text-xs text-destructive mt-1">{fieldErrors.issuer}</p>

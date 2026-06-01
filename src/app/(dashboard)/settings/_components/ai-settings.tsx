@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
 import { toast } from "sonner";
-import { Sparkles, Loader2, CheckCircle, XCircle } from "lucide-react";
+import { Sparkles, Loader2, CheckCircle, XCircle, Globe } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +41,8 @@ interface AiConfig {
   aiBaseUrl: string | null;
   aiModel: string | null;
   hasApiKey: boolean;
+  aiBaseUrlOptIn: boolean;
+  canManageAiBaseUrlOptIn: boolean;
 }
 
 function AiSettingsForm({ config, teamId }: { config: AiConfig; teamId: string }) {
@@ -80,6 +82,18 @@ function AiSettingsForm({ config, teamId }: { config: AiConfig; teamId: string }
       onError: (error) => {
         setTestResult({ ok: false, error: error.message });
         toast.error("Connection test failed", { description: error.message , duration: 6000 });
+      },
+    }),
+  );
+
+  const optInMutation = useMutation(
+    trpc.settings.updateAiBaseUrlOptIn.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.team.getAiConfig.queryKey() });
+        toast.success("Custom AI provider URL setting updated");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to update setting", { duration: 6000 });
       },
     }),
   );
@@ -247,6 +261,42 @@ function AiSettingsForm({ config, teamId }: { config: AiConfig; teamId: string }
             )}
           </div>
          </DemoDisabledFieldset>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-4 w-4" />
+            Custom provider URLs
+            <DemoDisabledBadge className="ml-auto" />
+          </CardTitle>
+          <CardDescription>
+            Organisation-wide control. By default only api.openai.com and
+            api.anthropic.com are accepted as AI provider endpoints. Enable this to
+            let teams in this organisation save a custom OpenAI-compatible Base URL
+            above.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DemoDisabledFieldset message="Organisation AI settings are disabled in the public demo.">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>Allow custom AI base URLs</Label>
+                <p className="text-xs text-muted-foreground">
+                  {config.canManageAiBaseUrlOptIn
+                    ? "Required before any team in this organisation can save a non-allowlisted Base URL."
+                    : `Only an organisation OWNER can change this. Custom base URLs are currently ${config.aiBaseUrlOptIn ? "allowed" : "blocked"}.`}
+                </p>
+              </div>
+              <Switch
+                checked={config.aiBaseUrlOptIn}
+                disabled={!config.canManageAiBaseUrlOptIn || optInMutation.isPending}
+                onCheckedChange={(enabled) => optInMutation.mutate({ enabled })}
+                aria-label="Allow custom AI base URLs"
+              />
+            </div>
+          </DemoDisabledFieldset>
         </CardContent>
       </Card>
     </div>

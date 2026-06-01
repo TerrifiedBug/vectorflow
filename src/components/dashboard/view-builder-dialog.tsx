@@ -15,7 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { Check } from "lucide-react";
+import { Check, Trash2, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 /** All available panels that can be added to a custom view */
 export const AVAILABLE_PANELS = [
@@ -83,6 +84,7 @@ function ViewBuilderForm({
   const [selectedPanels, setSelectedPanels] = useState<string[]>(
     editView?.panels ? [...editView.panels] : []
   );
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const createMutation = useMutation(
     trpc.dashboard.createView.mutationOptions({
@@ -99,6 +101,21 @@ function ViewBuilderForm({
         queryClient.invalidateQueries({ queryKey: [["dashboard", "listViews"]] });
         onClose();
       },
+    })
+  );
+
+  const deleteMutation = useMutation(
+    trpc.dashboard.deleteView.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: [["dashboard", "listViews"]] });
+        toast.success("View deleted");
+        setConfirmOpen(false);
+        onClose();
+      },
+      onError: (error) =>
+        toast.error(error.message || "Failed to delete view", {
+          duration: 6000,
+        }),
     })
   );
 
@@ -129,7 +146,10 @@ function ViewBuilderForm({
     }
   };
 
-  const isPending = createMutation.isPending || updateMutation.isPending;
+  const isPending =
+    createMutation.isPending ||
+    updateMutation.isPending ||
+    deleteMutation.isPending;
   const categories = [...new Set(AVAILABLE_PANELS.map((p) => p.category))];
 
   return (
@@ -201,6 +221,18 @@ function ViewBuilderForm({
       </div>
 
       <DialogFooter>
+        {editView && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setConfirmOpen(true)}
+            disabled={isPending}
+            className="text-destructive hover:text-destructive sm:mr-auto"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete view
+          </Button>
+        )}
         <Button
           variant="outline"
           onClick={onClose}
@@ -215,6 +247,55 @@ function ViewBuilderForm({
           {isPending ? "Saving..." : editView ? "Update" : "Create"}
         </Button>
       </DialogFooter>
+
+      {editView && (
+        <Dialog
+          open={confirmOpen}
+          onOpenChange={(next) => {
+            if (!deleteMutation.isPending) setConfirmOpen(next);
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Delete view</DialogTitle>
+              <DialogDescription>
+                Delete{" "}
+                <span className="font-medium text-foreground">
+                  {editView.name}
+                </span>
+                ? This cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setConfirmOpen(false)}
+                disabled={deleteMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={deleteMutation.isPending}
+                onClick={() =>
+                  deleteMutation.mutate({ environmentId, id: editView.id })
+                }
+              >
+                {deleteMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete view"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 }

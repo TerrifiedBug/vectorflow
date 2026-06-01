@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
-import { Loader2, AlertTriangle, Info } from "lucide-react";
+import { Loader2, AlertTriangle, Info, Trash2, ShieldAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,18 @@ import {
 import { TotpSetupCard } from "@/components/totp-setup-card";
 import { useTeamStore } from "@/stores/team-store";
 import { PageHeader } from "@/components/page-header";
+import { signOut } from "next-auth/react";
+import { isDemoMode } from "@/lib/is-demo-mode";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+const ERASE_CONFIRM = "erase my account";
 
 export default function ProfilePage() {
   const trpc = useTRPC();
@@ -90,6 +102,26 @@ export default function ProfilePage() {
     }
     changePasswordMutation.mutate({ currentPassword, newPassword });
   }
+  // --- Delete account (GDPR self-erasure) ---
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+  const demo = isDemoMode();
+
+  const eraseSelfMutation = useMutation(
+    trpc.user.eraseSelf.mutationOptions({
+      onSuccess: () => {
+        toast.success("Your account has been erased. Signing you out…");
+        void signOut({ callbackUrl: "/login" });
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to erase account", { duration: 6000 });
+      },
+    }),
+  );
+
+  const eraseValid =
+    deleteConfirm === ERASE_CONFIRM && (!isLocalUser || deletePassword.length > 0);
 
   return (
     <div className="space-y-6 p-6">
@@ -246,6 +278,106 @@ export default function ProfilePage() {
           <TotpSetupCard totpEnabled={me.totpEnabled} authMethod={me.authMethod} />
         </>
       )}
+
+      {/* Danger zone — self-erasure */}
+      <Card className="border-destructive/40">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-destructive">
+            <ShieldAlert className="h-4 w-4" />
+            Danger zone
+          </CardTitle>
+          <CardDescription>
+            Permanently erase your VectorFlow account. This pseudonymises your
+            personal data (GDPR Art. 17), removes you from every organisation and
+            team, and signs you out. This cannot be undone.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            If you are the sole owner of an organisation with other members,
+            transfer ownership before erasing your account.
+          </p>
+          <Button
+            variant="destructive"
+            className="shrink-0"
+            disabled={demo}
+            title={demo ? "Disabled in the public demo" : undefined}
+            onClick={() => setDeleteOpen(true)}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete account
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(o) => {
+          if (!eraseSelfMutation.isPending) setDeleteOpen(o);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete your account</DialogTitle>
+            <DialogDescription>
+              This permanently erases your account and cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {isLocalUser && (
+              <div className="space-y-2">
+                <Label htmlFor="erase-self-password">Current password</Label>
+                <Input
+                  id="erase-self-password"
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  autoComplete="current-password"
+                />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="erase-self-confirm">
+                Type <span className="font-mono">{ERASE_CONFIRM}</span> to confirm
+              </Label>
+              <Input
+                id="erase-self-confirm"
+                value={deleteConfirm}
+                onChange={(e) => setDeleteConfirm(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteOpen(false)}
+              disabled={eraseSelfMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!eraseValid || eraseSelfMutation.isPending}
+              onClick={() =>
+                eraseSelfMutation.mutate({
+                  confirmation: ERASE_CONFIRM,
+                  currentPassword: isLocalUser ? deletePassword : undefined,
+                })
+              }
+            >
+              {eraseSelfMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Erasing...
+                </>
+              ) : (
+                "Delete my account"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       </div>
     </div>
   );
