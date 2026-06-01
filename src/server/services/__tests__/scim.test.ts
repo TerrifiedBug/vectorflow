@@ -307,3 +307,89 @@ describe("SCIM/local coexistence", () => {
     expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 });
+
+describe("SCIM/local coexistence — deactivation (active=false) guard", () => {
+  it("refuses to deactivate a LOCAL member via PUT", async () => {
+    prismaMock.orgMember.findUnique.mockResolvedValue({
+      role: "MEMBER",
+      provisionedVia: "LOCAL",
+    } as never);
+    prismaMock.user.findUnique.mockResolvedValue({ lockedBy: null } as never);
+
+    const err = await scimUpdateUser("org-1", "local-user", {
+      active: false,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(ScimProtectedMemberError);
+    expect(err.reason).toBe("local_member");
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses to deactivate the OWNER via PUT", async () => {
+    prismaMock.orgMember.findUnique.mockResolvedValue({
+      role: "OWNER",
+      provisionedVia: "SCIM",
+    } as never);
+    prismaMock.user.findUnique.mockResolvedValue({ lockedBy: null } as never);
+
+    const err = await scimUpdateUser("org-1", "owner-user", {
+      active: false,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(ScimProtectedMemberError);
+    expect(err.reason).toBe("owner");
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses to deactivate a LOCAL member via PATCH (active=false op)", async () => {
+    prismaMock.orgMember.findUnique.mockResolvedValue({
+      role: "MEMBER",
+      provisionedVia: "LOCAL",
+    } as never);
+    prismaMock.user.findUnique.mockResolvedValue({ lockedBy: null } as never);
+
+    const err = await scimPatchUser("org-1", "local-user", [
+      { op: "replace", path: "active", value: false },
+    ]).catch((e) => e);
+    expect(err).toBeInstanceOf(ScimProtectedMemberError);
+    expect(err.reason).toBe("local_member");
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it("allows deactivating a SCIM-provisioned non-owner member", async () => {
+    prismaMock.orgMember.findUnique.mockResolvedValue({
+      role: "MEMBER",
+      provisionedVia: "SCIM",
+    } as never);
+    prismaMock.user.findUnique.mockResolvedValue({ lockedBy: null } as never);
+    prismaMock.user.update.mockResolvedValue({
+      id: "scim-user",
+      email: "x@example.com",
+      name: "X",
+      scimExternalId: "e",
+      lockedAt: new Date(),
+    } as never);
+
+    const result = await scimUpdateUser("org-1", "scim-user", { active: false });
+    expect(result).not.toBeNull();
+    expect(prismaMock.user.update).toHaveBeenCalled();
+  });
+
+  it("allows a benign profile update to a LOCAL member (guard fires only on deactivation)", async () => {
+    prismaMock.orgMember.findUnique.mockResolvedValue({
+      role: "MEMBER",
+      provisionedVia: "LOCAL",
+    } as never);
+    prismaMock.user.update.mockResolvedValue({
+      id: "local-user",
+      email: "x@example.com",
+      name: "New Name",
+      scimExternalId: null,
+      lockedAt: null,
+    } as never);
+
+    const result = await scimUpdateUser("org-1", "local-user", {
+      name: { formatted: "New Name" },
+    });
+    expect(result).not.toBeNull();
+    expect(prismaMock.user.update).toHaveBeenCalled();
+  });
+});

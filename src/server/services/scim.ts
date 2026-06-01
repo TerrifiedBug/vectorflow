@@ -295,8 +295,37 @@ async function requireOrgMember(organizationId: string, userId: string) {
     where: {
       userId_organizationId: { userId, organizationId },
     },
-    select: { userId: true },
+    select: { role: true, provisionedVia: true },
   });
+}
+
+/**
+ * Coexistence guard for SCIM removal / deactivation. SCIM-provisioned and
+ * local users coexist: the IdP is authoritative only over identities it
+ * provisions. Refuse to `deprovision`/`deactivate` a LOCAL member (signup /
+ * invite — the IdP doesn't own it) or the org OWNER (never let the IdP lock
+ * out or remove the owner; transfer ownership first). Throws
+ * ScimProtectedMemberError, which the SCIM Users route maps to 403 without
+ * firing a false sync-failed alert.
+ */
+function assertScimMayRemoveOrLock(
+  membership: { role: string; provisionedVia: string },
+  verb: "deprovision" | "deactivate",
+) {
+  if (membership.provisionedVia === "LOCAL") {
+    throw new ScimProtectedMemberError(
+      "local_member",
+      `Cannot ${verb} a locally-managed member via SCIM. This account was not ` +
+        "provisioned by the identity provider; an administrator must manage it directly.",
+    );
+  }
+  if (membership.role === "OWNER") {
+    throw new ScimProtectedMemberError(
+      "owner",
+      `Cannot ${verb} the organization owner via SCIM. Transfer ownership to ` +
+        "another member first.",
+    );
+  }
 }
 export async function scimUpdateUser(
   organizationId: string,
@@ -304,7 +333,8 @@ export async function scimUpdateUser(
   scimUser: Partial<ScimUser>,
 ) {
   debugLog("scim", `PUT /Users/${id}`, { active: scimUser.active, userName: scimUser.userName, externalId: scimUser.externalId });
-  if (!(await requireOrgMember(organizationId, id))) return null;
+  const membership = await requireOrgMember(organizationId, id);
+  if (!membership) return null;
   const data: Record<string, unknown> = {};
 
   if (scimUser.name?.formatted) data.name = scimUser.name.formatted;
@@ -328,6 +358,13 @@ export async function scimUpdateUser(
     }
   }
   if (scimUser.externalId) data.scimExternalId = scimUser.externalId;
+  // Coexistence: SCIM must not LOCK (deactivate) a member it does not own — a
+  // LOCAL member (signup/invite) is outside the IdP's purview, and an OWNER
+  // must never be locked out by the IdP. Benign profile updates and SCIM
+  // non-owner deactivation are unaffected.
+  if (data.lockedAt instanceof Date) {
+    assertScimMayRemoveOrLock(membership, "deactivate");
+  }
 
   if (Object.keys(data).length === 0) {
     // No fields changed, skip update
@@ -373,7 +410,8 @@ export async function scimPatchUser(
   operations: ScimPatchOp[],
 ) {
   debugLog("scim", `PATCH /Users/${id}`, { operations: operations.map(o => ({ op: o.op, path: o.path, value: o.value })) });
-  if (!(await requireOrgMember(organizationId, id))) return null;
+  const membership = await requireOrgMember(organizationId, id);
+  if (!membership) return null;
   const data: Record<string, unknown> = {};
 
   for (const op of operations) {
@@ -432,6 +470,12 @@ export async function scimPatchUser(
         if (typeof nameObj.formatted === "string") data.name = nameObj.formatted;
       }
     }
+  }
+
+  // Coexistence guard — see scimUpdateUser. Refuse to lock a LOCAL member or
+  // the OWNER even when the IdP sends active=false.
+  if (data.lockedAt instanceof Date) {
+    assertScimMayRemoveOrLock(membership, "deactivate");
   }
 
   if (Object.keys(data).length > 0) {
@@ -498,33 +542,12 @@ export async function fireScimSyncFailedAlert(errorMessage: string): Promise<voi
  */
 export async function scimDeleteUser(organizationId: string, id: string) {
   debugLog("scim", `DELETE /Users/${id} org=${organizationId}`);
-  // Resolve the caller-org membership with its role + provenance. Not a member
-  // of THIS org → null (the route 404s; never reveal peer-org existence).
-  const membership = await prisma.orgMember.findUnique({
-    where: { userId_organizationId: { userId: id, organizationId } },
-    select: { role: true, provisionedVia: true },
-  });
+  // Not a member of THIS org → null (the route 404s; never reveal peer-org
+  // existence). Coexistence: SCIM may only deprovision memberships it
+  // provisioned — never a LOCAL member or the OWNER (transfer ownership first).
+  const membership = await requireOrgMember(organizationId, id);
   if (!membership) return null;
-  // Coexistence: SCIM may only deprovision memberships IT provisioned. A LOCAL
-  // member (signup / invite / first-run owner) is outside the IdP's purview —
-  // the mirror of scimCreateUser refusing to adopt local accounts on the way in.
-  if (membership.provisionedVia === "LOCAL") {
-    throw new ScimProtectedMemberError(
-      "local_member",
-      "Cannot deprovision a locally-managed member via SCIM. This account was not " +
-        "provisioned by the identity provider; an administrator must remove it from " +
-        "the org-management surface.",
-    );
-  }
-  // Owner protection: SCIM must never remove an organization OWNER — even one it
-  // provisioned. Ownership must be transferred to another member first.
-  if (membership.role === "OWNER") {
-    throw new ScimProtectedMemberError(
-      "owner",
-      "Cannot deprovision the organization owner via SCIM. Transfer ownership to " +
-        "another member before removing this account.",
-    );
-  }
+  assertScimMayRemoveOrLock(membership, "deprovision");
   try {
     await withOrgTx(organizationId, async (tx) => {
       // Step 1: clear EVERY team membership for this user on teams owned
