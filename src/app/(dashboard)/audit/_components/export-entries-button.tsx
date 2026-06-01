@@ -70,10 +70,16 @@ const CSV_COLUMNS: ReadonlyArray<{
   { header: "environmentId", get: (r) => r.environmentId ?? "-" },
 ];
 
-/** RFC 4180 escaping: quote-wrap when the value holds a quote, comma, or newline. */
+/**
+ * RFC 4180 escaping (quote-wrap on quote/comma/newline) plus CSV formula-
+ * injection neutralisation (CWE-1236): audit fields are user-controlled, so a
+ * value starting with =, +, -, @, tab, or CR is prefixed with a single quote
+ * to stop spreadsheet apps from evaluating it as a formula.
+ */
 function csvCell(value: unknown): string {
   if (value == null) return "";
-  const str = value instanceof Date ? value.toISOString() : String(value);
+  let str = value instanceof Date ? value.toISOString() : String(value);
+  if (/^[=+\-@\t\r]/.test(str)) str = `'${str}`;
   return /[",\r\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
 }
 

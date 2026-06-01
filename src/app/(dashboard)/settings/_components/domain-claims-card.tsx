@@ -86,10 +86,7 @@ export function DomainClaimsCard() {
   );
 
   const [domain, setDomain] = useState("");
-  const [pendingRecord, setPendingRecord] = useState<{
-    domain: string;
-    record: DnsRecord;
-  } | null>(null);
+  const [expandedClaimId, setExpandedClaimId] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<{
     id: string;
     domain: string;
@@ -108,7 +105,7 @@ export function DomainClaimsCard() {
   const claimMutation = useMutation(
     trpc.org.claimDomain.mutationOptions({
       onSuccess: (data) => {
-        setPendingRecord({ domain: data.domain, record: data.instructions });
+        setExpandedClaimId(data.id);
         setDomain("");
         invalidate();
         toast.success(
@@ -247,43 +244,46 @@ export function DomainClaimsCard() {
                 </p>
               )}
 
-              {pendingRecord && (
-                <div className="space-y-2 rounded-md border bg-muted/40 p-3">
-                  <p className="text-sm font-medium">
-                    Publish this DNS record for{" "}
-                    <span className="font-mono">{pendingRecord.domain}</span>
-                  </p>
-                  <div className="grid gap-2 text-xs sm:grid-cols-[auto_1fr]">
-                    <span className="text-muted-foreground">Type</span>
-                    <span className="font-mono">{pendingRecord.record.type}</span>
-                    <span className="text-muted-foreground">Host</span>
-                    <span className="font-mono break-all">
-                      {pendingRecord.record.host}
-                    </span>
-                    <span className="text-muted-foreground">Value</span>
-                    <span className="flex items-center gap-2">
-                      <span className="font-mono break-all">
-                        {pendingRecord.record.value}
+              {(() => {
+                const expanded = claims.find(
+                  (c) => c.id === expandedClaimId && c.instructions,
+                );
+                if (!expanded?.instructions) return null;
+                const record = expanded.instructions;
+                return (
+                  <div className="space-y-2 rounded-md border bg-muted/40 p-3">
+                    <p className="text-sm font-medium">
+                      Publish this DNS record for{" "}
+                      <span className="font-mono">{expanded.domain}</span>
+                    </p>
+                    <div className="grid gap-2 text-xs sm:grid-cols-[auto_1fr]">
+                      <span className="text-muted-foreground">Type</span>
+                      <span className="font-mono">{record.type}</span>
+                      <span className="text-muted-foreground">Host</span>
+                      <span className="font-mono break-all">{record.host}</span>
+                      <span className="text-muted-foreground">Value</span>
+                      <span className="flex items-center gap-2">
+                        <span className="font-mono break-all">{record.value}</span>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 shrink-0"
+                          aria-label="Copy TXT value"
+                          onClick={() => handleCopy(record)}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
                       </span>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6 shrink-0"
-                        aria-label="Copy TXT value"
-                        onClick={() => handleCopy(pendingRecord.record)}
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </Button>
-                    </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      DNS changes can take a few minutes to propagate. Use{" "}
+                      <span className="font-medium">Verify</span> once the record
+                      is live.
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    DNS changes can take a few minutes to propagate. Use{" "}
-                    <span className="font-medium">Verify</span> once the record
-                    is live.
-                  </p>
-                </div>
-              )}
+                );
+              })()}
 
               {claims.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
@@ -345,6 +345,20 @@ export function DomainClaimsCard() {
                                     <RefreshCw className="h-3.5 w-3.5" />
                                   )}
                                   <span className="ml-1.5">Verify</span>
+                                </Button>
+                              )}
+                              {!claim.verifiedAt && claim.instructions && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() =>
+                                    setExpandedClaimId((id) =>
+                                      id === claim.id ? null : claim.id,
+                                    )
+                                  }
+                                >
+                                  DNS record
                                 </Button>
                               )}
                               {isOwner && (
