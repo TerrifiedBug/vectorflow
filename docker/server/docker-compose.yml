@@ -58,6 +58,11 @@ services:
       DATABASE_URL:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      # Encryption-at-rest master key (see .env.example). Required in production
+      # unless VF_ALLOW_NEXTAUTH_DERIVED_KEY=true. Without forwarding it here the
+      # container can't see the value even when it is set in .env.
+      VF_ENCRYPTION_KEY_V2: ${VF_ENCRYPTION_KEY_V2:-}
+      VF_ALLOW_NEXTAUTH_DERIVED_KEY: ${VF_ALLOW_NEXTAUTH_DERIVED_KEY:-}
       AUTH_TRUST_HOST: "true"
       NEXTAUTH_URL:
     volumes:
