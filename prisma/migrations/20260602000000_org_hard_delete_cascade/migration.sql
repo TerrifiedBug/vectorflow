@@ -8,9 +8,13 @@
 -- (vectorflow-cloud runs this on a schedule; the cascade itself is generic
 -- referential integrity that applies to every install.)
 --
--- Scope (verified against the live FK graph 2026-05-31; the cascade closure from
--- Organization then covers all tenant tables with no blocking FK):
---   * 28 data-plane `*.organizationId -> Organization` FKs: NO ACTION -> CASCADE.
+-- Scope (cascade closure from Organization covers every org-scoped table):
+--   * 30 data-plane `*.organizationId -> Organization` FKs set to CASCADE. 28 were
+--     created NO ACTION by add_organization_tenancy; WebAuthnChallenge and ActiveTap
+--     carried only the RLS `organizationId` column (no FK at all, see
+--     tenancy_belts_and_braces), so they get a CASCADE FK here -- without it an org
+--     hard-delete leaves their transient rows behind (verified against the live FK
+--     graph 2026-05-31).
 --   * 8 intra-tree FKs that would otherwise block the cascade (a child RESTRICT
 --     pointing at a parent that is itself cascade-deleted): TeamMember.teamId,
 --     {Pipeline,VectorNode,SharedComponent,PipelineGroup,NodeGroup,StagedRollout}
@@ -58,6 +62,8 @@ BEGIN
     ('CostRecommendation','organizationId','Organization'),
     ('MigrationProject','organizationId','Organization'),
     ('WebhookEndpoint','organizationId','Organization'),
+    ('WebAuthnChallenge','organizationId','Organization'),
+    ('ActiveTap','organizationId','Organization'),
     ('TeamMember','teamId','Team'),
     ('Pipeline','environmentId','Environment'),
     ('VectorNode','environmentId','Environment'),
