@@ -1,5 +1,21 @@
 # syntax=docker/dockerfile:1
 
+# ---- Stage 0: Generate Prisma client on the native build platform ----
+# Prisma's Rust engine corrupts schema parsing under QEMU when the arm64 image
+# is cross-built on an amd64 runner (yields a bogus "Validation Error Count:
+# 187" during `prisma generate`). The generated client is platform-independent
+# (WASM query compiler + driver adapter, no native engine binary), so produce
+# it once on $BUILDPLATFORM (never emulated) and copy it into the build stage.
+FROM --platform=$BUILDPLATFORM node:26-alpine AS prismagen
+WORKDIR /app
+RUN npm install -g corepack@latest && corepack enable
+COPY package.json pnpm-lock.yaml ./
+COPY prisma ./prisma
+COPY prisma.config.ts ./prisma.config.ts
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --ignore-scripts
+RUN pnpm exec prisma generate
+
 # ---- Stage 1: Install deps ----
 FROM node:26-alpine AS deps
 WORKDIR /app
@@ -9,8 +25,11 @@ RUN npm install -g corepack@latest && corepack enable
 COPY package.json pnpm-lock.yaml ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./prisma.config.ts
+# --ignore-scripts skips the root `postinstall: prisma generate`; that step
+# segfaults under QEMU on cross-arch builds (see prismagen). The generated
+# client is copied in from prismagen during the build stage instead.
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile
+    pnpm install --frozen-lockfile --ignore-scripts
 
 # ---- Stage 2: Download Vector binary for the target arch (cached unless VECTOR_VERSION changes) ----
 # Keep this default in sync with src/lib/vector-version.ts (canonical source).
@@ -37,8 +56,10 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json pnpm-lock.yaml tsconfig.json next.config.ts postcss.config.mjs components.json ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./prisma.config.ts
-RUN pnpm exec prisma generate
 COPY src ./src
+# Generated Prisma client from the native prismagen stage (`prisma generate`
+# cannot run here: under QEMU on cross-arch builds it corrupts the schema parse).
+COPY --from=prismagen /app/src/generated/prisma ./src/generated/prisma
 COPY contracts ./contracts
 COPY public ./public
 ARG NEXT_PUBLIC_VF_DEMO_MODE
