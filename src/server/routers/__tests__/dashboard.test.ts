@@ -104,6 +104,28 @@ describe("dashboard.stats", () => {
     expect(result.alerts).toBe(3); // firingAlertCount + openAnomalyCount
   });
 
+  it("reports deployed and draft-inclusive pipeline counts separately", async () => {
+    // The deployed-only count filters isDraft:false; the draft-inclusive total
+    // does not. Distinguish the two calls by their where clause.
+    prismaMock.pipeline.count.mockImplementation(
+      ((args?: { where?: { isDraft?: boolean } }) =>
+        Promise.resolve(args?.where?.isDraft === false ? 2 : 7)) as never,
+    );
+    prismaMock.vectorNode.count.mockResolvedValue(0);
+    // @ts-expect-error - groupBy mock typing is complex
+    prismaMock.vectorNode.groupBy.mockResolvedValue([]);
+    prismaMock.pipelineMetric.aggregate.mockResolvedValue({
+      _sum: { eventsIn: BigInt(0), eventsOut: BigInt(0) },
+    } as never);
+    prismaMock.alertEvent.count.mockResolvedValue(0);
+    prismaMock.anomalyEvent.count.mockResolvedValue(0);
+
+    const result = await caller.stats({ environmentId: "env-1" });
+
+    expect(result.pipelines).toBe(2); // deployed only
+    expect(result.pipelinesTotal).toBe(7); // includes drafts
+  });
+
   it("returns reductionPercent=null when eventsIn is 0", async () => {
     prismaMock.pipeline.count.mockResolvedValue(0);
     prismaMock.vectorNode.count.mockResolvedValue(0);

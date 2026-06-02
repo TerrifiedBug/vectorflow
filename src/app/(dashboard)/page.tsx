@@ -233,7 +233,7 @@ export default function DashboardPage() {
           variant="full"
           environmentId={selectedEnvironmentId}
           agentEnrolled={stats.data.nodes > 0}
-          pipelineCreated={false}
+          pipelineCreated={(stats.data.pipelinesTotal ?? 0) > 0}
           pipelineDeployed={false}
         />
       </div>
@@ -299,7 +299,7 @@ export default function DashboardPage() {
         <OnboardingChecklist
           environmentId={selectedEnvironmentId}
           agentEnrolled={totalNodes > 0}
-          pipelineCreated={(stats.data?.pipelines ?? 0) > 0}
+          pipelineCreated={(stats.data?.pipelinesTotal ?? 0) > 0}
           pipelineDeployed={onboardingDeployed}
         />
       </div>
