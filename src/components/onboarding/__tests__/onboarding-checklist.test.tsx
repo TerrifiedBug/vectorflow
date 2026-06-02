@@ -47,7 +47,7 @@ describe("OnboardingChecklist", () => {
     // environment step is intrinsically complete → 1 of 4.
     expect(screen.getByText("1 of 4 steps complete")).toBeDefined();
     const cta = screen.getByRole("link", { name: "Get enrollment token" });
-    expect(cta.getAttribute("href")).toBe("/environments/env-1");
+    expect(cta.getAttribute("href")).toBe("/environments/env-1?tab=enrollment");
   });
 
   it("advances the current step + CTA as prerequisites complete", () => {

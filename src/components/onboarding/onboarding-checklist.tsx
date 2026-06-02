@@ -91,7 +91,7 @@ export function OnboardingChecklist({
       description:
         "Generate an enrollment token and connect your first vf-agent.",
       done: agentEnrolled,
-      cta: { label: "Get enrollment token", href: `/environments/${environmentId}` },
+      cta: { label: "Get enrollment token", href: `/environments/${environmentId}?tab=enrollment` },
     },
     {
       key: "pipeline",
