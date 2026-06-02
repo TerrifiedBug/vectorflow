@@ -9,12 +9,15 @@
 -- referential integrity that applies to every install.)
 --
 -- Scope (cascade closure from Organization covers every org-scoped table):
---   * 30 data-plane `*.organizationId -> Organization` FKs set to CASCADE. 28 were
---     created NO ACTION by add_organization_tenancy; WebAuthnChallenge and ActiveTap
---     carried only the RLS `organizationId` column (no FK at all, see
---     tenancy_belts_and_braces), so they get a CASCADE FK here -- without it an org
---     hard-delete leaves their transient rows behind (verified against the live FK
---     graph 2026-05-31).
+--   * 31 data-plane `*.organizationId -> Organization` FKs set to CASCADE. 28 were
+--     created NO ACTION by add_organization_tenancy; WebAuthnChallenge + ActiveTap
+--     (tenancy_belts_and_braces) and AuditChainTail (whose `organizationId` is the
+--     PK) carried only an organizationId column with no FK, so an org hard-delete
+--     would orphan their rows -- they get a CASCADE FK here. AuditChainTail is safe
+--     to cascade: it is a chain-tip pointer, not audit records, and AuditLog's
+--     NO ACTION FK (below) blocks any org delete while audit rows still exist, so
+--     the tail is only cascaded during a proper delete (verified against the live
+--     FK graph 2026-05-31).
 --   * 8 intra-tree FKs that would otherwise block the cascade (a child RESTRICT
 --     pointing at a parent that is itself cascade-deleted): TeamMember.teamId,
 --     {Pipeline,VectorNode,SharedComponent,PipelineGroup,NodeGroup,StagedRollout}
@@ -64,6 +67,7 @@ BEGIN
     ('WebhookEndpoint','organizationId','Organization'),
     ('WebAuthnChallenge','organizationId','Organization'),
     ('ActiveTap','organizationId','Organization'),
+    ('AuditChainTail','organizationId','Organization'),
     ('TeamMember','teamId','Team'),
     ('Pipeline','environmentId','Environment'),
     ('VectorNode','environmentId','Environment'),
