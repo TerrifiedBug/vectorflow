@@ -639,7 +639,7 @@ model TeamMember {
   role   Role
   source String @default("manual")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  team   Team   @relation(fields: [teamId], references: [id])
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([userId, teamId])
 }
@@ -721,7 +721,7 @@ model VectorNode {
   host              String
   apiPort           Int                  @default(8686)
   environmentId     String
-  environment       Environment          @relation(fields: [environmentId], references: [id])
+  environment       Environment          @relation(fields: [environmentId], references: [id], onDelete: Cascade)
   status            NodeStatus           @default(UNKNOWN)
   lastSeen          DateTime?
   metadata          Json?
@@ -847,7 +847,7 @@ model PipelineGroup {
   name          String
   color         String?
   environmentId String
-  environment   Environment     @relation(fields: [environmentId], references: [id])
+  environment   Environment     @relation(fields: [environmentId], references: [id], onDelete: Cascade)
   parentId      String?
   parent        PipelineGroup?  @relation("GroupChildren", fields: [parentId], references: [id], onDelete: SetNull)
   children      PipelineGroup[] @relation("GroupChildren")
@@ -863,7 +863,7 @@ model NodeGroup {
   id             String      @id @default(cuid())
   name           String
   environmentId  String
-  environment    Environment @relation(fields: [environmentId], references: [id])
+  environment    Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
   criteria       Json        @default("{}")
   labelTemplate  Json        @default("{}")
   requiredLabels Json        @default("[]")
@@ -880,7 +880,7 @@ model Pipeline {
   name                      String
   description               String?
   environmentId             String
-  environment               Environment          @relation(fields: [environmentId], references: [id])
+  environment               Environment          @relation(fields: [environmentId], references: [id], onDelete: Cascade)
   groupId                   String?
   group                     PipelineGroup?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
   nodes                     PipelineNode[]
@@ -1196,7 +1196,7 @@ model SharedComponent {
   config         Json
   version        Int           @default(1)
   environmentId  String
-  environment    Environment   @relation(fields: [environmentId], references: [id])
+  environment    Environment   @relation(fields: [environmentId], references: [id], onDelete: Cascade)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -1238,9 +1238,9 @@ model StagedRollout {
   pipelineId               String
   pipeline                 Pipeline         @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   environmentId            String
-  environment              Environment      @relation(fields: [environmentId], references: [id])
+  environment              Environment      @relation(fields: [environmentId], references: [id], onDelete: Cascade)
   canaryVersionId          String
-  canaryVersion            PipelineVersion  @relation("StagedRolloutCanaryVersion", fields: [canaryVersionId], references: [id])
+  canaryVersion            PipelineVersion  @relation("StagedRolloutCanaryVersion", fields: [canaryVersionId], references: [id], onDelete: Cascade)
   previousVersionId        String?
   previousVersion          PipelineVersion? @relation("StagedRolloutPreviousVersion", fields: [previousVersionId], references: [id])
   canarySelector           Json
