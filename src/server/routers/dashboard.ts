@@ -33,7 +33,7 @@ export const dashboardRouter = router({
     .query(async ({ input }) => {
       const envFilter = { environment: { id: input.environmentId } };
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-      const [pipelineCount, nodeCount, healthyCounts, reductionMetrics, firingAlertCount, openAnomalyCount] = await Promise.all([
+      const [pipelineCount, nodeCount, healthyCounts, reductionMetrics, firingAlertCount, openAnomalyCount, pipelineTotalCount] = await Promise.all([
         prisma.pipeline.count({
           where: { environmentId: input.environmentId, isDraft: false, deployedAt: { not: null } },
         }),
@@ -78,6 +78,12 @@ export const dashboardRouter = router({
             status: "open",
           },
         }),
+        // All pipelines in the environment, including drafts not yet deployed.
+        // Drives the onboarding "build a pipeline" step, which must complete as
+        // soon as a pipeline exists — before it is deployed.
+        prisma.pipeline.count({
+          where: { environmentId: input.environmentId },
+        }),
       ]);
 
       const healthy = healthyCounts.find((h) => h.status === "HEALTHY")?._count.status ?? 0;
@@ -92,6 +98,7 @@ export const dashboardRouter = router({
 
       return {
         pipelines: pipelineCount,
+        pipelinesTotal: pipelineTotalCount,
         nodes: nodeCount,
         fleet: { healthy, degraded, unreachable },
         reduction: {

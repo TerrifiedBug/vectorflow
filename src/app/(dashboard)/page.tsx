@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { EmptyState } from "@/components/empty-state";
+import { OnboardingChecklist } from "@/components/onboarding/onboarding-checklist";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader, PageHeaderMetaSep } from "@/components/ui/page-header";
@@ -228,17 +229,12 @@ export default function DashboardPage() {
   if (!stats.isPending && stats.data && stats.data.nodes === 0 && stats.data.pipelines === 0) {
     return (
       <div className="p-4">
-        <EmptyState
-          glyph="◇"
-          title="No pipelines yet"
-          description="Welcome to VectorFlow. Pipelines describe how telemetry flows from sources, through transforms, into sinks. Start from a template or build one on the canvas."
-          action={{ label: "Create first pipeline", href: "/pipelines/new" }}
-          secondary={{ label: "Browse templates", href: "/templates" }}
-          helperLines={[
-            { icon: stats.data.nodes > 0 ? "✓" : "○", text: `${stats.data.nodes} nodes registered`, muted: stats.data.nodes === 0 },
-            { icon: "○", text: "no pipelines deployed", muted: true },
-            { icon: "○", text: "no telemetry flowing yet", muted: true },
-          ]}
+        <OnboardingChecklist
+          variant="full"
+          environmentId={selectedEnvironmentId}
+          agentEnrolled={stats.data.nodes > 0}
+          pipelineCreated={(stats.data.pipelinesTotal ?? 0) > 0}
+          pipelineDeployed={false}
         />
       </div>
     );
@@ -249,6 +245,9 @@ export default function DashboardPage() {
   const totalNodes = stats.data?.nodes ?? 0;
   const latestRefresh = Math.max(stats.dataUpdatedAt, pipelineCards.dataUpdatedAt, chartData.dataUpdatedAt, fleetHotness.dataUpdatedAt);
   const maxDestinationBytes = Math.max(1, ...dashboard.topDestinations.map((pipeline) => pipeline.bytesOut));
+  const onboardingDeployed = dashboard.pipelines.some(
+    (pipeline) => pipeline.status === "RUNNING" || pipeline.status === "STARTING",
+  );
 
   const eventSeries = [
     ...chartSeries(chartData.data?.pipeline.eventsIn, "var(--accent-brand)", "in"),
@@ -295,6 +294,15 @@ export default function DashboardPage() {
           </div>
         }
       />
+
+      <div className="px-4 pt-4 empty:hidden">
+        <OnboardingChecklist
+          environmentId={selectedEnvironmentId}
+          agentEnrolled={totalNodes > 0}
+          pipelineCreated={(stats.data?.pipelinesTotal ?? 0) > 0}
+          pipelineDeployed={onboardingDeployed}
+        />
+      </div>
 
       <div className="grid grid-cols-12 gap-3 p-4">
         {isPending ? (
