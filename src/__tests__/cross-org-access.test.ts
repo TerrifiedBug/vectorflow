@@ -639,3 +639,99 @@ describe("audit middleware org-scope hardening", () => {
     );
   });
 });
+
+// ─── Operator-gate audit ─────────────────────────────────────────────────────
+//
+// Org-scoped vs platform-operator split. A procedure that acts on the caller's
+// OWN org (its settings, teams, members, telemetry) MUST be gated by
+// `requireOrgAdmin` — NOT `requirePlatformOperator`, which is the cross-tenant
+// staff gate and rejects every tenant OWNER/ADMIN with "requires a platform
+// operator session". A batch of procedures was historically mis-gated this way
+// (team create/delete, fleet/anomaly/SCIM config, telemetry, settings read),
+// silently locking org admins out of self-service.
+//
+// This audit pins the EXACT set of procedures that are legitimately
+// platform-operator-only. Any NEW `requirePlatformOperator` gate on a customer
+// procedure — or a regression of a fixed one — fails CI until it is either
+// switched to `requireOrgAdmin` or consciously justified with an OPERATOR_ONLY
+// entry.
+
+/**
+ * True iff the procedure runs through `requirePlatformOperator`. That
+ * middleware's body performs a `platformOperator.findUnique` lookup — a token
+ * absent from `requireOrgAdmin` (which shows `isOrgWideAdmin`), so the two
+ * gates never collide.
+ */
+function hasPlatformOperatorGate(proc: TrpcProcedureLike): boolean {
+  const mws = proc._def?.middlewares ?? [];
+  return mws.some((mw) => String(mw).includes("platformOperator.findUnique"));
+}
+
+/**
+ * Procedures that are INTENTIONALLY platform-operator-only: cross-tenant
+ * instance tooling and whole-deployment operations a single tenant must never
+ * reach. Adding a path here is a deliberate "operators only" assertion.
+ */
+const OPERATOR_ONLY = new Set<string>([
+  // admin.* — cross-org instance-admin tooling (lists/mutates users & teams
+  // across ALL orgs). Tenant admins manage their own org via the org-scoped
+  // members surface, never this router.
+  "admin.listUsers",
+  "admin.listTeams",
+  "admin.assignToTeam",
+  "admin.removeFromTeam",
+  "admin.createUser",
+  "admin.deleteUser",
+  "admin.lockUser",
+  "admin.unlockUser",
+  "admin.resetPassword",
+  "admin.togglePlatformOperator",
+  // settings.* backups — whole-DB backup/restore. A tenant must never dump or
+  // restore the multi-tenant database.
+  "settings.createBackup",
+  "settings.listBackups",
+  "settings.previewBackup",
+  "settings.deleteBackup",
+  "settings.restoreBackup",
+  "settings.updateBackupSchedule",
+  "settings.testS3Connection",
+  "settings.updateStorageBackend",
+  // platform/infra health dashboard.
+  "settings.productionReadiness",
+  // isSystem platform-internal resources (the shared system env/pipeline).
+  "environment.getSystem",
+  "pipeline.getSystemPipeline",
+  "pipeline.createSystemPipeline",
+]);
+
+describe("Operator-gate audit (requirePlatformOperator)", () => {
+  const procs = appRouter._def.procedures as Record<string, TrpcProcedureLike>;
+  const operatorGated = Object.keys(procs)
+    .filter((p) => hasPlatformOperatorGate(procs[p]!))
+    .sort();
+
+  it("detects a non-trivial operator surface", () => {
+    expect(operatorGated.length).toBeGreaterThan(0);
+  });
+
+  it("no org-scoped procedure is gated by requirePlatformOperator", () => {
+    const unexpected = operatorGated.filter((p) => !OPERATOR_ONLY.has(p));
+    if (unexpected.length > 0) {
+      throw new Error(
+        `${unexpected.length} procedure(s) are gated by requirePlatformOperator ` +
+          `but are not in OPERATOR_ONLY:\n\n  - ${unexpected.join("\n  - ")}\n\n` +
+          "A procedure that operates on the caller's OWN org (settings, teams, " +
+          "members, telemetry) MUST use `requireOrgAdmin` — `requirePlatformOperator` " +
+          "is the cross-tenant staff gate and locks org owners/admins out. If this " +
+          "procedure genuinely is platform-operator-only (cross-tenant or " +
+          "whole-deployment), add its path to OPERATOR_ONLY with a rationale.",
+      );
+    }
+  });
+
+  it("every OPERATOR_ONLY entry still exists and is operator-gated", () => {
+    const gated = new Set(operatorGated);
+    const stale = [...OPERATOR_ONLY].filter((p) => !gated.has(p));
+    expect(stale).toEqual([]);
+  });
+});

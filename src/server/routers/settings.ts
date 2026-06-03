@@ -55,7 +55,7 @@ async function getOrCreateSettings() {
 
 export const settingsRouter = router({
   get: protectedProcedure
-    .use(requirePlatformOperator())
+    .use(requireOrgAdmin())
     .query(async ({ ctx }) => {
       const settings = await getOrgSettings(ctx.organizationId);
 
@@ -316,7 +316,7 @@ export const settingsRouter = router({
 
   updateFleet: protectedProcedure
     .use(denyInDemo())
-    .use(requirePlatformOperator())
+    .use(requireOrgAdmin())
     .input(
       z.object({
         pollIntervalMs: z.number().int().min(1000).max(300000),
@@ -337,7 +337,7 @@ export const settingsRouter = router({
 
   updateAnomalyConfig: protectedProcedure
     .use(denyInDemo())
-    .use(requirePlatformOperator())
+    .use(requireOrgAdmin())
     .input(
       z.object({
         baselineWindowDays: z.number().int().min(1).max(30),
@@ -385,7 +385,7 @@ export const settingsRouter = router({
 
   testOidc: protectedProcedure
     .use(denyInDemo())
-    .use(requirePlatformOperator())
+    .use(requireOrgAdmin())
     .input(
       z.object({
         issuer: z.string().url().min(1),
@@ -620,7 +620,7 @@ export const settingsRouter = router({
 
   updateScim: protectedProcedure
     .use(denyInDemo())
-    .use(requirePlatformOperator())
+    .use(requireOrgAdmin())
     .input(z.object({ enabled: z.boolean() }))
     .use(withAudit("settings.scim_updated", "SystemSettings"))
     .mutation(async ({ input, ctx }) => {
@@ -637,7 +637,7 @@ export const settingsRouter = router({
 
   generateScimToken: protectedProcedure
     .use(denyInDemo())
-    .use(requirePlatformOperator())
+    .use(requireOrgAdmin())
     .use(withAudit("settings.scim_token_generated", "SystemSettings"))
     .mutation(async ({ ctx }) => {
       // Generate a secure random token

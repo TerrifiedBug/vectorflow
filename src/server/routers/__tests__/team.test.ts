@@ -18,7 +18,7 @@ vi.mock("@/trpc/init", () => {
     router: t.router,
     protectedProcedure: t.procedure,
     withTeamAccess: passthrough,
-    requirePlatformOperator: passthrough,
+    requireOrgAdmin: passthrough,
     denyInDemo: passthrough,
     middleware: t.middleware,
   };
@@ -281,6 +281,7 @@ describe("team router", () => {
         expect.objectContaining({
           data: expect.objectContaining({
             name: "New Team",
+            organizationId: "default",
             members: { create: { userId: "user-1", role: "ADMIN" } },
           }),
         }),
@@ -294,6 +295,7 @@ describe("team router", () => {
     it("deletes a team with no environments", async () => {
       prismaMock.team.findUnique.mockResolvedValue({
         id: "team-1",
+        organizationId: "default",
         environments: [],
       } as never);
       prismaMock.team.count.mockResolvedValue(2);
@@ -307,6 +309,7 @@ describe("team router", () => {
     it("throws PRECONDITION_FAILED when team has environments", async () => {
       prismaMock.team.findUnique.mockResolvedValue({
         id: "team-1",
+        organizationId: "default",
         environments: [{ name: "Dev" }, { name: "Prod" }],
       } as never);
 
@@ -318,6 +321,7 @@ describe("team router", () => {
     it("throws BAD_REQUEST when trying to delete the last team", async () => {
       prismaMock.team.findUnique.mockResolvedValue({
         id: "team-1",
+        organizationId: "default",
         environments: [],
       } as never);
       prismaMock.team.count.mockResolvedValue(1);
@@ -333,6 +337,20 @@ describe("team router", () => {
       await expect(
         adminCaller.delete({ teamId: "nonexistent" }),
       ).rejects.toThrow("Team not found");
+    });
+
+    it("throws NOT_FOUND when the team belongs to another org (cross-org guard)", async () => {
+      prismaMock.team.findUnique.mockResolvedValue({
+        id: "team-other",
+        organizationId: "other-org",
+        environments: [],
+      } as never);
+
+      await expect(
+        adminCaller.delete({ teamId: "team-other" }),
+      ).rejects.toThrow("Team not found");
+      // The destructive adminPrisma transaction must NEVER run for a foreign team.
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
     });
   });
 

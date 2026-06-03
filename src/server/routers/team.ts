@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, withTeamAccess, requirePlatformOperator, denyInDemo } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess, requireOrgAdmin, denyInDemo } from "@/trpc/init";
 import { prisma, adminPrisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
@@ -123,7 +123,7 @@ export const teamRouter = router({
 
   create: protectedProcedure
     .use(denyInDemo())
-    .use(requirePlatformOperator())
+    .use(requireOrgAdmin())
     .use(withAudit("team.created", "Team"))
     .input(z.object({ name: z.string().min(1).max(100) }))
     .mutation(async ({ ctx, input }) => {
@@ -131,6 +131,7 @@ export const teamRouter = router({
       return prisma.team.create({
         data: {
           name: input.name,
+          organizationId: ctx.organizationId,
           members: {
             create: { userId, role: "ADMIN" },
           },
@@ -141,17 +142,20 @@ export const teamRouter = router({
 
   delete: protectedProcedure
     .use(denyInDemo())
-    .use(requirePlatformOperator())
+    .use(requireOrgAdmin())
     .use(withAudit("team.deleted", "Team"))
     .input(z.object({ teamId: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const team = await prisma.team.findUnique({
         where: { id: input.teamId },
         include: {
           environments: { select: { name: true } },
         },
       });
-      if (!team) {
+      // Org-scope the lookup: an org admin must only ever delete a team in
+      // their OWN org. The delete below runs on adminPrisma (BYPASSRLS), so
+      // this explicit ownership check is the tenancy boundary, not RLS.
+      if (!team || team.organizationId !== ctx.organizationId) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Team not found" });
       }
       if (team.environments.length > 0) {
@@ -161,7 +165,11 @@ export const teamRouter = router({
           message: `Cannot delete team with environments. Remove these first: ${names}`,
         });
       }
-      const teamCount = await prisma.team.count();
+      // Per-org count (excluding the hidden __system__ team) — never let an
+      // org delete its last team, but other orgs' teams are irrelevant here.
+      const teamCount = await prisma.team.count({
+        where: { organizationId: ctx.organizationId, name: { not: "__system__" } },
+      });
       if (teamCount <= 1) {
         throw new TRPCError({
           code: "BAD_REQUEST",
