@@ -35,7 +35,7 @@ interface ScimPatchOp {
 export class ScimProtectedMemberError extends Error {
   readonly _tag = "ScimProtectedMemberError" as const;
   constructor(
-    public readonly reason: "local_member" | "owner",
+    public readonly reason: "local_member" | "oidc_member" | "owner",
     message: string,
   ) {
     super(message);
@@ -300,23 +300,30 @@ async function requireOrgMember(organizationId: string, userId: string) {
 }
 
 /**
- * Coexistence guard for SCIM removal / deactivation. SCIM-provisioned and
- * local users coexist: the IdP is authoritative only over identities it
- * provisions. Refuse to `deprovision`/`deactivate` a LOCAL member (signup /
- * invite — the IdP doesn't own it) or the org OWNER (never let the IdP lock
- * out or remove the owner; transfer ownership first). Throws
- * ScimProtectedMemberError, which the SCIM Users route maps to 403 without
- * firing a false sync-failed alert.
+ * Coexistence guard for SCIM removal / deactivation. SCIM is authoritative
+ * ONLY over the identities it provisions. Refuse to `deprovision`/`deactivate`
+ * any member SCIM did not provision — both LOCAL (signup / invite) and OIDC
+ * (SSO login + group sync) memberships are outside the IdP's SCIM purview — or
+ * the org OWNER (never let the IdP lock out or remove the owner; transfer
+ * ownership first). Without the OIDC arm, the hourly SCIM reconcile deactivates
+ * (locks) SSO users it never provisioned, whose sessions are then invalidated
+ * server-side → a `/login` redirect loop. Throws ScimProtectedMemberError,
+ * which the SCIM Users route maps to 403 without firing a false sync-failed
+ * alert.
  */
 function assertScimMayRemoveOrLock(
   membership: { role: string; provisionedVia: string },
   verb: "deprovision" | "deactivate",
 ) {
-  if (membership.provisionedVia === "LOCAL") {
+  if (membership.provisionedVia !== "SCIM") {
+    const isOidc = membership.provisionedVia === "OIDC";
     throw new ScimProtectedMemberError(
-      "local_member",
-      `Cannot ${verb} a locally-managed member via SCIM. This account was not ` +
-        "provisioned by the identity provider; an administrator must manage it directly.",
+      isOidc ? "oidc_member" : "local_member",
+      isOidc
+        ? `Cannot ${verb} an SSO/OIDC-provisioned member via SCIM. This membership ` +
+          "is managed by OIDC sign-in and group mappings, not SCIM provisioning."
+        : `Cannot ${verb} a locally-managed member via SCIM. This account was not ` +
+          "provisioned by the identity provider; an administrator must manage it directly.",
     );
   }
   if (membership.role === "OWNER") {

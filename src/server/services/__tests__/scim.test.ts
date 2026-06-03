@@ -270,6 +270,18 @@ describe("SCIM/local coexistence", () => {
     expect(prismaMock.orgMember.delete).not.toHaveBeenCalled();
   });
 
+  it("refuses to deprovision an OIDC member and leaves the row intact", async () => {
+    prismaMock.orgMember.findUnique.mockResolvedValue({
+      role: "MEMBER",
+      provisionedVia: "OIDC",
+    } as never);
+
+    const err = await scimDeleteUser("org-1", "oidc-user").catch((e) => e);
+    expect(err).toBeInstanceOf(ScimProtectedMemberError);
+    expect(err.reason).toBe("oidc_member");
+    expect(prismaMock.orgMember.delete).not.toHaveBeenCalled();
+  });
+
   it("refuses to deprovision the OWNER even when SCIM-provisioned", async () => {
     prismaMock.orgMember.findUnique.mockResolvedValue({
       role: "OWNER",
@@ -324,6 +336,21 @@ describe("SCIM/local coexistence — deactivation (active=false) guard", () => {
     expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 
+  it("refuses to deactivate an OIDC member via PUT", async () => {
+    prismaMock.orgMember.findUnique.mockResolvedValue({
+      role: "MEMBER",
+      provisionedVia: "OIDC",
+    } as never);
+    prismaMock.user.findUnique.mockResolvedValue({ lockedBy: null } as never);
+
+    const err = await scimUpdateUser("org-1", "oidc-user", {
+      active: false,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(ScimProtectedMemberError);
+    expect(err.reason).toBe("oidc_member");
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
   it("refuses to deactivate the OWNER via PUT", async () => {
     prismaMock.orgMember.findUnique.mockResolvedValue({
       role: "OWNER",
@@ -351,6 +378,21 @@ describe("SCIM/local coexistence — deactivation (active=false) guard", () => {
     ]).catch((e) => e);
     expect(err).toBeInstanceOf(ScimProtectedMemberError);
     expect(err.reason).toBe("local_member");
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses to deactivate an OIDC member via PATCH (active=false op)", async () => {
+    prismaMock.orgMember.findUnique.mockResolvedValue({
+      role: "MEMBER",
+      provisionedVia: "OIDC",
+    } as never);
+    prismaMock.user.findUnique.mockResolvedValue({ lockedBy: null } as never);
+
+    const err = await scimPatchUser("org-1", "oidc-user", [
+      { op: "replace", path: "active", value: false },
+    ]).catch((e) => e);
+    expect(err).toBeInstanceOf(ScimProtectedMemberError);
+    expect(err.reason).toBe("oidc_member");
     expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 
