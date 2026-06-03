@@ -20,7 +20,7 @@ vi.mock("@/trpc/init", () => {
   return {
     router: t.router,
     protectedProcedure: t.procedure,
-    requirePlatformOperator: passthrough,
+    requireOrgAdmin: passthrough,
     denyInDemo: passthrough,
     middleware: t.middleware,
   };

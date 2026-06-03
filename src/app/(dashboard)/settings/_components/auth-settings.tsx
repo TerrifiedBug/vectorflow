@@ -171,7 +171,10 @@ export function AuthSettings() {
   const [groupsScope, setGroupsScope] = useState("groups");
   const [groupsClaim, setGroupsClaim] = useState("groups");
 
-  const teamsQuery = useQuery(trpc.admin.listTeams.queryOptions());
+  // Org-scoped team list (every team in the caller's org for an org admin).
+  // NOT admin.listTeams — that is a cross-org, platform-operator-only query, so
+  // it returned empty/FORBIDDEN here and the IdP group→team dropdown stayed blank.
+  const teamsQuery = useQuery(trpc.team.list.queryOptions());
 
   useEffect(() => {
     if (!settings) return;
