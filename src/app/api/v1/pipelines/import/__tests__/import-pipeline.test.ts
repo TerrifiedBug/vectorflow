@@ -105,6 +105,9 @@ describe("POST /api/v1/pipelines/import", () => {
 
     const res = await POST(req, { params: Promise.resolve({}) });
     expect(res.status).toBe(201);
+    expect(mockTx.pipeline.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ organizationId: "org-1" }) }),
+    );
   });
 
   it("returns 400 when groupId belongs to another environment (VF-35)", async () => {

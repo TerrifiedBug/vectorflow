@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getOrgId } from "@/lib/org-context";
 import { withOrgTxFromContext } from "@/lib/with-org-tx";
 import { type Prisma, type ComponentKind } from "@/generated/prisma";
 import { TRPCError } from "@trpc/server";
@@ -34,6 +35,7 @@ export async function createVersion(
   const version = await prisma.pipelineVersion.create({
     data: {
       pipelineId,
+      organizationId: getOrgId(),
       version: nextVersion,
       configYaml: finalYaml,
       logLevel: logLevel ?? null,
@@ -41,7 +43,7 @@ export async function createVersion(
       nodesSnapshot: nodesSnapshot ? (nodesSnapshot as Prisma.InputJsonValue) : undefined,
       edgesSnapshot: edgesSnapshot ? (edgesSnapshot as Prisma.InputJsonValue) : undefined,
       variablesSnapshot: variablesSnapshot ? (variablesSnapshot as Prisma.InputJsonValue) : undefined,
-      createdById: userId,
+      createdById: userId.startsWith("sa:") ? null : userId,
       changelog,
     },
   });

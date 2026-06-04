@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { readJsonCapped } from "@/app/api/_lib/read-json-capped";
 import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
-import { runWithOrgContext } from "@/lib/org-context";
+import { runWithOrgContext, getOrgId } from "@/lib/org-context";
 import { authenticateAgentInOrg } from "@/server/services/agent-auth";
 import { resolveAgentOrg } from "@/server/services/agent-org-binding";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
@@ -81,6 +81,7 @@ export async function POST(request: Request) {
             data: {
               requestId: result.requestId,
               pipelineId: sampleRequest.pipelineId,
+              organizationId: getOrgId(),
               componentKey: result.componentKey,
               events: result.error ? [] : (result.events as object[]),
               schema: result.error ? [] : result.schema,

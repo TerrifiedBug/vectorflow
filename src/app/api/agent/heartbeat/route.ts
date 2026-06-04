@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { readJsonCapped } from "@/app/api/_lib/read-json-capped";
 import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
-import { runWithOrgContext } from "@/lib/org-context";
+import { runWithOrgContext, getOrgId } from "@/lib/org-context";
 import { withOrgTxFromContext } from "@/lib/with-org-tx";
 import { authenticateAgentInOrg } from "@/server/services/agent-auth";
 import { resolveAgentOrg } from "@/server/services/agent-org-binding";
@@ -89,6 +89,7 @@ async function processSampleResults(
         data: {
           requestId: result.requestId,
           pipelineId: request.pipelineId,
+          organizationId: getOrgId(),
           componentKey: result.componentKey ?? "",
           events: (result.events ?? []) as Prisma.InputJsonValue,
           schema: (result.schema ?? []) as Prisma.InputJsonValue,
