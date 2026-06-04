@@ -65,6 +65,7 @@ export const POST = apiRoute(
         environmentId: ctx.environmentId,
         groupId: body.groupId ?? null,
         isDraft: true,
+        organizationId: ctx.organizationId,
       },
       select: {
         id: true,

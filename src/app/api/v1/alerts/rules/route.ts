@@ -171,6 +171,7 @@ export const POST = apiRoute(
       data: {
         name: body.name,
         environmentId: ctx.environmentId,
+        organizationId: ctx.organizationId,
         pipelineId: body.pipelineId,
         teamId: env.teamId,
         metric: body.metric as "cpu_usage",

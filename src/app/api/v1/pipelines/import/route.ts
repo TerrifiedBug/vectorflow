@@ -85,6 +85,7 @@ export const POST = apiRoute(
             ? (importResult.globalConfig as unknown as Prisma.InputJsonValue)
             : undefined,
           isDraft: true,
+          organizationId: ctx.organizationId,
         },
       });
 

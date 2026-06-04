@@ -65,6 +65,9 @@ describe("POST /api/v1/pipelines", () => {
 
     const res = await POST(req, { params: Promise.resolve({}) });
     expect(res.status).toBe(201);
+    expect(prismaMock.pipeline.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ organizationId: "org-1" }) }),
+    );
 
     const body = await res.json();
     expect(body.pipeline.id).toBe("pipe-1");

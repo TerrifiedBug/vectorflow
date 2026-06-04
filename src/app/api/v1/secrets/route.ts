@@ -84,6 +84,7 @@ export const POST = apiRoute(
         name: body.name,
         encryptedValue,
         environmentId: ctx.environmentId,
+        organizationId: envOrgId,
       },
       select: { id: true, name: true, createdAt: true, updatedAt: true },
     });

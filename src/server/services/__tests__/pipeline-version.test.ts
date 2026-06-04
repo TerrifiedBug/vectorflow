@@ -21,6 +21,7 @@ import { prisma } from "@/lib/prisma";
 import { runWithOrgContext } from "@/lib/org-context";
 import { relayPush } from "@/server/services/push-broadcast";
 import {
+  createVersion,
   listVersionsSummary,
   deployFromVersion,
   rollback,
@@ -418,5 +419,42 @@ describe("rollback", () => {
       code: "NOT_FOUND",
       message: "Target version not found",
     });
+  });
+});
+
+// ─── Tests: createVersion (org stamp + service-account createdById) ──────────
+
+describe("createVersion", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    prismaMock.pipelineVersion.findFirst.mockResolvedValue(null as never);
+    prismaMock.pipelineVersion.create.mockResolvedValue({ id: "ver-1", version: 1 } as never);
+    prismaMock.pipeline.update.mockResolvedValue({} as never);
+  });
+
+  it("stamps organizationId from the active org context so RLS WITH CHECK passes", async () => {
+    await runWithOrgContext("org-acme", () =>
+      createVersion("pipe-1", "sources: {}", "user-7"),
+    );
+    expect(prismaMock.pipelineVersion.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          organizationId: "org-acme",
+          pipelineId: "pipe-1",
+          createdById: "user-7",
+        }),
+      }),
+    );
+  });
+
+  it("nulls createdById for service-account deploys (createdById is a User FK)", async () => {
+    await runWithOrgContext("org-acme", () =>
+      createVersion("pipe-1", "sources: {}", "sa:svc-123"),
+    );
+    expect(prismaMock.pipelineVersion.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ createdById: null, organizationId: "org-acme" }),
+      }),
+    );
   });
 });

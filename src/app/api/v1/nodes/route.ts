@@ -76,6 +76,7 @@ export const POST = apiRoute(
         apiPort: body.apiPort ?? 8686,
         environmentId: ctx.environmentId,
         labels: body.labels ?? {},
+        organizationId: ctx.organizationId,
       },
       select: {
         id: true,

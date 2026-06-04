@@ -59,6 +59,9 @@ describe("POST /api/v1/nodes", () => {
 
     const res = await POST(req, { params: Promise.resolve({}) });
     expect(res.status).toBe(201);
+    expect(prismaMock.vectorNode.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ organizationId: "org-1" }) }),
+    );
 
     const body = await res.json();
     expect(body.node.name).toBe("node-prod-01");
