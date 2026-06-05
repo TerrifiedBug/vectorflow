@@ -396,6 +396,7 @@ export const dashboardRouter = router({
       const current = await prisma.pipelineMetric.aggregate({
         where: {
           pipeline: { environmentId: input.environmentId },
+          nodeId: null,
           componentId: null,
           timestamp: { gte: since },
         },
@@ -406,6 +407,7 @@ export const dashboardRouter = router({
       const previous = await prisma.pipelineMetric.aggregate({
         where: {
           pipeline: { environmentId: input.environmentId },
+          nodeId: null,
           componentId: null,
           timestamp: { gte: prevSince, lt: since },
         },
@@ -417,6 +419,7 @@ export const dashboardRouter = router({
         by: ["pipelineId"],
         where: {
           pipeline: { environmentId: input.environmentId },
+          nodeId: null,
           componentId: null,
           timestamp: { gte: since },
         },
@@ -510,6 +513,7 @@ export const dashboardRouter = router({
         const rawMetrics = await prisma.pipelineMetric.findMany({
           where: {
             pipeline: { environmentId: input.environmentId },
+            nodeId: null,
             componentId: null,
             timestamp: { gte: since },
           },
