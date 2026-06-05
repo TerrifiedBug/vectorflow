@@ -7,6 +7,12 @@ import type {
 } from "@/server/services/cost-optimizer-types";
 import { DEFAULT_THRESHOLDS } from "@/server/services/cost-optimizer-types";
 import { debugLog } from "@/lib/logger";
+import { simulateTailSample } from "@/server/services/trace-sampling";
+import {
+  DEFAULT_TAIL_SAMPLE_KEY,
+  DEFAULT_TAIL_SAMPLE_WINDOW_MS,
+  DEFAULT_TAIL_SAMPLE_BASELINE_PERCENT,
+} from "@/lib/vector/tail-sample";
 
 const TAG = "cost-optimizer";
 
@@ -31,6 +37,9 @@ export async function aggregatePipelineMetrics(
       eventsOut: true,
       errorsTotal: true,
       eventsDiscarded: true,
+      spansIn: true,
+      spansOut: true,
+      tracesIn: true,
     },
     _count: { id: true },
   });
@@ -66,6 +75,9 @@ export async function aggregatePipelineMetrics(
         totalEventsOut: r._sum.eventsOut ?? BigInt(0),
         totalErrors: r._sum.errorsTotal ?? BigInt(0),
         totalDiscarded: r._sum.eventsDiscarded ?? BigInt(0),
+        totalSpansIn: r._sum.spansIn ?? BigInt(0),
+        totalSpansOut: r._sum.spansOut ?? BigInt(0),
+        totalTracesIn: r._sum.tracesIn ?? BigInt(0),
         metricCount: r._count.id,
       };
     })
@@ -442,6 +454,127 @@ export async function detectHighCardinality(
 }
 
 /**
+ * Detect high-volume, low-error trace pipelines that are strong tail-sampling
+ * candidates. Projects the keep/drop ratio with the A6 simulator over the
+ * pipeline's most recent REAL trace events (TapCapture/EventSample); when no
+ * sample exists, falls back to a conservative estimate from the keep policy.
+ * Emits a TRACE_TAIL_SAMPLE recommendation whose suggestedAction is a
+ * `tail_sample` transform config (key=trace_id; keep error + slow + a small
+ * probabilistic baseline). Skips pipelines with no trace volume, a high error
+ * rate, or a sub-threshold projected reduction. Storage dedup/expiry are handled
+ * downstream by storeRecommendations.
+ */
+export async function detectTraceTailSample(
+  aggregates: readonly PipelineAggregates[],
+  thresholds: AnalysisThresholds = DEFAULT_THRESHOLDS,
+  sinkKeyMap: Map<string, string> = new Map(),
+): Promise<AnalysisResult[]> {
+  const results: AnalysisResult[] = [];
+
+  for (const agg of aggregates) {
+    const totalSpansIn = agg.totalSpansIn ?? BigInt(0);
+    const totalTracesIn = agg.totalTracesIn ?? BigInt(0);
+
+    // Skip pipelines with no trace volume (log/metric-only never qualify).
+    if (totalSpansIn === BigInt(0) && totalTracesIn === BigInt(0)) continue;
+    // Require genuinely high span volume to justify a stateful windowed sampler.
+    if (totalSpansIn < thresholds.minSpansForTailSample) continue;
+
+    // Error rate as errors-per-span. Tail sampling always keeps error traces, so
+    // a high-error pipeline would keep most data and save little — skip it.
+    const errorRate =
+      totalSpansIn > BigInt(0) ? Number(agg.totalErrors) / Number(totalSpansIn) : 0;
+    if (errorRate > thresholds.maxTraceErrorRate) continue;
+
+    const tailConfig = {
+      key: DEFAULT_TAIL_SAMPLE_KEY,
+      windowMs: DEFAULT_TAIL_SAMPLE_WINDOW_MS,
+      keepPolicies: {
+        onError: true,
+        slowThresholdMs: 1000,
+        baselinePercent: DEFAULT_TAIL_SAMPLE_BASELINE_PERCENT,
+      },
+    };
+
+    // Prefer the A6 simulator over the pipeline's real recent trace events;
+    // fall back to a conservative keep-policy estimate when none are captured.
+    const events = await fetchRecentPipelineEvents(agg.pipelineId);
+    let reductionPercent: number;
+    let projectionBasis: "simulated" | "estimated";
+    let simulation: ReturnType<typeof simulateTailSample> | null = null;
+
+    if (events.length > 0) {
+      simulation = simulateTailSample(events, tailConfig);
+      reductionPercent = simulation.spanReductionPercent;
+      projectionBasis = "simulated";
+    } else {
+      // Keep error traces + the baseline % of the rest; everything else drops.
+      reductionPercent =
+        Math.round(
+          (1 - errorRate) *
+            (1 - tailConfig.keepPolicies.baselinePercent / 100) *
+            100 *
+            100,
+        ) / 100;
+      projectionBasis = "estimated";
+    }
+
+    // Only recommend when the projected drop is worth a config change.
+    if (reductionPercent < thresholds.minTailSampleReductionPercent) continue;
+
+    const estimatedSavings = BigInt(
+      Math.round((Number(agg.totalBytesIn) * reductionPercent) / 100),
+    );
+
+    results.push({
+      pipelineId: agg.pipelineId,
+      pipelineName: agg.pipelineName,
+      environmentId: agg.environmentId,
+      teamId: agg.teamId,
+      type: "TRACE_TAIL_SAMPLE",
+      title: `Pipeline "${agg.pipelineName}" is a strong tail-sampling candidate`,
+      description:
+        `This pipeline processed ${totalSpansIn.toString()} spans across ` +
+        `${totalTracesIn.toString()} traces in the last 24 hours at a low error ` +
+        `rate (${(errorRate * 100).toFixed(2)}%). Tail-based sampling (keep every ` +
+        `error/slow trace plus a ${tailConfig.keepPolicies.baselinePercent}% baseline) ` +
+        `would drop a projected ${reductionPercent.toFixed(1)}% of trace volume ` +
+        `(${projectionBasis}) while preserving the traces that matter.`,
+      analysisData: {
+        spansIn: totalSpansIn.toString(),
+        spansOut: (agg.totalSpansOut ?? BigInt(0)).toString(),
+        tracesIn: totalTracesIn.toString(),
+        errorRate,
+        projectedReductionPercent: reductionPercent,
+        projectionBasis,
+        ...(simulation
+          ? {
+              totalTraces: simulation.totalTraces,
+              keptTraces: simulation.keptTraces,
+              droppedTraces: simulation.droppedTraces,
+              keepRatio: simulation.keepRatio,
+              keptByPolicy: simulation.keptByPolicy,
+            }
+          : {}),
+        targetSinkKey: sinkKeyMap.get(agg.pipelineId) ?? "",
+      },
+      estimatedSavingsBytes: estimatedSavings,
+      suggestedAction: {
+        type: "tail_sample",
+        config: {
+          componentKey: `tail_sample_${agg.pipelineId.slice(0, 8)}`,
+          key: tailConfig.key,
+          windowMs: tailConfig.windowMs,
+          keepPolicies: tailConfig.keepPolicies,
+        },
+      },
+    });
+  }
+
+  return results;
+}
+
+/**
  * Run the complete cost analysis pipeline.
  * Returns all recommendations found across all four dimensions.
  */
@@ -471,19 +604,21 @@ export async function runCostAnalysis(
     }
   }
 
-  const [lowReduction, highError, stale, cardinality] = await Promise.all([
+  const [lowReduction, highError, stale, cardinality, traceTailSample] = await Promise.all([
     Promise.resolve(detectLowReduction(aggregates, thresholds, sinkKeyMap)),
     Promise.resolve(detectHighErrorRate(aggregates, thresholds, sinkKeyMap)),
     detectStalePipelines(aggregates, thresholds),
     detectHighCardinality(aggregates, thresholds, sinkKeyMap),
+    detectTraceTailSample(aggregates, thresholds, sinkKeyMap),
   ]);
 
-  const allResults = [...lowReduction, ...highError, ...stale, ...cardinality];
+  const allResults = [...lowReduction, ...highError, ...stale, ...cardinality, ...traceTailSample];
   debugLog(TAG, `Analysis complete: ${allResults.length} recommendations`, {
     lowReduction: lowReduction.length,
     highError: highError.length,
     stale: stale.length,
     cardinality: cardinality.length,
+    traceTailSample: traceTailSample.length,
   });
 
   return allResults;

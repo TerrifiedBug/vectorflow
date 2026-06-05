@@ -18,7 +18,20 @@ export type SuggestedAction =
   | { type: "add_sampling"; config: { rate: number; componentKey: string } }
   | { type: "add_filter"; config: { condition: string; componentKey: string } }
   | { type: "drop_field"; config: { fields: string[]; componentKey: string } }
-  | { type: "disable_pipeline"; config: Record<string, never> };
+  | { type: "disable_pipeline"; config: Record<string, never> }
+  | {
+      type: "tail_sample";
+      config: {
+        componentKey: string;
+        key: string;
+        windowMs: number;
+        keepPolicies: {
+          onError: boolean;
+          slowThresholdMs: number | null;
+          baselinePercent: number;
+        };
+      };
+    };
 
 /** Per-field distinct-value cardinality over a sample of events. */
 export interface FieldCardinality {
@@ -43,6 +56,10 @@ export interface PipelineAggregates {
   totalEventsOut: bigint;
   totalErrors: bigint;
   totalDiscarded: bigint;
+  /** Per-interval trace volume summed over the window (0 for log/metric pipelines). */
+  totalSpansIn?: bigint;
+  totalSpansOut?: bigint;
+  totalTracesIn?: bigint;
   metricCount: number;
 }
 
@@ -64,6 +81,12 @@ export interface AnalysisThresholds {
   minCardinalitySamples: number;
   /** Minimum distinct values before a field is flagged (avoids flagging tiny samples) */
   minCardinalityDistinct: number;
+  /** Minimum spans in 24h for a pipeline to be a tail-sampling candidate */
+  minSpansForTailSample: bigint;
+  /** Maximum error rate (errors/spans) for tail-sampling to be worthwhile (0.0-1.0) */
+  maxTraceErrorRate: number;
+  /** Minimum projected span-reduction percent before a tail-sample rec is emitted */
+  minTailSampleReductionPercent: number;
 }
 
 export const DEFAULT_THRESHOLDS: AnalysisThresholds = {
@@ -75,4 +98,7 @@ export const DEFAULT_THRESHOLDS: AnalysisThresholds = {
   minCardinalityRatio: 0.9,          // 90%+ of values unique
   minCardinalitySamples: 20,         // field must appear in >=20 sampled events
   minCardinalityDistinct: 20,        // and have >=20 distinct values
+  minSpansForTailSample: BigInt(1_000_000), // 1M spans/day
+  maxTraceErrorRate: 0.05,            // <5% of spans errored
+  minTailSampleReductionPercent: 20,  // at least 20% projected drop
 };

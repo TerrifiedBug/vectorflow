@@ -273,6 +273,16 @@ function suggestedActionToGraphNode(
         componentType: "remap",
         config: { source: dropFieldsVrl(action.config.fields) },
       };
+    case "tail_sample":
+      return {
+        componentKey: action.config.componentKey,
+        componentType: "tail_sample",
+        config: {
+          key: action.config.key,
+          windowMs: action.config.windowMs,
+          keepPolicies: action.config.keepPolicies,
+        },
+      };
     case "disable_pipeline":
       return null;
   }
@@ -306,6 +316,11 @@ export function suggestedActionToVrl(action: SuggestedAction): string | null {
       return `if !(${action.config.condition}) {\n  abort\n}`;
     case "add_sampling":
       return samplingVrl(action.config.rate);
+    case "tail_sample":
+      // Tail sampling is windowed/whole-trace and cannot be simulated per-event
+      // via VRL — the TRACE_TAIL_SAMPLE detector projects its reduction with the
+      // dedicated trace-sampling simulator instead.
+      return null;
     case "disable_pipeline":
       return null;
   }

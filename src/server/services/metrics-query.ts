@@ -492,6 +492,8 @@ export interface VolumeAggregateRow {
   bytesOut: bigint;
   eventsIn: bigint;
   eventsOut: bigint;
+  spansIn: bigint;
+  tracesIn: bigint;
 }
 
 /**
@@ -519,6 +521,8 @@ export async function queryVolumeTimeSeries(input: {
         bytes_out: bigint;
         events_in: bigint;
         events_out: bigint;
+        spans_in: bigint;
+        traces_in: bigint;
       }>
     >(
       `SELECT
@@ -527,7 +531,9 @@ export async function queryVolumeTimeSeries(input: {
          "bytesIn" AS bytes_in,
          "bytesOut" AS bytes_out,
          "eventsIn" AS events_in,
-         "eventsOut" AS events_out
+         "eventsOut" AS events_out,
+         "spansIn" AS spans_in,
+         "tracesIn" AS traces_in
        FROM "PipelineMetricRollup"
        WHERE "pipelineId" IN (${placeholders})
          AND "componentId" = ''
@@ -546,6 +552,8 @@ export async function queryVolumeTimeSeries(input: {
       bytesOut: r.bytes_out,
       eventsIn: r.events_in,
       eventsOut: r.events_out,
+      spansIn: r.spans_in,
+      tracesIn: r.traces_in,
     }));
   }
 
@@ -593,5 +601,9 @@ export async function queryVolumeTimeSeries(input: {
     bytesOut: r.bytes_out,
     eventsIn: r.events_in,
     eventsOut: r.events_out,
+    // Continuous-aggregate views predate the trace columns; report 0 (the raw
+    // and rollup paths carry real span/trace volume).
+    spansIn: BigInt(0),
+    tracesIn: BigInt(0),
   }));
 }

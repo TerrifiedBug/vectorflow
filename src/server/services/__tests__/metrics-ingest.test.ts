@@ -198,6 +198,38 @@ describe("computeDeltas", () => {
 
     expect(rows[0]).not.toHaveProperty("latencyMeanMs");
   });
+
+  it("records trace counters as-is without delta-clamping (interval counts)", () => {
+    const dataPoints = [
+      makeDataPoint({
+        pipelineId: "pipe-1",
+        spansIn: BigInt(1500),
+        spansOut: BigInt(1400),
+        tracesIn: BigInt(120),
+      }),
+    ];
+    // A previous snapshot is present, but spans are NOT clamped against it.
+    const snapshots = new Map<string, PreviousSnapshot>();
+    snapshots.set(`${NODE_ID}:pipe-1`, makeSnapshot());
+
+    const rows = computeDeltas(dataPoints, snapshots, NOW, ORG);
+
+    expect(rows[0].spansIn).toBe(BigInt(1500));
+    expect(rows[0].spansOut).toBe(BigInt(1400));
+    expect(rows[0].tracesIn).toBe(BigInt(120));
+  });
+
+  it("defaults trace counters to 0 when the data point omits them", () => {
+    const rows = computeDeltas(
+      [makeDataPoint({ pipelineId: "pipe-1" })],
+      undefined,
+      NOW,
+      ORG,
+    );
+    expect(rows[0].spansIn).toBe(BigInt(0));
+    expect(rows[0].spansOut).toBe(BigInt(0));
+    expect(rows[0].tracesIn).toBe(BigInt(0));
+  });
 });
 
 // ─── Unit tests: accumulateRow ──────────────────────────────────────────────
@@ -214,6 +246,9 @@ describe("accumulateRow", () => {
     eventsDiscarded: BigInt(0),
     bytesIn: BigInt(500),
     bytesOut: BigInt(400),
+    spansIn: BigInt(0),
+    spansOut: BigInt(0),
+    tracesIn: BigInt(0),
     utilization: 0.6,
   };
 
@@ -259,6 +294,29 @@ describe("accumulateRow", () => {
     };
     const result = accumulateRow(existing, { ...baseDelta, latencyMeanMs: 12.5 });
     expect(result.latencyMeanMs).toBe(12.5);
+  });
+
+  it("sums trace counters across heartbeats in the same minute", () => {
+    const existing = {
+      eventsIn: BigInt(0),
+      eventsOut: BigInt(0),
+      errorsTotal: BigInt(0),
+      eventsDiscarded: BigInt(0),
+      bytesIn: BigInt(0),
+      bytesOut: BigInt(0),
+      spansIn: BigInt(1000),
+      spansOut: BigInt(900),
+      tracesIn: BigInt(50),
+    };
+    const result = accumulateRow(existing, {
+      ...baseDelta,
+      spansIn: BigInt(500),
+      spansOut: BigInt(450),
+      tracesIn: BigInt(25),
+    });
+    expect(result.spansIn).toBe(BigInt(1500));
+    expect(result.spansOut).toBe(BigInt(1350));
+    expect(result.tracesIn).toBe(BigInt(75));
   });
 });
 
@@ -399,6 +457,29 @@ describe("computeAggregation", () => {
     expect(agg.eventsOut).toBe(BigInt(0));
     expect(agg.utilization).toBe(0);
     expect(agg).not.toHaveProperty("latencyMeanMs");
+  });
+
+  it("sums trace counters across nodes", () => {
+    const base = {
+      eventsIn: BigInt(0),
+      eventsOut: BigInt(0),
+      errorsTotal: BigInt(0),
+      eventsDiscarded: BigInt(0),
+      bytesIn: BigInt(0),
+      bytesOut: BigInt(0),
+      utilization: 0,
+      latencyMeanMs: null as number | null,
+    };
+    const nodeRows = [
+      { ...base, spansIn: BigInt(1000), spansOut: BigInt(900), tracesIn: BigInt(100) },
+      { ...base, spansIn: BigInt(2000), spansOut: BigInt(1800), tracesIn: BigInt(150) },
+    ];
+
+    const agg = computeAggregation("pipe-1", nodeRows, NOW, ORG);
+
+    expect(agg.spansIn).toBe(BigInt(3000));
+    expect(agg.spansOut).toBe(BigInt(2700));
+    expect(agg.tracesIn).toBe(BigInt(250));
   });
 });
 

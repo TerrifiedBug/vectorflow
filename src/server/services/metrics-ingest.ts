@@ -12,6 +12,12 @@ export interface MetricsDataPoint {
   bytesOut: bigint;
   utilization: number;
   latencyMeanMs: number | null;
+  // Per-interval trace volume; optional so log/metric-only callers (and the
+  // lake catalog) need not supply them. Recorded straight onto PipelineMetric
+  // (no cumulative clamp — already a windowed delta from the agent).
+  spansIn?: bigint;
+  spansOut?: bigint;
+  tracesIn?: bigint;
 }
 
 export interface PreviousSnapshot {
@@ -47,6 +53,9 @@ interface PerNodeRow {
   bytesOut: bigint;
   utilization: number;
   latencyMeanMs?: number | null;
+  spansIn: bigint;
+  spansOut: bigint;
+  tracesIn: bigint;
 }
 
 /**
@@ -77,6 +86,11 @@ export function computeDeltas(
       bytesIn: clamp(dp.bytesIn, prev?.bytesIn),
       bytesOut: clamp(dp.bytesOut, prev?.bytesOut),
       utilization: dp.utilization,
+      // Trace counters arrive already windowed per heartbeat, so they are NOT
+      // clamped against a previous cumulative snapshot — recorded as-is.
+      spansIn: dp.spansIn ?? BigInt(0),
+      spansOut: dp.spansOut ?? BigInt(0),
+      tracesIn: dp.tracesIn ?? BigInt(0),
       ...(dp.latencyMeanMs != null ? { latencyMeanMs: dp.latencyMeanMs } : {}),
     });
   }
@@ -96,6 +110,9 @@ interface AggregationRow {
   bytesIn: bigint;
   bytesOut: bigint;
   utilization: number;
+  spansIn: bigint;
+  spansOut: bigint;
+  tracesIn: bigint;
   latencyMeanMs?: number | null;
 }
 
@@ -115,6 +132,9 @@ export function computeAggregation(
     bytesOut: bigint;
     utilization: number;
     latencyMeanMs?: number | null;
+    spansIn?: bigint;
+    spansOut?: bigint;
+    tracesIn?: bigint;
   }>,
   timestamp: Date,
   organizationId: string,
@@ -125,6 +145,9 @@ export function computeAggregation(
   let totalDiscarded = BigInt(0);
   let totalBytesIn = BigInt(0);
   let totalBytesOut = BigInt(0);
+  let totalSpansIn = BigInt(0);
+  let totalSpansOut = BigInt(0);
+  let totalTracesIn = BigInt(0);
   let totalUtil = 0;
   let latencyWeightedSum = 0;
   let latencyWeightCount = 0;
@@ -136,6 +159,9 @@ export function computeAggregation(
     totalDiscarded += row.eventsDiscarded;
     totalBytesIn += row.bytesIn;
     totalBytesOut += row.bytesOut;
+    totalSpansIn += row.spansIn ?? BigInt(0);
+    totalSpansOut += row.spansOut ?? BigInt(0);
+    totalTracesIn += row.tracesIn ?? BigInt(0);
     totalUtil += row.utilization;
     if (row.latencyMeanMs != null) {
       const rowEvents = Number(row.eventsIn) + Number(row.eventsOut);
@@ -158,6 +184,9 @@ export function computeAggregation(
     eventsDiscarded: totalDiscarded,
     bytesIn: totalBytesIn,
     bytesOut: totalBytesOut,
+    spansIn: totalSpansIn,
+    spansOut: totalSpansOut,
+    tracesIn: totalTracesIn,
     utilization: avgUtil,
     ...(avgLatencyMs != null ? { latencyMeanMs: avgLatencyMs } : {}),
   };
@@ -175,6 +204,9 @@ export function accumulateRow(
     eventsDiscarded: bigint;
     bytesIn: bigint;
     bytesOut: bigint;
+    spansIn?: bigint;
+    spansOut?: bigint;
+    tracesIn?: bigint;
   },
   delta: PerNodeRow,
 ): PerNodeRow {
@@ -186,6 +218,9 @@ export function accumulateRow(
     eventsDiscarded: existing.eventsDiscarded + delta.eventsDiscarded,
     bytesIn: existing.bytesIn + delta.bytesIn,
     bytesOut: existing.bytesOut + delta.bytesOut,
+    spansIn: (existing.spansIn ?? BigInt(0)) + delta.spansIn,
+    spansOut: (existing.spansOut ?? BigInt(0)) + delta.spansOut,
+    tracesIn: (existing.tracesIn ?? BigInt(0)) + delta.tracesIn,
   };
 }
 

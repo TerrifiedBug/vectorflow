@@ -144,6 +144,14 @@ const METRIC_ANOMALY_MAP: Record<string, MetricAnomalyMapping> = {
     spikeType: "latency_spike",
     dropType: null, // latency drops are good, not anomalies
   },
+  spansIn: {
+    spikeType: "throughput_spike",
+    dropType: "throughput_drop",
+  },
+  tracesIn: {
+    spikeType: "throughput_spike",
+    dropType: "throughput_drop",
+  },
 };
 
 // ─── Core computation ───────────────────────────────────────────────────────
@@ -204,6 +212,8 @@ function buildAnomalyMessage(
     eventsIn: "events/interval",
     errorsTotal: "errors/interval",
     latencyMeanMs: "ms",
+    spansIn: "spans/interval",
+    tracesIn: "traces/interval",
   };
 
   const label = typeLabels[anomalyType];
@@ -343,13 +353,23 @@ interface BaselineRow {
   errorsTotalStddev: number | null;
   latencyMeanMsMean: number | null;
   latencyMeanMsStddev: number | null;
+  spansInMean: number | null;
+  spansInStddev: number | null;
+  tracesInMean: number | null;
+  tracesInStddev: number | null;
   sampleCount: number;
 }
 
 // ─── SQL-optimized data fetching ─────────────────────────────────────────────
 
 /** Metrics to evaluate for anomalies. */
-const MONITORED_METRICS = ["eventsIn", "errorsTotal", "latencyMeanMs"] as const;
+const MONITORED_METRICS = [
+  "eventsIn",
+  "errorsTotal",
+  "latencyMeanMs",
+  "spansIn",
+  "tracesIn",
+] as const;
 
 /**
  * Fetch aggregate baseline stats for a single pipeline using a single SQL query.
@@ -378,6 +398,10 @@ async function fetchBaselineSql(
        STDDEV_POP("errorsTotal"::float8) AS "errorsTotalStddev",
        AVG("latencyMeanMs")              AS "latencyMeanMsMean",
        STDDEV_POP("latencyMeanMs")       AS "latencyMeanMsStddev",
+       AVG("spansIn"::float8)            AS "spansInMean",
+       STDDEV_POP("spansIn"::float8)     AS "spansInStddev",
+       AVG("tracesIn"::float8)           AS "tracesInMean",
+       STDDEV_POP("tracesIn"::float8)    AS "tracesInStddev",
        COUNT(*)::int                     AS "sampleCount"
      FROM "PipelineMetric"
      WHERE "pipelineId" = $1
@@ -405,6 +429,8 @@ async function fetchBaselineSql(
       { name: "eventsIn", mean: row.eventsInMean, stddev: row.eventsInStddev },
       { name: "errorsTotal", mean: row.errorsTotalMean, stddev: row.errorsTotalStddev },
       { name: "latencyMeanMs", mean: row.latencyMeanMsMean, stddev: row.latencyMeanMsStddev },
+      { name: "spansIn", mean: row.spansInMean, stddev: row.spansInStddev },
+      { name: "tracesIn", mean: row.tracesInMean, stddev: row.tracesInStddev },
     ];
 
     for (const def of metricDefs) {
@@ -430,6 +456,8 @@ interface CurrentMetricRow {
   pipelineId: string;
   eventsIn: bigint;
   errorsTotal: bigint;
+  spansIn: bigint;
+  tracesIn: bigint;
   latencyMeanMs: number | null;
 }
 
@@ -450,6 +478,8 @@ async function fetchAllCurrentMetrics(
        "pipelineId",
        "eventsIn",
        "errorsTotal",
+       "spansIn",
+       "tracesIn",
        "latencyMeanMs"
      FROM "PipelineMetric"
      WHERE "pipelineId" = ANY($1::text[])
@@ -463,6 +493,8 @@ async function fetchAllCurrentMetrics(
     result.set(row.pipelineId, {
       eventsIn: Number(row.eventsIn),
       errorsTotal: Number(row.errorsTotal),
+      spansIn: Number(row.spansIn),
+      tracesIn: Number(row.tracesIn),
       latencyMeanMs: row.latencyMeanMs ?? 0,
     });
   }

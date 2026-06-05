@@ -81,6 +81,9 @@ function rawPipe(o: Partial<RawPipelineMetric> = {}): RawPipelineMetric {
     bytesOut: BigInt(0),
     utilization: 0,
     latencyMeanMs: null,
+    spansIn: BigInt(0),
+    spansOut: BigInt(0),
+    tracesIn: BigInt(0),
     ...o,
   };
 }
@@ -250,11 +253,36 @@ describe("metrics-rollup", () => {
           errorsTotal: BigInt(4),
           bytesIn: BigInt(3000),
           bytesOut: BigInt(2700),
+          spansIn: BigInt(0),
+          spansOut: BigInt(0),
+          tracesIn: BigInt(0),
           utilization: 0.5, // avg(0.4, 0.6)
           latencyMeanMs: 20, // avg(10, 30)
           maxLatencyMs: 30, // peak
         },
       ]);
+    });
+
+    it("sums trace counters (spansIn/spansOut/tracesIn) into the rollup", () => {
+      const rows = [
+        rawPipe({
+          timestamp: new Date("2026-03-10T08:10:00Z"),
+          spansIn: BigInt(1000),
+          spansOut: BigInt(900),
+          tracesIn: BigInt(120),
+        }),
+        rawPipe({
+          timestamp: new Date("2026-03-10T08:50:00Z"),
+          spansIn: BigInt(2000),
+          spansOut: BigInt(1800),
+          tracesIn: BigInt(80),
+        }),
+      ];
+
+      const [agg] = bucketPipelineMetrics(rows, "HOUR");
+      expect(agg.spansIn).toBe(BigInt(3000)); // 1000 + 2000
+      expect(agg.spansOut).toBe(BigInt(2700)); // 900 + 1800
+      expect(agg.tracesIn).toBe(BigInt(200)); // 120 + 80
     });
 
     it("excludes per-node rows so the '' aggregate is not double-counted", () => {

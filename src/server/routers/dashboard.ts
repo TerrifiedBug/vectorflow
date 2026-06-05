@@ -399,7 +399,7 @@ export const dashboardRouter = router({
           componentId: null,
           timestamp: { gte: since },
         },
-        _sum: { eventsIn: true, eventsOut: true, bytesIn: true, bytesOut: true },
+        _sum: { eventsIn: true, eventsOut: true, bytesIn: true, bytesOut: true, spansIn: true, spansOut: true, tracesIn: true },
       });
 
       // Previous period for trend comparison
@@ -409,7 +409,7 @@ export const dashboardRouter = router({
           componentId: null,
           timestamp: { gte: prevSince, lt: since },
         },
-        _sum: { eventsIn: true, eventsOut: true, bytesIn: true, bytesOut: true },
+        _sum: { eventsIn: true, eventsOut: true, bytesIn: true, bytesOut: true, spansIn: true, spansOut: true, tracesIn: true },
       });
 
       // Per-pipeline breakdown
@@ -420,7 +420,7 @@ export const dashboardRouter = router({
           componentId: null,
           timestamp: { gte: since },
         },
-        _sum: { eventsIn: true, eventsOut: true, bytesIn: true, bytesOut: true },
+        _sum: { eventsIn: true, eventsOut: true, bytesIn: true, bytesOut: true, spansIn: true, spansOut: true, tracesIn: true },
       });
 
       // Fetch pipeline names
@@ -438,6 +438,9 @@ export const dashboardRouter = router({
         bytesOut: Number(p._sum.bytesOut ?? 0),
         eventsIn: Number(p._sum.eventsIn ?? 0),
         eventsOut: Number(p._sum.eventsOut ?? 0),
+        spansIn: Number(p._sum.spansIn ?? 0),
+        spansOut: Number(p._sum.spansOut ?? 0),
+        tracesIn: Number(p._sum.tracesIn ?? 0),
       }));
 
       // Time series for volume chart — use continuous aggregates for longer ranges
@@ -450,6 +453,8 @@ export const dashboardRouter = router({
         bytesOut: number;
         eventsIn: number;
         eventsOut: number;
+        spansIn: number;
+        tracesIn: number;
       }>;
 
       // Long ranges (beyond raw retention) read downsampled rollups via
@@ -472,15 +477,17 @@ export const dashboardRouter = router({
         // Aggregate across pipelines per bucket
         const buckets = new Map<
           number,
-          { bytesIn: number; bytesOut: number; eventsIn: number; eventsOut: number }
+          { bytesIn: number; bytesOut: number; eventsIn: number; eventsOut: number; spansIn: number; tracesIn: number }
         >();
         for (const row of aggRows) {
           const t = new Date(row.bucket).getTime();
-          const b = buckets.get(t) ?? { bytesIn: 0, bytesOut: 0, eventsIn: 0, eventsOut: 0 };
+          const b = buckets.get(t) ?? { bytesIn: 0, bytesOut: 0, eventsIn: 0, eventsOut: 0, spansIn: 0, tracesIn: 0 };
           b.bytesIn += Number(row.bytesIn ?? 0);
           b.bytesOut += Number(row.bytesOut ?? 0);
           b.eventsIn += Number(row.eventsIn ?? 0);
           b.eventsOut += Number(row.eventsOut ?? 0);
+          b.spansIn += Number(row.spansIn ?? 0);
+          b.tracesIn += Number(row.tracesIn ?? 0);
           buckets.set(t, b);
         }
 
@@ -492,6 +499,8 @@ export const dashboardRouter = router({
             bytesOut: b.bytesOut,
             eventsIn: b.eventsIn,
             eventsOut: b.eventsOut,
+            spansIn: b.spansIn,
+            tracesIn: b.tracesIn,
           }));
       } else {
         // Fallback: bucket raw metrics in JS (existing logic)
@@ -510,6 +519,8 @@ export const dashboardRouter = router({
             bytesOut: true,
             eventsIn: true,
             eventsOut: true,
+            spansIn: true,
+            tracesIn: true,
           },
           orderBy: { timestamp: "desc" },
           take: 50_000,
@@ -517,15 +528,17 @@ export const dashboardRouter = router({
 
         const buckets = new Map<
           number,
-          { bytesIn: number; bytesOut: number; eventsIn: number; eventsOut: number }
+          { bytesIn: number; bytesOut: number; eventsIn: number; eventsOut: number; spansIn: number; tracesIn: number }
         >();
         for (const m of rawMetrics) {
           const t = Math.floor(new Date(m.timestamp).getTime() / bucketMs) * bucketMs;
-          const b = buckets.get(t) ?? { bytesIn: 0, bytesOut: 0, eventsIn: 0, eventsOut: 0 };
+          const b = buckets.get(t) ?? { bytesIn: 0, bytesOut: 0, eventsIn: 0, eventsOut: 0, spansIn: 0, tracesIn: 0 };
           b.bytesIn += Number(m.bytesIn ?? 0);
           b.bytesOut += Number(m.bytesOut ?? 0);
           b.eventsIn += Number(m.eventsIn ?? 0);
           b.eventsOut += Number(m.eventsOut ?? 0);
+          b.spansIn += Number(m.spansIn ?? 0);
+          b.tracesIn += Number(m.tracesIn ?? 0);
           buckets.set(t, b);
         }
 
@@ -537,6 +550,8 @@ export const dashboardRouter = router({
             bytesOut: b.bytesOut,
             eventsIn: b.eventsIn,
             eventsOut: b.eventsOut,
+            spansIn: b.spansIn,
+            tracesIn: b.tracesIn,
           }));
       }
 

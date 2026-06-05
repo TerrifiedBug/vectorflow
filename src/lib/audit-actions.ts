@@ -55,6 +55,8 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "environment.vaultConnection.tested": "Vault connection tested",
   "environment.enrollmentToken.generated": "Enrollment token generated",
   "environment.enrollmentToken.revoked": "Enrollment token revoked",
+  "environment.lake_bucket_set": "Lake cold-tier bucket configured",
+  "environment.lake_bucket_cleared": "Lake cold-tier bucket cleared",
 
   // Team
   "team.created": "Team created",

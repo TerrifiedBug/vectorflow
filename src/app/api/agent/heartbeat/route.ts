@@ -381,6 +381,10 @@ export async function POST(request: Request) {
         bytesOut: BigInt(p.bytesOut ?? 0),
         utilization: p.utilization ?? 0,
         latencyMeanMs: computeWeightedLatency(p.componentMetrics),
+        // Per-interval trace volume (default 0 keeps log/metric pipelines intact).
+        spansIn: BigInt(p.spansIn ?? 0),
+        spansOut: BigInt(p.spansOut ?? 0),
+        tracesIn: BigInt(p.tracesIn ?? 0),
       }));
 
     if (metricsData.length > 0) {

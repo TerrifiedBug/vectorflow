@@ -43,6 +43,8 @@ describe("dashboard router aggregate integration", () => {
         bytesOut: BigInt(95000),
         eventsIn: BigInt(5000),
         eventsOut: BigInt(4800),
+        spansIn: BigInt(0),
+        tracesIn: BigInt(0),
       },
     ]);
 

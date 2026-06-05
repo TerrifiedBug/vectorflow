@@ -252,6 +252,9 @@ export interface RawPipelineMetric {
   errorsTotal: bigint;
   bytesIn: bigint;
   bytesOut: bigint;
+  spansIn: bigint;
+  spansOut: bigint;
+  tracesIn: bigint;
   utilization: number;
   latencyMeanMs: number | null;
 }
@@ -268,6 +271,9 @@ export interface PipelineRollupRow {
   errorsTotal: bigint;
   bytesIn: bigint;
   bytesOut: bigint;
+  spansIn: bigint;
+  spansOut: bigint;
+  tracesIn: bigint;
   utilization: number;
   latencyMeanMs: number | null;
   maxLatencyMs: number | null;
@@ -284,6 +290,9 @@ interface PipelineAccumulator {
   errorsTotal: bigint;
   bytesIn: bigint;
   bytesOut: bigint;
+  spansIn: bigint;
+  spansOut: bigint;
+  tracesIn: bigint;
   utilizationSum: number;
   latencySum: number;
   latencyCount: number;
@@ -332,6 +341,9 @@ export function bucketPipelineMetrics(
         errorsTotal: BigInt(0),
         bytesIn: BigInt(0),
         bytesOut: BigInt(0),
+        spansIn: BigInt(0),
+        spansOut: BigInt(0),
+        tracesIn: BigInt(0),
         utilizationSum: 0,
         latencySum: 0,
         latencyCount: 0,
@@ -347,6 +359,9 @@ export function bucketPipelineMetrics(
     a.errorsTotal += row.errorsTotal;
     a.bytesIn += row.bytesIn;
     a.bytesOut += row.bytesOut;
+    a.spansIn += row.spansIn;
+    a.spansOut += row.spansOut;
+    a.tracesIn += row.tracesIn;
     a.utilizationSum += row.utilization;
     if (row.latencyMeanMs !== null) {
       a.latencySum += row.latencyMeanMs;
@@ -368,6 +383,9 @@ export function bucketPipelineMetrics(
     errorsTotal: a.errorsTotal,
     bytesIn: a.bytesIn,
     bytesOut: a.bytesOut,
+    spansIn: a.spansIn,
+    spansOut: a.spansOut,
+    tracesIn: a.tracesIn,
     utilization: a.count > 0 ? a.utilizationSum / a.count : 0,
     latencyMeanMs: a.latencyCount > 0 ? a.latencySum / a.latencyCount : null,
     maxLatencyMs: a.maxLatencyMs,
@@ -443,6 +461,9 @@ async function rollupOrg(
         errorsTotal: true,
         bytesIn: true,
         bytesOut: true,
+        spansIn: true,
+        spansOut: true,
+        tracesIn: true,
         utilization: true,
         latencyMeanMs: true,
       },
@@ -508,6 +529,9 @@ async function rollupOrg(
           errorsTotal: r.errorsTotal,
           bytesIn: r.bytesIn,
           bytesOut: r.bytesOut,
+          spansIn: r.spansIn,
+          spansOut: r.spansOut,
+          tracesIn: r.tracesIn,
           utilization: r.utilization,
           latencyMeanMs: r.latencyMeanMs,
           maxLatencyMs: r.maxLatencyMs,

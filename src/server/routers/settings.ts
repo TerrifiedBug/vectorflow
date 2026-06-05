@@ -353,7 +353,13 @@ export const settingsRouter = router({
     .use(withAudit("settings.anomaly_config_updated", "SystemSettings"))
     .mutation(async ({ input, ctx }) => {
       // Validate enabled metrics
-      const validMetrics = new Set(["eventsIn", "errorsTotal", "latencyMeanMs"]);
+      const validMetrics = new Set([
+        "eventsIn",
+        "errorsTotal",
+        "latencyMeanMs",
+        "spansIn",
+        "tracesIn",
+      ]);
       const metrics = input.enabledMetrics.split(",").map((s) => s.trim());
       const invalid = metrics.filter((m) => !validMetrics.has(m));
       if (invalid.length > 0) {
