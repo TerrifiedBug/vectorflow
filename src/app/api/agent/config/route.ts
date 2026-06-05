@@ -17,6 +17,8 @@ import { setExpectedChecksum } from "@/server/services/drift-metrics";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { warnLog, errorLog } from "@/lib/logger";
 import { getOrgSettings } from "@/lib/org-settings";
+import { isLakeEnabled, getLakeConfig } from "@/server/services/lake/clickhouse";
+import { resolveLakeSinkForDelivery, type LakeSinkCreds } from "@/lib/vector/lake-sink";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -294,6 +296,27 @@ export async function GET(request: Request) {
           );
           certFiles = certs;
           configForDelivery = withCerts;
+          shouldDumpConfig = true;
+        }
+
+        // Inject the managed VectorFlow Lake sink, if this pipeline routes to it.
+        // Endpoint/database/credentials come from the server's lake config (NOT
+        // the pipeline graph) and are resolved here at delivery, mirroring the
+        // SECRET[...] path above. When the lake is disabled the sink is rewritten
+        // to a no-op so the delivered config stays valid and fully inert.
+        let lakeCreds: LakeSinkCreds | null = null;
+        if (isLakeEnabled()) {
+          const lakeCfg = getLakeConfig();
+          lakeCreds = {
+            endpoint: lakeCfg.url,
+            database: lakeCfg.database,
+            username: lakeCfg.username,
+            password: lakeCfg.password,
+          };
+        }
+        const lakeResult = resolveLakeSinkForDelivery(configForDelivery, lakeCreds);
+        if (lakeResult.applied) {
+          configForDelivery = lakeResult.config;
           shouldDumpConfig = true;
         }
 

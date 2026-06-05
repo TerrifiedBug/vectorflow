@@ -19,6 +19,7 @@ import {
   Rocket,
   Lock,
   ShieldCheck,
+  Database,
 } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { cn } from "@/lib/utils";
@@ -53,6 +54,7 @@ const observeItems = [
   { title: "Dashboard", href: "/", icon: LayoutDashboard },
   { title: "Pipelines", href: "/pipelines", icon: Workflow },
   { title: "Fleet", href: "/fleet", icon: Server },
+  { title: "Lake", href: "/lake", icon: Database },
 ];
 
 const operateItems = [

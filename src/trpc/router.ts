@@ -39,6 +39,7 @@ import { orgAccessGrantRouter } from "@/server/routers/org-access-grant";
 import { orgRouter } from "@/server/routers/org";
 import { tapCaptureRouter } from "@/server/routers/tap-capture";
 import { proposedChangeRouter } from "@/server/routers/proposed-change";
+import { lakeRouter } from "@/server/routers/lake";
 
 export const appRouter = router({
   team: teamRouter,
@@ -81,6 +82,7 @@ export const appRouter = router({
   org: orgRouter,
   tapCapture: tapCaptureRouter,
   proposedChange: proposedChangeRouter,
+  lake: lakeRouter,
 });
 
 export type AppRouter = typeof appRouter;

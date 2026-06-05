@@ -20,7 +20,7 @@ interface SaveFilterDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   environmentId: string;
-  scope: "pipeline_list" | "fleet_matrix";
+  scope: "pipeline_list" | "fleet_matrix" | "lake_search";
   filters: Record<string, unknown>;
 }
 

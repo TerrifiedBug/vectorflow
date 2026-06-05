@@ -8,6 +8,8 @@ import { authenticateAgentInOrg } from "@/server/services/agent-auth";
 import { resolveAgentOrg } from "@/server/services/agent-org-binding";
 import { checkOrgNodeHealth } from "@/server/services/fleet-health";
 import { ingestMetrics } from "@/server/services/metrics-ingest";
+import { updateLakeCatalogFromHeartbeat } from "@/server/services/lake/lake-catalog";
+import { isLakeEnabled } from "@/server/services/lake/clickhouse";
 import { ingestLogs } from "@/server/services/log-ingest";
 import { cleanupOldMetrics } from "@/server/services/metrics-cleanup";
 import { metricStore } from "@/server/services/metric-store";
@@ -385,6 +387,19 @@ export async function POST(request: Request) {
       ingestMetrics(metricsData, orgResult.orgId, prevSnapshots).catch((err) =>
         errorLog("agent-heartbeat", "Metrics ingestion error", err),
       );
+
+      // Refresh the lake catalog for pipelines routing to the managed lake sink.
+      // Fire-and-forget; no-op unless the lake is enabled (hook double-guards).
+      if (isLakeEnabled()) {
+        updateLakeCatalogFromHeartbeat({
+          orgId: orgResult.orgId,
+          environmentId: agent.environmentId,
+          dataPoints: metricsData,
+          previousSnapshots: prevSnapshots,
+        }).catch((err) =>
+          errorLog("agent-heartbeat", "Lake catalog update error", err),
+        );
+      }
     }
 
     // Write per-component latency rows (direct create, bypasses delta-tracking)

@@ -42,6 +42,14 @@ vi.mock("@/trpc/client", () => ({
         })),
       },
     },
+    lake: {
+      status: {
+        queryOptions: vi.fn(() => ({
+          queryKey: ["lake", "status"],
+          queryFn: () => Promise.resolve({ enabled: false }),
+        })),
+      },
+    },
   }),
 }));
 

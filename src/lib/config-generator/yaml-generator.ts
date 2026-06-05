@@ -1,5 +1,6 @@
 import yaml from "js-yaml";
 import type { Node, Edge } from "@xyflow/react";
+import { LAKE_SINK_TYPE, renderLakeSinkBlock } from "@/lib/vector/lake-sink";
 
 /** Shape of node.data used by the flow editor */
 interface FlowNodeData {
@@ -54,10 +55,16 @@ export function generateVectorYaml(
           ? "transforms"
           : "sinks";
 
-    const entry: Record<string, unknown> = {
-      type: componentDef.type,
-      ...nodeConfig,
-    };
+    // The managed lake preset renders to a concrete Vector `clickhouse` sink
+    // with LAKE[...] credential placeholders (resolved at delivery), ignoring
+    // any graph config so connection details can never be authored or stored.
+    const entry: Record<string, unknown> =
+      componentDef.kind === "sink" && componentDef.type === LAKE_SINK_TYPE
+        ? renderLakeSinkBlock()
+        : {
+            type: componentDef.type,
+            ...nodeConfig,
+          };
 
     // Strip nested objects opted-out via strategy="none", or empty (all null/"")
     for (const [key, val] of Object.entries(entry)) {

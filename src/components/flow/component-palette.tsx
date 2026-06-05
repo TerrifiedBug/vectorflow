@@ -7,6 +7,7 @@ import { VFIcon, type VFIconName } from "@/components/ui/vf-icon";
 import { cn } from "@/lib/utils";
 import { getVectorCatalog } from "@/lib/vector/catalog";
 import type { VectorComponentDef } from "@/lib/vector/types";
+import { LAKE_SINK_TYPE } from "@/lib/vector/lake-sink";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useFlowStore } from "@/stores/flow-store";
@@ -341,8 +342,22 @@ export function ComponentPalette() {
     ),
   );
 
+  // The managed lake sink is only offered when the server has the lake
+  // configured; otherwise it would render an unusable destination. A3's
+  // `lake.status` query surfaces isLakeEnabled() to the client (no tenant input).
+  const lakeStatusQuery = useQuery(trpc.lake.status.queryOptions());
+  const lakeEnabled = lakeStatusQuery.data?.enabled ?? false;
+
+  const visibleCatalog = useMemo(
+    () =>
+      getVectorCatalog().filter(
+        (def) => lakeEnabled || !(def.kind === "sink" && def.type === LAKE_SINK_TYPE),
+      ),
+    [lakeEnabled],
+  );
+
   const filtered = useMemo(() => {
-    const catalog = getVectorCatalog();
+    const catalog = visibleCatalog;
     if (!search.trim()) return catalog;
 
     const term = search.toLowerCase().trim();
@@ -353,7 +368,7 @@ export function ComponentPalette() {
         def.description.toLowerCase().includes(term) ||
         def.category.toLowerCase().includes(term),
     );
-  }, [search]);
+  }, [search, visibleCatalog]);
 
   const filteredShared = useMemo(() => {
     let items = sharedComponentsQuery.data ?? [];
@@ -376,7 +391,7 @@ export function ComponentPalette() {
     }));
   }, [filtered]);
 
-  const totalCount = catalogIndex.size;
+  const totalCount = visibleCatalog.length;
 
   return (
     <aside className="flex h-full w-[280px] shrink-0 flex-col overflow-hidden border-r border-line bg-bg-1">

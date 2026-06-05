@@ -16,7 +16,7 @@ import { Bookmark, MoreHorizontal, Star, Trash2 } from "lucide-react";
 
 interface FilterPresetBarProps {
   environmentId: string;
-  scope: "pipeline_list" | "fleet_matrix";
+  scope: "pipeline_list" | "fleet_matrix" | "lake_search";
   currentFilters: Record<string, unknown>;
   onApplyPreset: (filters: Record<string, unknown>) => void;
   onSaveClick: () => void;
