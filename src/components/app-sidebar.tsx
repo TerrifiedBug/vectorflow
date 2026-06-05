@@ -98,8 +98,14 @@ export function AppSidebar() {
   );
   const userRole = roleQuery.data?.role;
   const isOrgAdmin = roleQuery.data?.isOrgAdmin ?? false;
+  const lakeStatusQuery = useQuery(trpc.lake.status.queryOptions());
+  const lakeEnabled = lakeStatusQuery.data?.enabled ?? false;
 
   const filterItem = (item: NavItem): boolean => {
+    // Lake is opt-in (VF_LAKE_CLICKHOUSE_URL). Hide its nav entry until the
+    // server confirms the lake is enabled — default-hidden avoids a flash of
+    // the item on deployments where the lake is off.
+    if (item.href === "/lake" && !lakeEnabled) return false;
     if (isSystemEnvironment && !SYSTEM_ENV_ALLOWED_HREFS.has(item.href)) {
       return false;
     }

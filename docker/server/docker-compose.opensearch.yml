@@ -64,6 +64,17 @@ services:
       VF_ALLOW_NEXTAUTH_DERIVED_KEY: ${VF_ALLOW_NEXTAUTH_DERIVED_KEY:-}
       AUTH_TRUST_HOST: "true"
       NEXTAUTH_URL:
+      # ── VectorFlow Lake (optional, opt-in) ───────────────────────────
+      # Long-retention ClickHouse store for logs/metrics/traces. OFF unless
+      # VF_LAKE_CLICKHOUSE_URL is set. To enable: set the VF_LAKE_* vars in
+      # .env (URL = http://clickhouse:8123) and start the bundled ClickHouse
+      # with the `lake` profile:
+      #   docker compose -f docker-compose.opensearch.yml --profile lake up -d
+      # The lake schema is created automatically on boot — no manual migration.
+      VF_LAKE_CLICKHOUSE_URL: ${VF_LAKE_CLICKHOUSE_URL:-}
+      VF_LAKE_CLICKHOUSE_USER: ${VF_LAKE_CLICKHOUSE_USER:-vectorflow_lake}
+      VF_LAKE_CLICKHOUSE_PASSWORD: ${VF_LAKE_CLICKHOUSE_PASSWORD:-}
+      VF_LAKE_CLICKHOUSE_DATABASE: ${VF_LAKE_CLICKHOUSE_DATABASE:-vectorflow_lake}
     volumes:
       - vfdata:/app/.vectorflow
       - backups:/backups
@@ -128,6 +139,33 @@ services:
       - vector-data:/var/lib/vector
     restart: unless-stopped
 
+  # VectorFlow Lake store (optional). Started only with the `lake` profile, so
+  # `docker compose ... up -d` (no profile) leaves it off. Plain MergeTree hot
+  # tier; set VF_LAKE_S3_* to add an S3 cold tier.
+  clickhouse:
+    container_name: vectorflow-clickhouse
+    image: clickhouse/clickhouse-server:24.8
+    profiles: ["lake"]
+    environment:
+      CLICKHOUSE_DB: ${VF_LAKE_CLICKHOUSE_DATABASE:-vectorflow_lake}
+      CLICKHOUSE_USER: ${VF_LAKE_CLICKHOUSE_USER:-vectorflow_lake}
+      CLICKHOUSE_PASSWORD: ${VF_LAKE_CLICKHOUSE_PASSWORD:-}
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8123/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 6
+    mem_limit: 2g
+    cpus: 2.0
+    restart: unless-stopped
+
 volumes:
   pgdata:
     name: vectorflow-pgdata
@@ -141,3 +179,5 @@ volumes:
     name: vectorflow-agent-data
   vector-data:
     name: vectorflow-vector-data
+  clickhouse-data:
+    name: vectorflow-clickhouse-data

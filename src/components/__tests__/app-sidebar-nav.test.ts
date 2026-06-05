@@ -25,4 +25,13 @@ describe("app sidebar navigation", () => {
     const commandPaletteSource = readFileSync("src/components/command-palette.tsx", "utf8");
     expect(commandPaletteSource).toContain('href: "/secrets"');
   });
+
+  it("gates the Lake nav entry on the lake being enabled", () => {
+    const sidebarSource = readFileSync("src/components/app-sidebar.tsx", "utf8");
+    // The Lake entry exists…
+    expect(sidebarSource).toContain('href: "/lake"');
+    // …but is filtered out unless the server reports the lake is enabled.
+    expect(sidebarSource).toContain("lake.status");
+    expect(sidebarSource).toContain('item.href === "/lake"');
+  });
 });

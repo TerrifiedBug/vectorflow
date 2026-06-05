@@ -140,6 +140,31 @@ export async function registerNodeInstrumentation() {
     }
 
     try {
+      // VectorFlow Lake: when enabled (VF_LAKE_CLICKHOUSE_URL set), ensure the
+      // ClickHouse lake schema exists. Idempotent (CREATE ... IF NOT EXISTS) and
+      // a no-op when the lake is disabled, so operators enable the lake by
+      // setting the env alone — no manual migration step. Leader-gated to avoid
+      // concurrent DDL; best-effort so a transient ClickHouse hiccup never
+      // blocks boot (lake reads/writes surface the error when actually used).
+      const { runLakeMigrations } = await import(
+        "@/server/services/lake/migrate"
+      );
+      const result = await runLakeMigrations();
+      if (!result.skipped) {
+        infoLog(
+          "instrumentation",
+          `Lake schema ready (files=${result.files}, statements=${result.statements})`,
+        );
+      }
+    } catch (error) {
+      errorLog(
+        "instrumentation",
+        "Lake migration failed (non-fatal) — lake reads/writes will error until ClickHouse is reachable",
+        error,
+      );
+    }
+
+    try {
       const { importLegacyBackups } = await import("@/server/services/backup");
       const result = await importLegacyBackups();
       infoLog("instrumentation", `Legacy backup import: ${result.imported} imported, ${result.skipped} skipped`);

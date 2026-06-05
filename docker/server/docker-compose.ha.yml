@@ -90,6 +90,14 @@ services:
       VF_ALLOW_NEXTAUTH_DERIVED_KEY: ${VF_ALLOW_NEXTAUTH_DERIVED_KEY:-}
       AUTH_TRUST_HOST: "true"
       NEXTAUTH_URL:
+      # ── VectorFlow Lake (optional, opt-in) — see docker-compose.opensearch.yml ──
+      # OFF unless VF_LAKE_CLICKHOUSE_URL is set. Enable: set VF_LAKE_* in .env
+      # (URL = http://clickhouse:8123) + start with `--profile lake`. The leader
+      # replica creates the lake schema on boot — no manual migration.
+      VF_LAKE_CLICKHOUSE_URL: ${VF_LAKE_CLICKHOUSE_URL:-}
+      VF_LAKE_CLICKHOUSE_USER: ${VF_LAKE_CLICKHOUSE_USER:-vectorflow_lake}
+      VF_LAKE_CLICKHOUSE_PASSWORD: ${VF_LAKE_CLICKHOUSE_PASSWORD:-}
+      VF_LAKE_CLICKHOUSE_DATABASE: ${VF_LAKE_CLICKHOUSE_DATABASE:-vectorflow_lake}
       # Migrations are handled once by the `migrate` service above.
       VF_SKIP_MIGRATIONS: "true"
     volumes:
@@ -122,6 +130,11 @@ services:
       VF_ALLOW_NEXTAUTH_DERIVED_KEY: ${VF_ALLOW_NEXTAUTH_DERIVED_KEY:-}
       AUTH_TRUST_HOST: "true"
       NEXTAUTH_URL:
+      # VectorFlow Lake (optional) — mirrors vf1; see docker-compose.opensearch.yml.
+      VF_LAKE_CLICKHOUSE_URL: ${VF_LAKE_CLICKHOUSE_URL:-}
+      VF_LAKE_CLICKHOUSE_USER: ${VF_LAKE_CLICKHOUSE_USER:-vectorflow_lake}
+      VF_LAKE_CLICKHOUSE_PASSWORD: ${VF_LAKE_CLICKHOUSE_PASSWORD:-}
+      VF_LAKE_CLICKHOUSE_DATABASE: ${VF_LAKE_CLICKHOUSE_DATABASE:-vectorflow_lake}
       # Migrations are handled once by the `migrate` service above.
       VF_SKIP_MIGRATIONS: "true"
     volumes:
@@ -167,6 +180,31 @@ services:
       retries: 3
     restart: unless-stopped
 
+  # VectorFlow Lake store (optional, `lake` profile). The leader app replica
+  # creates the lake schema on boot. Plain MergeTree hot tier.
+  clickhouse:
+    container_name: vectorflow-ha-clickhouse
+    image: clickhouse/clickhouse-server:24.8
+    profiles: ["lake"]
+    environment:
+      CLICKHOUSE_DB: ${VF_LAKE_CLICKHOUSE_DATABASE:-vectorflow_lake}
+      CLICKHOUSE_USER: ${VF_LAKE_CLICKHOUSE_USER:-vectorflow_lake}
+      CLICKHOUSE_PASSWORD: ${VF_LAKE_CLICKHOUSE_PASSWORD:-}
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8123/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 6
+    mem_limit: 2g
+    restart: unless-stopped
+
 volumes:
   pgdata:
     name: vectorflow-ha-pgdata
@@ -178,3 +216,5 @@ volumes:
     name: vectorflow-ha-data2
   backups:
     name: vectorflow-ha-backups
+  clickhouse-data:
+    name: vectorflow-ha-clickhouse-data
