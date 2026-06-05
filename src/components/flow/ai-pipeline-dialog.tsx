@@ -25,6 +25,8 @@ import { validateSuggestions } from "@/lib/ai/suggestion-validator";
 import { detectOutdatedSuggestions } from "@/lib/ai/suggestion-validator";
 import type { AiSuggestion, SuggestionStatus } from "@/lib/ai/types";
 import type { ConversationMessage } from "@/hooks/use-ai-conversation";
+import { ProposedChangesPanel } from "./proposed-changes-panel";
+import { IncidentCopilotPanel } from "@/components/incident-copilot-panel";
 
 interface AiPipelineDialogProps {
   open: boolean;
@@ -41,7 +43,7 @@ export function AiPipelineDialog({
   environmentName,
   currentYaml: currentYamlProp,
 }: AiPipelineDialogProps) {
-  const [mode, setMode] = useState<"generate" | "review" | "debug">("generate");
+  const [mode, setMode] = useState<"generate" | "review" | "debug" | "changes">("generate");
 
   // --- Generate tab state (unchanged from original) ---
   const [genPrompt, setGenPrompt] = useState("");
@@ -470,14 +472,15 @@ export function AiPipelineDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={mode} onValueChange={(v) => setMode(v as "generate" | "review" | "debug")} className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden">
+        <Tabs value={mode} onValueChange={(v) => setMode(v as "generate" | "review" | "debug" | "changes")} className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden">
           <div className="border-b border-line bg-bg-1 px-4 py-2.5">
-            <TabsList variant="mono" className="grid h-8 w-full grid-cols-3 bg-bg">
+            <TabsList variant="mono" className="grid h-8 w-full grid-cols-4 bg-bg">
               <TabsTrigger value="generate">Generate</TabsTrigger>
               <TabsTrigger value="review" disabled={nodes.length === 0}>
                 Review
               </TabsTrigger>
               <TabsTrigger value="debug">Debug</TabsTrigger>
+              <TabsTrigger value="changes">Changes</TabsTrigger>
             </TabsList>
           </div>
 
@@ -760,6 +763,17 @@ export function AiPipelineDialog({
                 </div>
               </div>
             )}
+          </TabsContent>
+
+          {/* ---- Changes tab (AI proposals + incident copilot) ---- */}
+          <TabsContent value="changes" className="mt-0 space-y-4 overflow-y-auto p-5">
+            <IncidentCopilotPanel pipelineId={pipelineId} />
+            <div className="space-y-2">
+              <Label className="font-mono text-[10px] uppercase tracking-[0.08em] text-fg-2">
+                Proposed changes
+              </Label>
+              <ProposedChangesPanel pipelineId={pipelineId} />
+            </div>
           </TabsContent>
         </Tabs>
       </DialogContent>

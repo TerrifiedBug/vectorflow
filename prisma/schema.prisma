@@ -409,6 +409,8 @@ model User {
   releasesReviewed         Release[]            @relation("ReleaseReviewedBy")
   releasesDeployed         Release[]            @relation("ReleaseDeployedBy")
   tapCaptures              TapCapture[]         @relation("TapCaptureCreatedBy")
+  proposedChangesCreated   ProposedChange[]     @relation("ProposedChangeCreatedBy")
+  proposedChangesReviewed  ProposedChange[]     @relation("ProposedChangeReviewedBy")
   preferences              UserPreference[]
   aiConversationsCreated   AiConversation[]     @relation("AiConversationCreatedBy")
   aiMessagesCreated        AiMessage[]          @relation("AiMessageCreatedBy")
@@ -915,6 +917,7 @@ model Pipeline {
   releasesAsTarget          Release[]              @relation("ReleaseTargetPipeline")
   pipelineMetricRollups     PipelineMetricRollup[]
   tapCaptures               TapCapture[]
+  proposedChanges           ProposedChange[]       @relation("ProposedChangePipeline")
   gitSyncJobs               GitSyncJob[]
   migrationProject          MigrationProject?
   costRecommendations       CostRecommendation[]
@@ -2270,4 +2273,49 @@ model TapCapture {
 
   @@index([organizationId])
   @@index([pipelineId])
+}
+
+enum ProposedChangeKind {
+  PIPELINE_GRAPH
+  VRL
+}
+
+enum ProposedChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  APPLIED
+}
+
+/// A human-approval-gated change proposed by the agentic AI (B2). The AI
+/// generates a pipeline-graph or VRL edit; the server validates it (vector
+/// validate + VRL eval, with an auto-fix loop) and stages it here. An EDITOR
+/// must approve before it is applied — autonomy is capped at human-approved apply.
+model ProposedChange {
+  id                   String               @id @default(cuid())
+  organizationId       String               @default("default")
+  pipelineId           String
+  pipeline             Pipeline             @relation("ProposedChangePipeline", fields: [pipelineId], references: [id], onDelete: Cascade)
+  kind                 ProposedChangeKind
+  status               ProposedChangeStatus @default(PENDING)
+  summary              String               @db.Text
+  prompt               String?              @db.Text
+  proposedNodes        Json?
+  proposedEdges        Json?
+  proposedGlobalConfig Json?
+  vrlSource            String?              @db.Text
+  targetComponentKey   String?
+  validationResult     Json?
+  validated            Boolean              @default(false)
+  createdById          String?
+  createdBy            User?                @relation("ProposedChangeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  reviewedById         String?
+  reviewedBy           User?                @relation("ProposedChangeReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewNote           String?
+  createdAt            DateTime             @default(now())
+  reviewedAt           DateTime?
+  appliedAt            DateTime?
+
+  @@index([organizationId])
+  @@index([pipelineId, status])
 }

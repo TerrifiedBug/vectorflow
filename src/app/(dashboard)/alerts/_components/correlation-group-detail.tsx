@@ -28,6 +28,7 @@ import type {
   CorrelationGroupSummary,
   CorrelationGroupTimelineEvent,
 } from "./correlation-group-row";
+import { IncidentCopilotPanel } from "@/components/incident-copilot-panel";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -121,6 +122,9 @@ export function CorrelationGroupDetail({
           </CardContent>
         </Card>
       )}
+
+      {/* Incident copilot — correlate a recent release deploy with the anomaly onset */}
+      <IncidentCopilotPanel environmentId={environmentId} />
 
       {/* Group Actions */}
       <div className="flex items-center justify-between">

@@ -216,6 +216,32 @@ export async function streamCompletion({
   }
 }
 
+/**
+ * Non-streaming convenience over `streamCompletion`: accumulate the streamed
+ * tokens into a single string. Reuses the exact same per-team BYO-key
+ * resolution, rate-limit, SSRF and base-url-allowlist gating — so the agentic
+ * propose / auto-fix loop (B2) never opens a second outbound path. Returns the
+ * full completion text.
+ */
+export async function completeChat(params: {
+  teamId: string;
+  systemPrompt: string;
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  signal?: AbortSignal;
+}): Promise<string> {
+  let out = "";
+  await streamCompletion({
+    teamId: params.teamId,
+    systemPrompt: params.systemPrompt,
+    messages: params.messages,
+    onToken: (token) => {
+      out += token;
+    },
+    signal: params.signal,
+  });
+  return out;
+}
+
 export async function testAiConnection(teamId: string): Promise<{ ok: boolean; error?: string }> {
   if (isDemoMode()) {
     return { ok: false, error: "AI features are disabled in the public demo." };

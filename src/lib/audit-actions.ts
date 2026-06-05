@@ -21,6 +21,10 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "pipeline.ai_conversation_started": "AI conversation started",
   "pipeline.ai_suggestion_applied": "AI suggestion applied",
   "pipeline.vrl_ai_suggestion_applied": "VRL AI suggestion applied",
+  "ai.change_proposed": "AI change proposed",
+  "ai.change_approved": "AI change approved",
+  "ai.change_rejected": "AI change rejected",
+  "ai.incident_rollback": "Incident copilot rollback",
 
   // Deploy
   "deploy.agent": "Deployed to agent",
