@@ -922,6 +922,7 @@ model Pipeline {
   tapCaptures               TapCapture[]
   proposedChanges           ProposedChange[]       @relation("ProposedChangePipeline")
   lakeDatasets              LakeDataset[]          @relation("LakeDatasetPipeline")
+  lakeAlertRules            LakeAlertRule[]        @relation("LakeAlertRulePipeline")
   replaysAsSource           ReplayJob[]            @relation("ReplaySourcePipeline")
   replaysAsTarget           ReplayJob[]            @relation("ReplayTargetPipeline")
   gitSyncJobs               GitSyncJob[]
@@ -2434,4 +2435,36 @@ model EnvironmentLakeBucket {
   updatedAt                DateTime    @updatedAt
 
   @@index([organizationId, environmentId])
+}
+
+/// A scheduled threshold alert over a Lake dataset (A6). A saved summarize/
+/// search spec runs on a cadence (`intervalSeconds`); when the aggregate value
+/// crosses `threshold` the rule fires (edge-triggered) via a notification
+/// channel. Firing state lives on the row — no separate history table in v1.
+model LakeAlertRule {
+  id              String    @id @default(cuid())
+  organizationId  String    @default("default")
+  pipelineId      String
+  pipeline        Pipeline  @relation("LakeAlertRulePipeline", fields: [pipelineId], references: [id], onDelete: Cascade)
+  /// Denormalized from the pipeline; scopes channel dispatch + the UI channel picker.
+  environmentId   String
+  name            String
+  /// Saved query spec: { eventType?, query?, groupBy?, metric, metricField?, windowSeconds }.
+  spec            Json
+  /// GT | GTE | LT | LTE
+  comparator      String
+  threshold       Float
+  intervalSeconds Int       @default(300)
+  /// Optional NotificationChannel id to dispatch to (null = evaluate only, no delivery).
+  channelId       String?
+  enabled         Boolean   @default(true)
+  lastEvaluatedAt DateTime?
+  lastFiredAt     DateTime?
+  lastValue       Float?
+  firing          Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([organizationId, enabled, lastEvaluatedAt])
+  @@index([pipelineId])
 }

@@ -136,3 +136,41 @@ export async function deliverToChannels(
 
   return results;
 }
+
+/**
+ * Deliver a payload to a single notification channel by id, scoped to an
+ * environment. For surfaces that store their own channel reference rather than
+ * AlertRuleChannel links (e.g. Lake alert rules). Returns null when the channel
+ * is missing/disabled/out-of-environment or in demo mode. Relies on the caller
+ * running inside an org context (the Prisma RLS extension scopes the lookup).
+ */
+export async function deliverToChannelById(
+  channelId: string,
+  environmentId: string,
+  payload: ChannelPayload,
+): Promise<ChannelDeliveryResult | null> {
+  if (isDemoMode()) return null;
+
+  const channel = await prisma.notificationChannel.findFirst({
+    where: { id: channelId, environmentId, enabled: true },
+    select: { id: true, type: true, config: true },
+  });
+  if (!channel) return null;
+
+  try {
+    const driver = getDriver(channel.type);
+    const decrypted = decryptChannelConfig(
+      channel.type,
+      channel.config as Record<string, unknown>,
+    );
+    const result = await driver.deliver(decrypted, payload);
+    return { ...result, channelId: channel.id };
+  } catch (err) {
+    errorLog("channels", `Channel delivery error (${channel.type} / ${channel.id})`, err);
+    return {
+      channelId: channel.id,
+      success: false,
+      error: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+}

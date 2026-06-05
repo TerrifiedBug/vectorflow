@@ -47,6 +47,12 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "replay.created": "Replay started",
   "replay.cancelled": "Replay cancelled",
 
+  // Lake alerts
+  "lake.alert.created": "Lake alert created",
+  "lake.alert.updated": "Lake alert updated",
+  "lake.alert.deleted": "Lake alert deleted",
+  "lake.alert.tested": "Lake alert test fired",
+
   // Environment
   "environment.created": "Environment created",
   "environment.updated": "Environment updated",
