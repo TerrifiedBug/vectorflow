@@ -4,11 +4,12 @@ import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import Link from "next/link";
-import { ShieldOff, Trash2, Wrench, Tag, Pencil, X, Plus, Activity } from "lucide-react";
+import { ShieldOff, Trash2, Wrench, Tag, Pencil, X, Plus, Activity, Database } from "lucide-react";
 import { NodeLogs } from "@/components/fleet/node-logs";
 import { toast } from "sonner";
 import { useState } from "react";
 import { usePollingInterval } from "@/hooks/use-polling-interval";
+import { useTeamStore } from "@/stores/team-store";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -91,6 +92,16 @@ export default function NodeDetailPage() {
     )
   );
   const pipelineRates = ratesQuery.data?.rates ?? {};
+
+  // Lake glue: surface a "search in Lake" link for pipelines that have a lake
+  // dataset, stitching Fleet (telemetry) → Lake (event history).
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
+  const lakeStatusQuery = useQuery(trpc.lake.status.queryOptions());
+  const lakeDatasetsQuery = useQuery({
+    ...trpc.lake.listDatasets.queryOptions({ teamId: selectedTeamId ?? "" }),
+    enabled: !!selectedTeamId && (lakeStatusQuery.data?.enabled ?? false),
+  });
+  const lakePipelineIds = new Set((lakeDatasetsQuery.data ?? []).map((d) => d.pipelineId));
 
 
   const deleteMutation = useMutation(
@@ -568,7 +579,22 @@ export default function NodeDetailPage() {
                         return (
                         <TableRow key={ps.pipelineId}>
                           <TableCell className="font-medium">
-                            {ps.pipeline?.name ?? ps.pipelineId.slice(0, 8)}
+                            <span className="flex items-center gap-2">
+                              {ps.pipeline?.name ?? ps.pipelineId.slice(0, 8)}
+                              {lakePipelineIds.has(ps.pipelineId) && (
+                                <Button
+                                  asChild
+                                  size="icon-xs"
+                                  variant="ghost"
+                                  aria-label="Search this pipeline in Lake"
+                                  title="Search this pipeline in Lake"
+                                >
+                                  <Link href={`/lake?pipelineId=${ps.pipelineId}`}>
+                                    <Database className="h-3 w-3" />
+                                  </Link>
+                                </Button>
+                              )}
+                            </span>
                           </TableCell>
                           <TableCell>
                             <StatusBadge variant={pipelineStatusVariant(ps.status)}>

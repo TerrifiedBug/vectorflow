@@ -32,6 +32,8 @@ import {
   summarizeEvents,
   LakeSummarizeError,
   LAKE_SUMMARIZE_MAX_SERIES,
+  listTraces,
+  getTrace,
 } from "../lake-query";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
@@ -434,5 +436,87 @@ describe("summarizeEvents — bucket clamp", () => {
       bucketSeconds: 3600,
     });
     expect(lakeQueryMock.mock.calls[0][1]?.bucketSec).toBe(3600);
+  });
+});
+
+describe("listTraces — trace grouping", () => {
+  it("groups by traceId, pins eventType=trace, and binds org/pipeline/time", async () => {
+    await listTraces({ orgId: "org-A", pipelineId: "p1", from: FROM, to: TO });
+    const [sql, params] = lakeQueryMock.mock.calls[0];
+    expect(sql).toContain("GROUP BY traceId");
+    expect(sql).toContain("eventType = 'trace'");
+    expect(sql).toContain("traceId != ''");
+    expect(sql).toContain("count() AS spanCount");
+    // duration = last span end (start + duration attr) − first span start,
+    // not just the gap between span starts (so single-span traces aren't 0ms).
+    expect(sql).toContain("toUnixTimestamp64Milli(timestamp)");
+    expect(sql).toContain("duration_ms");
+    expect(sql).not.toContain("dateDiff('millisecond', min(timestamp), max(timestamp)) AS durationMs");
+    expect(sql).toContain("organizationId = {orgId:String}");
+    expect(sql).not.toContain("org-A");
+    expect(params).toMatchObject({ orgId: "org-A", pipelineId: "p1" });
+  });
+
+  it("maps rows and normalizes status to ok/error", async () => {
+    lakeQueryMock.mockResolvedValueOnce([
+      {
+        traceId: "t1",
+        spanCount: "3",
+        startTime: "2026-06-01 00:00:00",
+        endTime: "2026-06-01 00:00:02",
+        durationMs: "2000",
+        status: "error",
+      },
+      {
+        traceId: "t2",
+        spanCount: 1,
+        startTime: "2026-06-01 00:01:00",
+        endTime: "2026-06-01 00:01:00",
+        durationMs: 0,
+        status: "ok",
+      },
+    ]);
+    const out = await listTraces({ orgId: "o", pipelineId: "p", from: FROM, to: TO });
+    expect(out).toEqual([
+      { traceId: "t1", spanCount: 3, startTime: "2026-06-01 00:00:00", endTime: "2026-06-01 00:00:02", durationMs: 2000, status: "error" },
+      { traceId: "t2", spanCount: 1, startTime: "2026-06-01 00:01:00", endTime: "2026-06-01 00:01:00", durationMs: 0, status: "ok" },
+    ]);
+  });
+});
+
+describe("getTrace — spans with schema-on-read attrs", () => {
+  it("binds traceId, pins eventType=trace, and resolves name/parent/duration from attrs", async () => {
+    lakeQueryMock.mockResolvedValueOnce([
+      {
+        spanId: "s1",
+        message: "root",
+        severity: "info",
+        timestamp: "2026-06-01 00:00:00",
+        attrs: { name: "GET /", duration_ms: "120" },
+      },
+      {
+        spanId: "s2",
+        message: "db query",
+        severity: "info",
+        timestamp: "2026-06-01 00:00:01",
+        attrs: { parent_span_id: "s1", duration: "40" },
+      },
+    ]);
+    const out = await getTrace({ orgId: "org-A", pipelineId: "p", traceId: "t1" });
+
+    const [sql, params] = lakeQueryMock.mock.calls[0];
+    expect(sql).toContain("traceId = {traceId:String}");
+    expect(sql).toContain("eventType = 'trace'");
+    expect(sql).not.toContain("t1'"); // traceId never interpolated
+    expect(params).toMatchObject({ traceId: "t1", orgId: "org-A" });
+
+    expect(out[0]).toMatchObject({ spanId: "s1", parentSpanId: "", name: "GET /", durationMs: 120 });
+    // s2: name falls back to message, parent from attrs, duration from `duration`
+    expect(out[1]).toMatchObject({ spanId: "s2", parentSpanId: "s1", name: "db query", durationMs: 40 });
+  });
+
+  it("returns [] for an empty traceId without querying", async () => {
+    await expect(getTrace({ orgId: "o", pipelineId: "p", traceId: "" })).resolves.toEqual([]);
+    expect(lakeQueryMock).not.toHaveBeenCalled();
   });
 });

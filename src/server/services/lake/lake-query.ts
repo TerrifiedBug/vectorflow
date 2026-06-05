@@ -664,6 +664,158 @@ export async function aggregateValue(args: AggregateValueArgs): Promise<number |
   return v === null || v === undefined ? null : Number(v);
 }
 
+// ── Traces (lightweight trace-grouped view) ──────────────────────────────────
+const LAKE_TRACES_DEFAULT_LIMIT = 100;
+const LAKE_TRACES_MAX_LIMIT = 1_000;
+/** Span cap for a single trace (a runaway trace can't exhaust the page). */
+const LAKE_TRACE_SPANS_MAX = 2_000;
+
+/** Best-effort attr keys for span name / parent / duration (schema-on-read).
+ *  Documented in the Lake guide; extend here as new emitters surface. */
+const SPAN_NAME_ATTRS = ["name", "span_name", "operation", "operation_name"];
+const SPAN_PARENT_ATTRS = ["parent_span_id", "parent_id", "parentSpanId", "parentId"];
+const SPAN_DURATION_ATTRS = ["duration_ms", "durationMs", "duration", "elapsed_ms", "latency_ms"];
+
+function firstAttr(attrs: Record<string, string>, keys: readonly string[]): string | undefined {
+  for (const k of keys) {
+    const v = attrs[k];
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return undefined;
+}
+
+/** One trace, grouped from its spans (no waterfall — counts + wall-time). */
+export interface LakeTraceSummary {
+  traceId: string;
+  spanCount: number;
+  startTime: string;
+  endTime: string;
+  /** Wall-time from the first span's start to the last span's end (start +
+   *  duration attr when present; falls back to last span start), milliseconds. */
+  durationMs: number;
+  /** "error" iff any span's severity looks error-like, else "ok". */
+  status: string;
+}
+
+/**
+ * Recent distinct traces over an org+pipeline window: span count, wall-time and
+ * a coarse status, grouped by `traceId`. Same safe query shape as
+ * `searchEvents` (org/pipeline/time bound params; eventType pinned to 'trace').
+ */
+export async function listTraces(args: {
+  orgId: string;
+  pipelineId: string;
+  from: Date;
+  to: Date;
+  limit?: number;
+}): Promise<LakeTraceSummary[]> {
+  if (!isLakeEnabled()) return [];
+
+  const to = args.to;
+  const from = clampFrom(args.from, to);
+  const limit = clampLimit(args.limit, LAKE_TRACES_DEFAULT_LIMIT, LAKE_TRACES_MAX_LIMIT);
+
+  // Trace wall-time = last span END − first span START. A span's end is its
+  // start plus a duration attr (so a single-span 2s trace reports 2000ms, not
+  // 0); when no span carries a duration attr this degrades to max−min start.
+  // Attr keys are hardcoded constants (SPAN_DURATION_ATTRS), never user input.
+  const durationCoalesce =
+    "coalesce(" +
+    SPAN_DURATION_ATTRS.map((k) => `nullIf(attrs['${k}'], '')`).join(", ") +
+    ", '')";
+  const spanEndMs = `(toUnixTimestamp64Milli(timestamp) + toFloat64OrZero(${durationCoalesce}))`;
+
+  const sql =
+    `SELECT traceId, count() AS spanCount, ` +
+    `min(timestamp) AS startTime, max(timestamp) AS endTime, ` +
+    `toInt64(round(greatest(0, max(${spanEndMs}) - min(toUnixTimestamp64Milli(timestamp))))) AS durationMs, ` +
+    `if(countIf(positionCaseInsensitive(severity, 'error') > 0) > 0, 'error', 'ok') AS status ` +
+    `FROM ${LAKE_EVENTS_TABLE} ` +
+    `WHERE organizationId = {orgId:String} AND pipelineId = {pipelineId:String} ` +
+    `AND timestamp >= {from:DateTime64(3)} AND timestamp <= {to:DateTime64(3)} ` +
+    `AND eventType = 'trace' AND traceId != '' ` +
+    `GROUP BY traceId ORDER BY startTime DESC LIMIT {limit:UInt32} ` +
+    lakeSettingsClause();
+
+  const rows = await lakeQuery<{
+    traceId: string;
+    spanCount: string | number;
+    startTime: string;
+    endTime: string;
+    durationMs: string | number;
+    status: string;
+  }>(sql, { orgId: args.orgId, pipelineId: args.pipelineId, from, to, limit });
+
+  return rows.map((r) => ({
+    traceId: r.traceId,
+    spanCount: Number(r.spanCount ?? 0),
+    startTime: r.startTime,
+    endTime: r.endTime,
+    durationMs: Number(r.durationMs ?? 0),
+    status: r.status === "error" ? "error" : "ok",
+  }));
+}
+
+/** One span of a trace, with name/parent/duration resolved best-effort from attrs. */
+export interface LakeTraceSpan {
+  spanId: string;
+  parentSpanId: string;
+  name: string;
+  startTime: string;
+  durationMs: number | null;
+  severity: string;
+  attrs: Record<string, string>;
+}
+
+/**
+ * All spans of a single trace, ordered by start time. Span name/parent/duration
+ * are read from `attrs` (schema-on-read; see SPAN_*_ATTRS). Org/pipeline/traceId
+ * are bound params; eventType is pinned to 'trace'.
+ */
+export async function getTrace(args: {
+  orgId: string;
+  pipelineId: string;
+  traceId: string;
+}): Promise<LakeTraceSpan[]> {
+  if (!isLakeEnabled() || !args.traceId) return [];
+
+  const sql =
+    `SELECT spanId, message, severity, timestamp, attrs FROM ${LAKE_EVENTS_TABLE} ` +
+    `WHERE organizationId = {orgId:String} AND pipelineId = {pipelineId:String} ` +
+    `AND traceId = {traceId:String} AND eventType = 'trace' ` +
+    `ORDER BY timestamp ASC LIMIT {limit:UInt32} ` +
+    lakeSettingsClause();
+
+  const rows = await lakeQuery<{
+    spanId: string;
+    message: string;
+    severity: string;
+    timestamp: string;
+    attrs: Record<string, string>;
+  }>(sql, {
+    orgId: args.orgId,
+    pipelineId: args.pipelineId,
+    traceId: args.traceId,
+    limit: LAKE_TRACE_SPANS_MAX,
+  });
+
+  return rows.map((r) => {
+    const attrs = r.attrs ?? {};
+    const durStr = firstAttr(attrs, SPAN_DURATION_ATTRS);
+    const durationMs =
+      durStr !== undefined && Number.isFinite(Number(durStr)) ? Number(durStr) : null;
+    return {
+      spanId: r.spanId,
+      parentSpanId: firstAttr(attrs, SPAN_PARENT_ATTRS) ?? "",
+      name: firstAttr(attrs, SPAN_NAME_ATTRS) ?? (r.message || r.spanId || "span"),
+      startTime: r.timestamp,
+      durationMs,
+      severity: r.severity,
+      attrs,
+    };
+  });
+}
+
 /** A catalog dataset row with its pipeline/environment/retention labels. */
 export type LakeDatasetListItem = Prisma.LakeDatasetGetPayload<{
   include: {
