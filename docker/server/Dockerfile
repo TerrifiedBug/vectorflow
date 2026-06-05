@@ -95,6 +95,12 @@ COPY --from=build --chown=vectorflow:nodejs /app/public ./public
 COPY --from=build --chown=vectorflow:nodejs /app/prisma ./prisma
 COPY --from=build --chown=vectorflow:nodejs /app/prisma.config.ts ./prisma.config.ts
 
+# Copy the ClickHouse lake migrations so the lake auto-migrate
+# (runLakeMigrations(), invoked from startSingletonServices on the elected
+# leader when VF_LAKE_CLICKHOUSE_URL is set) can read them from
+# /app/scripts/lake-migrations. Without this the lake cannot be migrated.
+COPY --chown=vectorflow:nodejs scripts/lake-migrations ./scripts/lake-migrations
+
 # Install Prisma CLI globally for `prisma migrate deploy` at startup.
 # Version-locked to match the @prisma/client bundled by Next.js standalone.
 # Also symlink into local node_modules so prisma.config.ts can `import from 'prisma/config'`.
