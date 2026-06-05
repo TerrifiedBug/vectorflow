@@ -40,14 +40,12 @@ function lakeDeliveryConfig(): Record<string, unknown> {
 }
 
 describe("VectorFlow Lake sink — catalog entry", () => {
-  it("is registered as a managed sink accepting logs, metrics and traces", () => {
+  it("is registered as a managed sink accepting log events (classified into log/metric/trace rows)", () => {
     const def = getVectorCatalog().find(
       (d) => d.type === LAKE_SINK_TYPE && d.kind === "sink",
     );
     expect(def).toBeDefined();
-    expect(def?.inputTypes).toEqual(
-      expect.arrayContaining(["log", "metric", "trace"]),
-    );
+    expect(def?.inputTypes).toEqual(["log"]);
   });
 
   it("exposes no connection fields (endpoint/database/credentials are delivery-injected)", () => {

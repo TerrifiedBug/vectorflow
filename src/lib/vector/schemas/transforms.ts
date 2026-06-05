@@ -606,8 +606,8 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
       "Tail-based trace sampling: buffer spans by trace_id over a flush window, then keep whole traces that errored, ran slow, or fall in the probabilistic baseline — dropping the rest atomically. Opt-in; simulate before deploying.",
     category: "Traces",
     status: "beta",
-    inputTypes: ["trace"],
-    outputTypes: ["trace"],
+    inputTypes: ["log"],
+    outputTypes: ["log"],
     icon: "Filter",
     configSchema: {
       type: "object",

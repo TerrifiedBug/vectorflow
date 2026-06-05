@@ -295,10 +295,10 @@ export const searchDbSinks: VectorComponentDef[] = [
     kind: "sink",
     displayName: "VectorFlow Lake",
     description:
-      "Managed full-fidelity store — send logs, metrics and traces to the VectorFlow Lake. Endpoint and credentials are injected automatically at config delivery.",
+      "Managed full-fidelity store for the VectorFlow Lake. Accepts log events — including trace spans and metric_to_log output, which the lake classifies into log, metric and trace rows. Endpoint and credentials are injected automatically at config delivery.",
     category: "Database",
-    inputTypes: ["log", "metric", "trace"],
-    outputTypes: ["log", "metric", "trace"],
+    inputTypes: ["log"],
+    outputTypes: ["log"],
     icon: "Database",
     // One-click managed destination: there are no connection fields. The
     // endpoint/database/credentials are resolved from the server's lake config
