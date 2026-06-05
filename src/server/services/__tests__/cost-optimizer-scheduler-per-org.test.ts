@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   type FakeTask = { cron: string; cb: () => Promise<void>; stop: () => void };
-  let registered: FakeTask | null = null;
+  const registered: FakeTask[] = [];
   const cronValidate = vi.fn(
     (expr: string) => /^\S+ \S+ \S+ \S+ \S+$/.test(expr),
   );
@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => {
       cb,
       stop: () => {},
     };
-    registered = t;
+    registered.push(t);
     return t;
   });
   const findManyOrgs = vi.fn();
@@ -23,7 +23,7 @@ const mocks = vi.hoisted(() => {
   return {
     getRegistered: () => registered,
     resetRegistered: () => {
-      registered = null;
+      registered.length = 0;
     },
     cronValidate,
     cronSchedule,
@@ -75,9 +75,13 @@ describe("cost-optimizer-scheduler — per-org iteration", () => {
     mocks.generateAiRecommendations.mockReset();
   });
 
-  it("scheduling registers a single global cron task", async () => {
+  it("scheduling registers both global cron tasks (nightly + continuous)", async () => {
     await initCostOptimizerScheduler();
-    expect(mocks.cronSchedule).toHaveBeenCalledTimes(1);
+    // Two fleet-global ticks now register: the nightly full pass and the lighter
+    // continuous pass. Both fan out across orgs from inside the tick, so they
+    // remain global — scheduling never enumerates orgs to build per-org tasks.
+    expect(mocks.cronSchedule).toHaveBeenCalledTimes(2);
+    expect(mocks.findManyOrgs).not.toHaveBeenCalled();
   });
 
   it("the registered tick fans out across all non-suspended, non-deleted orgs", async () => {
@@ -91,7 +95,9 @@ describe("cost-optimizer-scheduler — per-org iteration", () => {
     mocks.storeRecommendations.mockResolvedValue({ created: 0, skipped: 0 });
 
     await initCostOptimizerScheduler();
-    await mocks.getRegistered()!.cb();
+    // The nightly pass is registered first and is the only tick that runs
+    // cleanupExpiredRecommendations; invoke it (not the continuous tick).
+    await mocks.getRegistered()[0]!.cb();
 
     // The fan-out invokes the full pipeline once per org. cleanupExpiredRecommendations
     // is the first step of `runDailyCostAnalysisForOrg`, so its call count equals

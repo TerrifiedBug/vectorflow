@@ -21,6 +21,25 @@ vi.mock("@/hooks/use-live-tap", () => ({
   useLiveTap: () => liveTapState,
 }));
 
+// The panel now offers a "save capture" affordance backed by tRPC
+// (trpc.tapCapture.create), so it calls useTRPC()/useMutation on render. Mock
+// both so the panel renders without a real TRPCProvider/QueryClientProvider.
+vi.mock("@/trpc/client", () => ({
+  useTRPC: () => ({
+    tapCapture: {
+      create: { mutationOptions: (opts: unknown) => opts },
+    },
+  }),
+}));
+
+vi.mock("@tanstack/react-query", () => ({
+  useMutation: (opts: unknown) => ({
+    mutate: vi.fn(),
+    isPending: false,
+    ...((opts as Record<string, unknown>) ?? {}),
+  }),
+}));
+
 import { LiveTailPanel } from "../live-tail-panel";
 
 afterEach(cleanup);

@@ -158,7 +158,7 @@ vi.mock("@tanstack/react-query", () => ({
         };
       case "pipeline.logs":
       case "team.get":
-      case "promotion.history":
+      case "release.promotion.history":
       case "pipelineDependency.undeployWarnings":
         return { data: options.__name === "team.get" ? { aiEnabled: false } : undefined, isLoading: false, isError: false, error: null, refetch: vi.fn() };
       default:
@@ -201,9 +201,11 @@ vi.mock("@/trpc/client", () => ({
         },
       },
     },
-    deploy: { undeploy: { mutationOptions: (options: unknown) => options } },
+    release: {
+      direct: { undeploy: { mutationOptions: (options: unknown) => options } },
+      promotion: { history: { queryOptions: (input: { pipelineId: string }) => ({ __name: "release.promotion.history", input }) } },
+    },
     team: { get: { queryOptions: (input: { id: string }) => ({ __name: "team.get", input }) } },
-    promotion: { history: { queryOptions: (input: { pipelineId: string }) => ({ __name: "promotion.history", input }) } },
   }),
 }));
 
