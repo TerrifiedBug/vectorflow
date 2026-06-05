@@ -707,6 +707,9 @@ export async function listTraces(args: {
   pipelineId: string;
   from: Date;
   to: Date;
+  /** Optional free-text term (message/raw). Keeps the trace list consistent
+   *  with the active guided search — a trace is listed if ≥1 of its spans match. */
+  query?: string;
   limit?: number;
 }): Promise<LakeTraceSummary[]> {
   if (!isLakeEnabled()) return [];
@@ -714,6 +717,25 @@ export async function listTraces(args: {
   const to = args.to;
   const from = clampFrom(args.from, to);
   const limit = clampLimit(args.limit, LAKE_TRACES_DEFAULT_LIMIT, LAKE_TRACES_MAX_LIMIT);
+
+  const params: Record<string, unknown> = {
+    orgId: args.orgId,
+    pipelineId: args.pipelineId,
+    from,
+    to,
+    limit,
+  };
+
+  // Respect the active free-text search: only list traces with ≥1 matching span
+  // (HAVING, so span counts/durations still cover the whole trace).
+  let having = "";
+  const term = args.query?.trim();
+  if (term) {
+    params.query = term;
+    having =
+      "HAVING countIf(positionCaseInsensitive(message, {query:String}) > 0 " +
+      "OR positionCaseInsensitive(raw, {query:String}) > 0) > 0 ";
+  }
 
   // Trace wall-time = last span END − first span START. A span's end is its
   // start plus a duration attr (so a single-span 2s trace reports 2000ms, not
@@ -734,7 +756,7 @@ export async function listTraces(args: {
     `WHERE organizationId = {orgId:String} AND pipelineId = {pipelineId:String} ` +
     `AND timestamp >= {from:DateTime64(3)} AND timestamp <= {to:DateTime64(3)} ` +
     `AND eventType = 'trace' AND traceId != '' ` +
-    `GROUP BY traceId ORDER BY startTime DESC LIMIT {limit:UInt32} ` +
+    `GROUP BY traceId ${having}ORDER BY startTime DESC LIMIT {limit:UInt32} ` +
     lakeSettingsClause();
 
   const rows = await lakeQuery<{
@@ -744,7 +766,7 @@ export async function listTraces(args: {
     endTime: string;
     durationMs: string | number;
     status: string;
-  }>(sql, { orgId: args.orgId, pipelineId: args.pipelineId, from, to, limit });
+  }>(sql, params);
 
   return rows.map((r) => ({
     traceId: r.traceId,
@@ -769,20 +791,29 @@ export interface LakeTraceSpan {
 
 /**
  * All spans of a single trace, ordered by start time. Span name/parent/duration
- * are read from `attrs` (schema-on-read; see SPAN_*_ATTRS). Org/pipeline/traceId
- * are bound params; eventType is pinned to 'trace'.
+ * are read from `attrs` (schema-on-read; see SPAN_*_ATTRS). Org/pipeline/traceId/
+ * time are bound params; eventType is pinned to 'trace'. The `from`/`to` window
+ * (the list window the trace was selected from) bounds the scan so a traceId
+ * lookup prunes on the (org, pipeline, timestamp) ordering instead of scanning
+ * all history — and can't return spans from an older reused traceId.
  */
 export async function getTrace(args: {
   orgId: string;
   pipelineId: string;
   traceId: string;
+  from: Date;
+  to: Date;
 }): Promise<LakeTraceSpan[]> {
   if (!isLakeEnabled() || !args.traceId) return [];
+
+  const to = args.to;
+  const from = clampFrom(args.from, to);
 
   const sql =
     `SELECT spanId, message, severity, timestamp, attrs FROM ${LAKE_EVENTS_TABLE} ` +
     `WHERE organizationId = {orgId:String} AND pipelineId = {pipelineId:String} ` +
     `AND traceId = {traceId:String} AND eventType = 'trace' ` +
+    `AND timestamp >= {from:DateTime64(3)} AND timestamp <= {to:DateTime64(3)} ` +
     `ORDER BY timestamp ASC LIMIT {limit:UInt32} ` +
     lakeSettingsClause();
 
@@ -796,6 +827,8 @@ export async function getTrace(args: {
     orgId: args.orgId,
     pipelineId: args.pipelineId,
     traceId: args.traceId,
+    from,
+    to,
     limit: LAKE_TRACE_SPANS_MAX,
   });
 

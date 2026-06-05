@@ -374,6 +374,7 @@ export const lakeRouter = router({
           pipelineId: z.string(),
           from: z.coerce.date(),
           to: z.coerce.date(),
+          query: z.string().max(1000).optional(),
           limit: limitSchema,
         })
         .refine(withinMaxRange, { message: rangeMessage, path: ["to"] }),
@@ -385,19 +386,32 @@ export const lakeRouter = router({
         pipelineId: input.pipelineId,
         from: input.from,
         to: input.to,
+        query: input.query,
         limit: input.limit,
       });
     }),
 
-  /** All spans of a single trace, ordered by start time (VIEWER). */
+  /** All spans of a single trace within the list window, ordered by start time
+   *  (VIEWER). The time bound prunes the scan + avoids reused-traceId bleed. */
   getTrace: protectedProcedure
-    .input(z.object({ pipelineId: z.string(), traceId: z.string().min(1).max(256) }))
+    .input(
+      z
+        .object({
+          pipelineId: z.string(),
+          traceId: z.string().min(1).max(256),
+          from: z.coerce.date(),
+          to: z.coerce.date(),
+        })
+        .refine(withinMaxRange, { message: rangeMessage, path: ["to"] }),
+    )
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input, ctx }) => {
       return getTrace({
         orgId: ctx.organizationId,
         pipelineId: input.pipelineId,
         traceId: input.traceId,
+        from: input.from,
+        to: input.to,
       });
     }),
 });
