@@ -3,7 +3,16 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { Database, Search, Play, ListTree, Users, Rewind } from "lucide-react";
+import Link from "next/link";
+import {
+  Database,
+  Search,
+  Play,
+  ListTree,
+  Users,
+  Rewind,
+  ArrowUpRight,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { useTeamStore } from "@/stores/team-store";
+import { useEnvironmentStore } from "@/stores/environment-store";
 import { formatBytes } from "@/lib/format";
 import { FilterPresetBar } from "@/components/filter-preset/FilterPresetBar";
 import { SaveFilterDialog } from "@/components/filter-preset/SaveFilterDialog";
@@ -53,6 +63,7 @@ interface AppliedSearch {
 export default function LakePage() {
   const trpc = useTRPC();
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
+  const setSelectedEnvironmentId = useEnvironmentStore((s) => s.setSelectedEnvironmentId);
 
   const statusQuery = useQuery(trpc.lake.status.queryOptions());
   const lakeEnabled = statusQuery.data?.enabled ?? false;
@@ -300,6 +311,19 @@ export default function LakePage() {
                         />
                       </div>
                     </div>
+                    <p className="text-[11px] leading-snug text-muted-foreground">
+                      Lake stores event <em>content</em>. metric and trace are empty unless the
+                      pipeline emits them (or derives metrics from logs).{" "}
+                      <a
+                        href="https://vectorflow.sh/docs/lake"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-0.5 underline underline-offset-2 hover:text-foreground"
+                      >
+                        Learn how
+                        <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                      </a>
+                    </p>
                   </TabsContent>
 
                   {isAdmin && (
@@ -342,6 +366,17 @@ export default function LakePage() {
                         {selectedDataset.tiering}
                       </Badge>
                     </span>
+                  )}
+                  {selectedDataset && (
+                    <Link
+                      href="/fleet/overview"
+                      onClick={() => setSelectedEnvironmentId(selectedDataset.environmentId)}
+                      className="inline-flex items-center gap-1 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                      title="Throughput, latency and bytes live on the Fleet surface"
+                    >
+                      View pipeline telemetry in Fleet
+                      <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                    </Link>
                   )}
                 </div>
                 {selectedDataset && (

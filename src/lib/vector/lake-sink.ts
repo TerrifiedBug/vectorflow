@@ -145,14 +145,37 @@ function resolveLakeBlock(
 }
 
 /**
+ * VRL lines assigning `target` from the first existing path in `candidates`,
+ * coalescing to "". Must be exists()-branches, NOT a `??` chain: VRL's `??`
+ * coalesces *errors*, not absent fields — `to_string(null)` returns "" (a value,
+ * not an error), so `to_string(.a) ?? to_string(.b)` stops at "" and never falls
+ * through to `.b`. Verified against vector 0.56. Each candidate is a VRL path
+ * literal (e.g. ".msg", ".request.host").
+ */
+function lakeCoalesceField(target: string, candidates: readonly string[]): string[] {
+  const lines: string[] = [];
+  candidates.forEach((path, i) => {
+    lines.push(`${i === 0 ? "if" : "} else if"} exists(${path}) {`);
+    lines.push(`  ${target} = to_string(${path}) ?? ""`);
+  });
+  lines.push("} else {");
+  lines.push(`  ${target} = ""`);
+  lines.push("}");
+  return lines;
+}
+
+/**
  * VRL for the delivery-injected lake normalization remap. Maps an arbitrary
  * event onto the `lake_events` schema so the columns search/replay filter on
  * (organizationId, pipelineId, eventType, timestamp) are always populated, the
  * full original event is preserved in `raw`, and the original top-level fields
  * survive as stringified `attrs` (what getSchema/fieldStats discover + query).
  * eventType detects traces (trace/span ids) and metrics (metric_to_log value
- * keys), else log. org/pipeline are injected at delivery. Infallible: fallible
- * `to_string` is `??`-coalesced (`to_string(null)` is "").
+ * keys), else log. org/pipeline are injected at delivery. Fixed columns are
+ * resolved with ordered field fallbacks (e.g. message ← message|msg,
+ * host ← host|hostname|request.host) so Caddy/Go/zap/pino events land in the
+ * right columns instead of looking empty. Infallible: every `to_string` is
+ * `?? ""`-coalesced.
  */
 export function buildLakeNormalizeVrl(orgId: string, pipelineId: string): string {
   return [
@@ -162,18 +185,18 @@ export function buildLakeNormalizeVrl(orgId: string, pipelineId: string): string
     `.pipelineId = ${JSON.stringify(pipelineId)}`,
     "if exists(.trace_id) || exists(.span_id) || exists(.traceId) || exists(.spanId) {",
     '  .eventType = "trace"',
-    "} else if exists(.gauge) || exists(.counter) || exists(.set) || exists(.distribution) || exists(.aggregated_histogram) || exists(.aggregated_summary) || exists(.sketch) {",
+    "} else if exists(.gauge) || exists(.counter) || exists(.set) || exists(.distribution) || exists(.histogram) || exists(.summary) || exists(.aggregated_histogram) || exists(.aggregated_summary) || exists(.sketch) {",
     '  .eventType = "metric"',
     "} else {",
     '  .eventType = "log"',
     "}",
-    '.traceId = to_string(.trace_id) ?? to_string(.traceId) ?? ""',
-    '.spanId = to_string(.span_id) ?? to_string(.spanId) ?? ""',
-    '.host = to_string(.host) ?? ""',
-    '.source = to_string(.source_type) ?? to_string(.source) ?? ""',
-    '.severity = to_string(.level) ?? to_string(.severity) ?? ""',
-    '.message = to_string(.message) ?? ""',
-    '.attrs = map_values(orig) -> |value| { to_string(value) ?? encode_json(value) }',
+    ...lakeCoalesceField(".traceId", [".trace_id", ".traceId"]),
+    ...lakeCoalesceField(".spanId", [".span_id", ".spanId"]),
+    ...lakeCoalesceField(".host", [".host", ".hostname", ".request.host"]),
+    ...lakeCoalesceField(".source", [".source_type", ".source"]),
+    ...lakeCoalesceField(".severity", [".level", ".severity"]),
+    ...lakeCoalesceField(".message", [".message", ".msg"]),
+    ".attrs = map_values(orig) -> |value| { to_string(value) ?? encode_json(value) }",
     "if !exists(.timestamp) {",
     "  .timestamp = now()",
     "}",

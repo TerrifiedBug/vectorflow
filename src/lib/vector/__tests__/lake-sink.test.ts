@@ -7,6 +7,7 @@ import {
   renderLakeSinkBlock,
   resolveLakeSinkForDelivery,
   configHasLakeSink,
+  buildLakeNormalizeVrl,
   type LakeSinkCreds,
 } from "../lake-sink";
 import { getVectorCatalog } from "@/lib/vector/catalog";
@@ -187,5 +188,48 @@ describe("configHasLakeSink", () => {
 
   it("returns false when there are no sinks", () => {
     expect(configHasLakeSink({ sources: { in: { type: "stdin" } } })).toBe(false);
+  });
+});
+
+describe("buildLakeNormalizeVrl — field fallbacks + metric detector", () => {
+  const vrl = buildLakeNormalizeVrl("org_abc", "pl_xyz");
+
+  it("stamps org/pipeline and preserves the original event", () => {
+    expect(vrl).toContain('.organizationId = "org_abc"');
+    expect(vrl).toContain('.pipelineId = "pl_xyz"');
+    expect(vrl).toContain(".raw = encode_json(orig)");
+    expect(vrl).toContain("map_values(orig)");
+  });
+
+  it("resolves message from message then msg (Caddy/Go/zap/pino)", () => {
+    expect(vrl).toContain("if exists(.message) {");
+    expect(vrl).toContain("} else if exists(.msg) {");
+    expect(vrl).toContain('.message = to_string(.msg) ?? ""');
+  });
+
+  it("resolves host from host then hostname then nested request.host (Caddy)", () => {
+    expect(vrl).toContain("if exists(.host) {");
+    expect(vrl).toContain("} else if exists(.hostname) {");
+    expect(vrl).toContain("} else if exists(.request.host) {");
+  });
+
+  it("recovers camelCase traceId/spanId (the old ?? chain dropped them)", () => {
+    expect(vrl).toContain("} else if exists(.traceId) {");
+    expect(vrl).toContain("} else if exists(.spanId) {");
+  });
+
+  it("uses exists()-branches, never the broken to_string(.a) ?? to_string(.b) chain", () => {
+    // VRL `??` coalesces errors, not absent fields: `to_string(null)` is "" (a
+    // value), so a `??` chain never falls through. Verified on vector 0.56.
+    expect(vrl).not.toContain("to_string(.trace_id) ?? to_string(.traceId)");
+    expect(vrl).not.toContain("to_string(.source_type) ?? to_string(.source)");
+    expect(vrl).not.toContain("to_string(.level) ?? to_string(.severity)");
+  });
+
+  it("detects pre-aggregated scrape metrics (histogram/summary short keys)", () => {
+    expect(vrl).toContain("exists(.histogram)");
+    expect(vrl).toContain("exists(.summary)");
+    expect(vrl).toContain("exists(.aggregated_histogram)");
+    expect(vrl).toContain("exists(.aggregated_summary)");
   });
 });
