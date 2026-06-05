@@ -59,11 +59,11 @@ const FIELD_STATS_MAX_LIMIT = 1_000;
  * standard ClickHouse SQL and keeps the guardrails self-contained here.
  */
 function lakeSettingsClause(): string {
-  return (
-    `SETTINGS max_execution_time = ${LAKE_MAX_EXECUTION_TIME_SECONDS}, ` +
-    `max_result_rows = ${LAKE_MAX_RESULT_ROWS}, result_overflow_mode = 'break', ` +
-    `max_rows_to_read = ${LAKE_MAX_ROWS_TO_READ}, read_overflow_mode = 'throw'`
-  );
+  // Single template literal (NOT `+`-concatenated parts). The bundler corrupted
+  // the multi-part form while inlining the constants — it dropped the separators
+  // and emitted invalid SQL (`...= 30max_result_rows = 10000...`), breaking every
+  // lake search. One literal inlines to a plain, valid string.
+  return `SETTINGS max_execution_time = ${LAKE_MAX_EXECUTION_TIME_SECONDS}, max_result_rows = ${LAKE_MAX_RESULT_ROWS}, result_overflow_mode = 'break', max_rows_to_read = ${LAKE_MAX_ROWS_TO_READ}, read_overflow_mode = 'throw'`;
 }
 
 /** Clamp a caller-supplied limit into `(0, max]`, falling back when absent/bad. */

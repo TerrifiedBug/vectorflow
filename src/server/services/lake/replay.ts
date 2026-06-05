@@ -112,10 +112,9 @@ export interface ReplayBatch {
 
 /** Per-query ClickHouse guardrails (statement timeout, result/scan caps),
  *  embedded in SQL because the A1 wrapper only exposes `(sql, params)`. */
-const REPLAY_QUERY_SETTINGS =
-  `SETTINGS max_execution_time = ${LAKE_MAX_EXECUTION_TIME_SECONDS}, ` +
-  `max_result_rows = ${LAKE_MAX_RESULT_ROWS}, result_overflow_mode = 'break', ` +
-  `max_rows_to_read = ${LAKE_MAX_ROWS_TO_READ}, read_overflow_mode = 'throw'`;
+// Single template literal (NOT `+`-concatenated parts) — see lakeSettingsClause:
+// the multi-part form is corrupted by the bundler when the constants inline.
+const REPLAY_QUERY_SETTINGS = `SETTINGS max_execution_time = ${LAKE_MAX_EXECUTION_TIME_SECONDS}, max_result_rows = ${LAKE_MAX_RESULT_ROWS}, result_overflow_mode = 'break', max_rows_to_read = ${LAKE_MAX_ROWS_TO_READ}, read_overflow_mode = 'throw'`;
 
 /** Clamp a caller-supplied batch size into `[1, LAKE_MAX_LIMIT]`. */
 export function clampBatchSize(batchSize: number | undefined): number {
