@@ -43,6 +43,10 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "deployRequest.deployed": "Deploy request executed",
   "deployRequest.rejected": "Deploy request rejected",
 
+  // Lake replay
+  "replay.created": "Replay started",
+  "replay.cancelled": "Replay cancelled",
+
   // Environment
   "environment.created": "Environment created",
   "environment.updated": "Environment updated",

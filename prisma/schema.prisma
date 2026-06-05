@@ -411,6 +411,7 @@ model User {
   tapCaptures              TapCapture[]         @relation("TapCaptureCreatedBy")
   proposedChangesCreated   ProposedChange[]     @relation("ProposedChangeCreatedBy")
   proposedChangesReviewed  ProposedChange[]     @relation("ProposedChangeReviewedBy")
+  replaysCreated           ReplayJob[]          @relation("ReplayCreatedBy")
   preferences              UserPreference[]
   aiConversationsCreated   AiConversation[]     @relation("AiConversationCreatedBy")
   aiMessagesCreated        AiMessage[]          @relation("AiMessageCreatedBy")
@@ -920,6 +921,8 @@ model Pipeline {
   tapCaptures               TapCapture[]
   proposedChanges           ProposedChange[]       @relation("ProposedChangePipeline")
   lakeDatasets              LakeDataset[]          @relation("LakeDatasetPipeline")
+  replaysAsSource           ReplayJob[]            @relation("ReplaySourcePipeline")
+  replaysAsTarget           ReplayJob[]            @relation("ReplayTargetPipeline")
   gitSyncJobs               GitSyncJob[]
   migrationProject          MigrationProject?
   costRecommendations       CostRecommendation[]
@@ -2365,4 +2368,38 @@ model LakeDataset {
   @@unique([organizationId, pipelineId])
   @@index([organizationId])
   @@index([pipelineId])
+}
+
+/// A lake replay/rehydration job (A4): SELECTs stored events from the lake over
+/// a time window and re-injects them into a target pipeline. Driven by the
+/// control plane; the agent pulls bounded replay batches from /api/agent/replay.
+model ReplayJob {
+  id               String    @id @default(cuid())
+  organizationId   String    @default("default")
+  sourcePipelineId String
+  sourcePipeline   Pipeline  @relation("ReplaySourcePipeline", fields: [sourcePipelineId], references: [id], onDelete: Cascade)
+  targetPipelineId String
+  targetPipeline   Pipeline  @relation("ReplayTargetPipeline", fields: [targetPipelineId], references: [id], onDelete: Cascade)
+  fromTime         DateTime
+  toTime           DateTime
+  /// Optional event filter (eventType, free-text query) applied to the lake read.
+  filter           Json?
+  /// PENDING | RUNNING | COMPLETED | FAILED | CANCELLED
+  status           String    @default("PENDING")
+  totalEvents      BigInt    @default(0)
+  replayedEvents   BigInt    @default(0)
+  /// Idempotency / dedupe key stamped onto replayed events so re-injection is
+  /// distinguishable and a re-run does not double-inject.
+  dedupeKey        String
+  error            String?
+  createdById      String?
+  createdBy        User?     @relation("ReplayCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  startedAt        DateTime?
+  completedAt      DateTime?
+
+  @@index([organizationId])
+  @@index([targetPipelineId, status])
+  @@index([status])
 }

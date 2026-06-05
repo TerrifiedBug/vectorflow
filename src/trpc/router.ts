@@ -40,6 +40,7 @@ import { orgRouter } from "@/server/routers/org";
 import { tapCaptureRouter } from "@/server/routers/tap-capture";
 import { proposedChangeRouter } from "@/server/routers/proposed-change";
 import { lakeRouter } from "@/server/routers/lake";
+import { replayRouter } from "@/server/routers/replay";
 
 export const appRouter = router({
   team: teamRouter,
@@ -83,6 +84,7 @@ export const appRouter = router({
   tapCapture: tapCaptureRouter,
   proposedChange: proposedChangeRouter,
   lake: lakeRouter,
+  replay: replayRouter,
 });
 
 export type AppRouter = typeof appRouter;

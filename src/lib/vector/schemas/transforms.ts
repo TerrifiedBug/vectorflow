@@ -1,5 +1,6 @@
 import type { VectorComponentDef } from "../types";
 import { DLP_TRANSFORMS } from "./transforms/dlp";
+import { TAIL_SAMPLE_TYPE } from "../tail-sample";
 
 export const ALL_TRANSFORMS: VectorComponentDef[] = [
   {
@@ -595,6 +596,59 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
         },
       },
       required: ["threshold", "window_secs"],
+    },
+  },
+  {
+    type: TAIL_SAMPLE_TYPE,
+    kind: "transform",
+    displayName: "Trace Tail Sampling",
+    description:
+      "Tail-based trace sampling: buffer spans by trace_id over a flush window, then keep whole traces that errored, ran slow, or fall in the probabilistic baseline — dropping the rest atomically. Opt-in; simulate before deploying.",
+    category: "Traces",
+    status: "beta",
+    inputTypes: ["trace"],
+    outputTypes: ["trace"],
+    icon: "Filter",
+    configSchema: {
+      type: "object",
+      properties: {
+        key: {
+          type: "string",
+          default: "trace_id",
+          description:
+            "Field that identifies a trace. Spans sharing this value are buffered and kept or dropped together (whole-trace integrity).",
+        },
+        windowMs: {
+          type: "number",
+          default: 30000,
+          description:
+            "Per-trace buffering window in milliseconds before the keep/drop decision is flushed (Vector reduce expire_after_ms). Late spans arriving after the window may be decided separately.",
+        },
+        keepPolicies: {
+          type: "object",
+          description:
+            "A trace is kept if ANY enabled policy matches; otherwise the whole trace is dropped. With no policy enabled the transform stays inert (keeps everything).",
+          properties: {
+            onError: {
+              type: "boolean",
+              default: true,
+              description: "Always keep traces where any span errored.",
+            },
+            slowThresholdMs: {
+              type: "number",
+              description:
+                "Always keep traces whose slowest span lasts at least this many milliseconds. Leave empty to disable.",
+            },
+            baselinePercent: {
+              type: "number",
+              default: 10,
+              description:
+                "Probabilistic baseline: keep approximately this percent (0–100) of the remaining (non-error, non-slow) traces, hashed deterministically by trace key.",
+            },
+          },
+        },
+      },
+      required: ["key"],
     },
   },
   ...DLP_TRANSFORMS,

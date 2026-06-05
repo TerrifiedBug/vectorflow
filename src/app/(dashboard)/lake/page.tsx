@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { Database, Search, Play, ListTree, Users } from "lucide-react";
+import { Database, Search, Play, ListTree, Users, Rewind } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,7 @@ import { formatBytes } from "@/lib/format";
 import { FilterPresetBar } from "@/components/filter-preset/FilterPresetBar";
 import { SaveFilterDialog } from "@/components/filter-preset/SaveFilterDialog";
 import { LakeResultsTable } from "./_components/lake-results-table";
+import { ReplayDialog } from "./_components/replay-dialog";
 
 const ALL_VALUE = "__all__";
 const EPOCH = new Date(0);
@@ -77,6 +78,7 @@ export default function LakePage() {
   const [applied, setApplied] = useState<AppliedSearch | null>(null);
   const [statsField, setStatsField] = useState<string>("");
   const [saveOpen, setSaveOpen] = useState(false);
+  const [replayOpen, setReplayOpen] = useState(false);
 
   const selectedDataset = datasets.find((d) => d.pipelineId === pipelineId);
 
@@ -323,6 +325,15 @@ export default function LakePage() {
                     <Play className="h-4 w-4" />
                     Run search
                   </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setReplayOpen(true)}
+                    disabled={!selectedDataset}
+                    className="gap-1.5"
+                  >
+                    <Rewind className="h-4 w-4" />
+                    Replay to pipeline
+                  </Button>
                   {selectedDataset && (
                     <span className="font-mono text-[11px] text-muted-foreground">
                       {Number(selectedDataset.rowCount).toLocaleString()} rows ·{" "}
@@ -436,6 +447,18 @@ export default function LakePage() {
             environmentId={selectedDataset.environmentId}
             scope="lake_search"
             filters={presetFilters}
+          />
+        )}
+
+        {selectedDataset && (
+          <ReplayDialog
+            open={replayOpen}
+            onOpenChange={setReplayOpen}
+            sourcePipelineId={selectedDataset.pipelineId}
+            sourcePipelineName={selectedDataset.pipeline.name}
+            environmentId={selectedDataset.environmentId}
+            defaultEventType={eventType}
+            defaultQuery={queryText}
           />
         )}
       </div>

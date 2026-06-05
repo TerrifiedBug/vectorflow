@@ -1,6 +1,7 @@
 import yaml from "js-yaml";
 import type { Node, Edge } from "@xyflow/react";
 import { LAKE_SINK_TYPE, renderLakeSinkBlock } from "@/lib/vector/lake-sink";
+import { TAIL_SAMPLE_TYPE, renderTailSampleBlocks } from "@/lib/vector/tail-sample";
 
 /** Shape of node.data used by the flow editor */
 interface FlowNodeData {
@@ -55,6 +56,32 @@ export function generateVectorYaml(
           ? "transforms"
           : "sinks";
 
+    // For transforms and sinks, build the inputs array from incoming edges.
+    const inputs =
+      componentDef.kind === "source"
+        ? []
+        : enabledEdges
+            .filter((e) => e.target === node.id)
+            .map((e) => {
+              const sourceNode = enabledNodes.find((n) => n.id === e.source);
+              return sourceNode
+                ? (sourceNode.data as unknown as FlowNodeData).componentKey
+                : null;
+            })
+            .filter((k): k is string => Boolean(k));
+
+    // Trace tail-sampling expands one node into a `reduce` (buffer spans by
+    // trace_id over the flush window) + a keep-decision `filter` that drops
+    // non-kept traces atomically. The keep-filter reuses the node's key so
+    // downstream `inputs` references resolve to the sampled output.
+    if (componentDef.kind === "transform" && componentDef.type === TAIL_SAMPLE_TYPE) {
+      Object.assign(
+        config.transforms,
+        renderTailSampleBlocks(componentKey, nodeConfig, inputs),
+      );
+      continue;
+    }
+
     // The managed lake preset renders to a concrete Vector `clickhouse` sink
     // with LAKE[...] credential placeholders (resolved at delivery), ignoring
     // any graph config so connection details can never be authored or stored.
@@ -79,18 +106,8 @@ export function generateVectorYaml(
       }
     }
 
-    // For transforms and sinks, build inputs array from incoming edges
-    if (componentDef.kind !== "source") {
-      const inputs = enabledEdges
-        .filter((e) => e.target === node.id)
-        .map((e) => {
-          const sourceNode = enabledNodes.find((n) => n.id === e.source);
-          return sourceNode ? (sourceNode.data as unknown as FlowNodeData).componentKey : null;
-        })
-        .filter(Boolean);
-      if (inputs.length > 0) {
-        entry.inputs = inputs;
-      }
+    if (inputs.length > 0) {
+      entry.inputs = inputs;
     }
 
     config[section][componentKey] = entry;
