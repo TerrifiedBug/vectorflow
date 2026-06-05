@@ -74,7 +74,16 @@ vi.mock("@/trpc/client", () => ({
     metrics: {
       getNodePipelineRates: { queryOptions: (input: { nodeId: string }, options?: unknown) => ({ __name: "metrics.getNodePipelineRates", input, options }) },
     },
+    lake: {
+      status: { queryOptions: () => ({}) },
+      listDatasets: { queryOptions: () => ({}) },
+    },
   }),
+}));
+
+vi.mock("@/stores/team-store", () => ({
+  useTeamStore: (selector: (s: { selectedTeamId: string | null }) => unknown) =>
+    selector({ selectedTeamId: null }),
 }));
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
