@@ -1765,7 +1765,7 @@ model Release {
   reviewedAt DateTime?
   deployedAt DateTime?
 
-  @@index([organizationId])
+  @@index([organizationId, strategy, status])
   @@index([pipelineId, strategy, status])
   @@index([environmentId, status])
   @@index([targetEnvironmentId])
@@ -2233,7 +2233,7 @@ model NodeMetricRollup {
 
   @@unique([nodeId, granularity, bucketStart])
   @@index([nodeId, granularity, bucketStart])
-  @@index([organizationId])
+  @@index([organizationId, bucketStart])
 }
 
 /// Downsampled PipelineMetric rollup (B5). Counter columns hold the bucket SUM;
@@ -2264,7 +2264,7 @@ model PipelineMetricRollup {
 
   @@unique([pipelineId, componentId, granularity, bucketStart])
   @@index([pipelineId, granularity, bucketStart])
-  @@index([organizationId])
+  @@index([organizationId, bucketStart])
 }
 
 /// A persisted live-tap capture (B4): a named snapshot of real events captured
@@ -2284,7 +2284,7 @@ model TapCapture {
   createdBy      User?    @relation("TapCaptureCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt      DateTime @default(now())
 
-  @@index([organizationId])
+  @@index([organizationId, pipelineId])
   @@index([pipelineId])
 }
 
@@ -2329,7 +2329,7 @@ model ProposedChange {
   reviewedAt           DateTime?
   appliedAt            DateTime?
 
-  @@index([organizationId])
+  @@index([organizationId, status])
   @@index([pipelineId, status])
 }
 
@@ -2407,7 +2407,7 @@ model ReplayJob {
   startedAt        DateTime?
   completedAt      DateTime?
 
-  @@index([organizationId])
+  @@index([organizationId, status])
   @@index([targetPipelineId, status])
   @@index([status])
 }
@@ -2433,5 +2433,5 @@ model EnvironmentLakeBucket {
   createdAt                DateTime    @default(now())
   updatedAt                DateTime    @updatedAt
 
-  @@index([organizationId])
+  @@index([organizationId, environmentId])
 }
