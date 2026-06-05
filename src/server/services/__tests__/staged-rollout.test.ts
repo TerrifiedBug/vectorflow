@@ -61,6 +61,7 @@ const NOW = new Date("2026-03-26T12:00:00Z");
 function makeRollout(overrides: Record<string, unknown> = {}) {
   return {
     id: "rollout-1",
+    strategy: "CANARY",
     pipelineId: "pipe-1",
     environmentId: "env-1",
     canaryVersionId: "ver-2",
@@ -74,7 +75,7 @@ function makeRollout(overrides: Record<string, unknown> = {}) {
     healthCheckExpiresAt: new Date(NOW.getTime() + 5 * 60 * 1000),
     broadenedAt: null,
     rolledBackAt: null,
-    createdById: "user-1",
+    requestedById: "user-1",
     createdAt: NOW,
     updatedAt: NOW,
     pipeline: { name: "My Pipeline", environmentId: "env-1" },
@@ -153,7 +154,7 @@ describe("StagedRolloutService", () => {
   describe("createRollout", () => {
     it("happy path: creates rollout, pushes to canary nodes only, fires SSE", async () => {
       // No existing active rollout
-      prismaMock.stagedRollout.findFirst.mockResolvedValue(null as never);
+      prismaMock.release.findFirst.mockResolvedValue(null as never);
 
       // Pipeline with environment
       prismaMock.pipeline.findUnique.mockResolvedValue(makePipeline() as never);
@@ -172,7 +173,7 @@ describe("StagedRolloutService", () => {
       } as never);
 
       // StagedRollout.create returns a full record
-      prismaMock.stagedRollout.create.mockResolvedValue(
+      prismaMock.release.create.mockResolvedValue(
         makeRollout({ id: "rollout-new", canaryVersionId: "ver-3" }) as never,
       );
 
@@ -214,8 +215,9 @@ describe("StagedRolloutService", () => {
       );
 
       // StagedRollout created with correct canaryNodeIds/remainingNodeIds
-      expect(prismaMock.stagedRollout.create).toHaveBeenCalledWith({
+      expect(prismaMock.release.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
+          strategy: "CANARY",
           pipelineId: "pipe-1",
           canaryVersionId: "ver-3",
           previousVersionId: "ver-1",
@@ -245,7 +247,7 @@ describe("StagedRolloutService", () => {
     });
 
     it("rejects when an active rollout already exists", async () => {
-      prismaMock.stagedRollout.findFirst.mockResolvedValue(
+      prismaMock.release.findFirst.mockResolvedValue(
         makeRollout() as never,
       );
 
@@ -258,7 +260,7 @@ describe("StagedRolloutService", () => {
     });
 
     it("creates rollout with previousVersionId=null on first deploy", async () => {
-      prismaMock.stagedRollout.findFirst.mockResolvedValue(null as never);
+      prismaMock.release.findFirst.mockResolvedValue(null as never);
       prismaMock.pipeline.findUnique.mockResolvedValue(makePipeline() as never);
       prismaMock.vectorNode.findMany.mockResolvedValue(makeVectorNodes() as never);
 
@@ -271,7 +273,7 @@ describe("StagedRolloutService", () => {
         configYaml: "mock: yaml",
       } as never);
 
-      prismaMock.stagedRollout.create.mockResolvedValue(
+      prismaMock.release.create.mockResolvedValue(
         makeRollout({ previousVersionId: null }) as never,
       );
       fireEventAlertMock.mockResolvedValue(undefined as never);
@@ -279,15 +281,16 @@ describe("StagedRolloutService", () => {
       await service.createRollout("pipe-1", "user-1", { region: "us-east-1" }, 5);
 
       // previousVersionId should be null
-      expect(prismaMock.stagedRollout.create).toHaveBeenCalledWith({
+      expect(prismaMock.release.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
+          strategy: "CANARY",
           previousVersionId: null,
         }),
       });
     });
 
     it("throws when no nodes match the canary selector", async () => {
-      prismaMock.stagedRollout.findFirst.mockResolvedValue(null as never);
+      prismaMock.release.findFirst.mockResolvedValue(null as never);
       prismaMock.pipeline.findUnique.mockResolvedValue(makePipeline() as never);
 
       // All nodes have labels that DON'T match
@@ -302,7 +305,7 @@ describe("StagedRolloutService", () => {
     });
 
     it("throws when pipeline is not found", async () => {
-      prismaMock.stagedRollout.findFirst.mockResolvedValue(null as never);
+      prismaMock.release.findFirst.mockResolvedValue(null as never);
       prismaMock.pipeline.findUnique.mockResolvedValue(null as never);
 
       await expect(
@@ -315,10 +318,10 @@ describe("StagedRolloutService", () => {
 
   describe("broadenRollout", () => {
     it("happy path: pushes to remaining nodes, updates status to BROADENED", async () => {
-      prismaMock.stagedRollout.findUnique.mockResolvedValue(
+      prismaMock.release.findFirst.mockResolvedValue(
         makeRollout({ status: "HEALTH_CHECK" }) as never,
       );
-      prismaMock.stagedRollout.update.mockResolvedValue({} as never);
+      prismaMock.release.update.mockResolvedValue({} as never);
       fireEventAlertMock.mockResolvedValue(undefined as never);
 
       await service.broadenRollout("rollout-1");
@@ -339,8 +342,8 @@ describe("StagedRolloutService", () => {
       );
 
       // Status updated to BROADENED with broadenedAt
-      expect(prismaMock.stagedRollout.update).toHaveBeenCalledWith({
-        where: { id: "rollout-1" },
+      expect(prismaMock.release.update).toHaveBeenCalledWith({
+        where: { id: "rollout-1", strategy: "CANARY" },
         data: {
           status: "BROADENED",
           broadenedAt: expect.any(Date),
@@ -359,7 +362,7 @@ describe("StagedRolloutService", () => {
     });
 
     it("rejects when status is not HEALTH_CHECK", async () => {
-      prismaMock.stagedRollout.findUnique.mockResolvedValue(
+      prismaMock.release.findFirst.mockResolvedValue(
         makeRollout({ status: "CANARY_DEPLOYED" }) as never,
       );
 
@@ -371,7 +374,7 @@ describe("StagedRolloutService", () => {
     });
 
     it("throws when rollout is not found", async () => {
-      prismaMock.stagedRollout.findUnique.mockResolvedValue(null as never);
+      prismaMock.release.findFirst.mockResolvedValue(null as never);
 
       await expect(service.broadenRollout("rollout-missing")).rejects.toThrow(
         "Staged rollout not found",
@@ -383,14 +386,14 @@ describe("StagedRolloutService", () => {
 
   describe("rollbackRollout", () => {
     it("happy path: deploys previous version, sets ROLLED_BACK", async () => {
-      prismaMock.stagedRollout.findUnique.mockResolvedValue(
+      prismaMock.release.findFirst.mockResolvedValue(
         makeRollout({ status: "HEALTH_CHECK" }) as never,
       );
       deployFromVersionMock.mockResolvedValue({
         version: { id: "ver-1" } as never,
         pushedNodeIds: [],
       });
-      prismaMock.stagedRollout.update.mockResolvedValue({} as never);
+      prismaMock.release.update.mockResolvedValue({} as never);
       fireEventAlertMock.mockResolvedValue(undefined as never);
 
       await service.rollbackRollout("rollout-1");
@@ -404,8 +407,8 @@ describe("StagedRolloutService", () => {
       );
 
       // Status updated to ROLLED_BACK with rolledBackAt
-      expect(prismaMock.stagedRollout.update).toHaveBeenCalledWith({
-        where: { id: "rollout-1" },
+      expect(prismaMock.release.update).toHaveBeenCalledWith({
+        where: { id: "rollout-1", strategy: "CANARY" },
         data: {
           status: "ROLLED_BACK",
           rolledBackAt: expect.any(Date),
@@ -424,13 +427,13 @@ describe("StagedRolloutService", () => {
     });
 
     it("skips deployFromVersion when previousVersionId is null", async () => {
-      prismaMock.stagedRollout.findUnique.mockResolvedValue(
+      prismaMock.release.findFirst.mockResolvedValue(
         makeRollout({
           status: "HEALTH_CHECK",
           previousVersionId: null,
         }) as never,
       );
-      prismaMock.stagedRollout.update.mockResolvedValue({} as never);
+      prismaMock.release.update.mockResolvedValue({} as never);
       fireEventAlertMock.mockResolvedValue(undefined as never);
 
       await service.rollbackRollout("rollout-1");
@@ -439,8 +442,8 @@ describe("StagedRolloutService", () => {
       expect(deployFromVersionMock).not.toHaveBeenCalled();
 
       // Status still updated to ROLLED_BACK
-      expect(prismaMock.stagedRollout.update).toHaveBeenCalledWith({
-        where: { id: "rollout-1" },
+      expect(prismaMock.release.update).toHaveBeenCalledWith({
+        where: { id: "rollout-1", strategy: "CANARY" },
         data: {
           status: "ROLLED_BACK",
           rolledBackAt: expect.any(Date),
@@ -449,14 +452,14 @@ describe("StagedRolloutService", () => {
     });
 
     it("allows rollback from CANARY_DEPLOYED status (early rollback)", async () => {
-      prismaMock.stagedRollout.findUnique.mockResolvedValue(
+      prismaMock.release.findFirst.mockResolvedValue(
         makeRollout({ status: "CANARY_DEPLOYED" }) as never,
       );
       deployFromVersionMock.mockResolvedValue({
         version: { id: "ver-1" } as never,
         pushedNodeIds: [],
       });
-      prismaMock.stagedRollout.update.mockResolvedValue({} as never);
+      prismaMock.release.update.mockResolvedValue({} as never);
       fireEventAlertMock.mockResolvedValue(undefined as never);
 
       await service.rollbackRollout("rollout-1");
@@ -469,8 +472,8 @@ describe("StagedRolloutService", () => {
         expect.stringContaining("Canary rollback"),
       );
 
-      expect(prismaMock.stagedRollout.update).toHaveBeenCalledWith({
-        where: { id: "rollout-1" },
+      expect(prismaMock.release.update).toHaveBeenCalledWith({
+        where: { id: "rollout-1", strategy: "CANARY" },
         data: {
           status: "ROLLED_BACK",
           rolledBackAt: expect.any(Date),
@@ -479,7 +482,7 @@ describe("StagedRolloutService", () => {
     });
 
     it("rejects rollback from BROADENED status", async () => {
-      prismaMock.stagedRollout.findUnique.mockResolvedValue(
+      prismaMock.release.findFirst.mockResolvedValue(
         makeRollout({ status: "BROADENED" }) as never,
       );
 
@@ -506,21 +509,21 @@ describe("StagedRolloutService", () => {
         pipeline: { name: "Pipeline 2", environmentId: "env-2" },
       });
 
-      prismaMock.stagedRollout.findMany.mockResolvedValue(
+      prismaMock.release.findMany.mockResolvedValue(
         [expiredRollout1, expiredRollout2] as never,
       );
-      prismaMock.stagedRollout.update.mockResolvedValue({} as never);
+      prismaMock.release.update.mockResolvedValue({} as never);
 
       await service.checkHealthWindows();
 
       // Both updated to HEALTH_CHECK
-      expect(prismaMock.stagedRollout.update).toHaveBeenCalledTimes(2);
-      expect(prismaMock.stagedRollout.update).toHaveBeenCalledWith({
-        where: { id: "rollout-1" },
+      expect(prismaMock.release.update).toHaveBeenCalledTimes(2);
+      expect(prismaMock.release.update).toHaveBeenCalledWith({
+        where: { id: "rollout-1", strategy: "CANARY" },
         data: { status: "HEALTH_CHECK" },
       });
-      expect(prismaMock.stagedRollout.update).toHaveBeenCalledWith({
-        where: { id: "rollout-2" },
+      expect(prismaMock.release.update).toHaveBeenCalledWith({
+        where: { id: "rollout-2", strategy: "CANARY" },
         data: { status: "HEALTH_CHECK" },
       });
 
@@ -545,11 +548,11 @@ describe("StagedRolloutService", () => {
     });
 
     it("does nothing when no rollouts have expired", async () => {
-      prismaMock.stagedRollout.findMany.mockResolvedValue([] as never);
+      prismaMock.release.findMany.mockResolvedValue([] as never);
 
       await service.checkHealthWindows();
 
-      expect(prismaMock.stagedRollout.update).not.toHaveBeenCalled();
+      expect(prismaMock.release.update).not.toHaveBeenCalled();
       expect(broadcastMock).not.toHaveBeenCalled();
     });
 
@@ -565,19 +568,19 @@ describe("StagedRolloutService", () => {
         pipeline: { name: "Pipeline 2", environmentId: "env-2" },
       });
 
-      prismaMock.stagedRollout.findMany.mockResolvedValue(
+      prismaMock.release.findMany.mockResolvedValue(
         [expiredRollout1, expiredRollout2] as never,
       );
 
       // First update throws, second succeeds
-      prismaMock.stagedRollout.update
+      prismaMock.release.update
         .mockRejectedValueOnce(new Error("DB error") as never)
         .mockResolvedValueOnce({} as never);
 
       await service.checkHealthWindows();
 
       // Both attempted
-      expect(prismaMock.stagedRollout.update).toHaveBeenCalledTimes(2);
+      expect(prismaMock.release.update).toHaveBeenCalledTimes(2);
       // Only second broadcast fired (first failed before broadcast)
       expect(broadcastMock).toHaveBeenCalledTimes(1);
     });
@@ -587,25 +590,25 @@ describe("StagedRolloutService", () => {
 
   describe("start/stop lifecycle", () => {
     it("start() creates an interval that calls checkHealthWindows", async () => {
-      prismaMock.stagedRollout.findMany.mockResolvedValue([] as never);
+      prismaMock.release.findMany.mockResolvedValue([] as never);
 
       service.start();
 
       // Advance by one poll interval (30s)
       await vi.advanceTimersByTimeAsync(30_000);
 
-      expect(prismaMock.stagedRollout.findMany).toHaveBeenCalled();
+      expect(prismaMock.release.findMany).toHaveBeenCalled();
     });
 
     it("stop() clears the interval", () => {
-      prismaMock.stagedRollout.findMany.mockResolvedValue([] as never);
+      prismaMock.release.findMany.mockResolvedValue([] as never);
 
       service.start();
       service.stop();
 
       vi.advanceTimersByTime(60_000);
 
-      expect(prismaMock.stagedRollout.findMany).not.toHaveBeenCalled();
+      expect(prismaMock.release.findMany).not.toHaveBeenCalled();
     });
   });
 
@@ -648,22 +651,23 @@ describe("StagedRolloutService", () => {
 
       // Active staged rollout exists for this pipeline
       const activeRollout = makeRollout({ id: "rollout-active" });
-      prismaMock.stagedRollout.findFirst.mockResolvedValue(activeRollout as never);
-      prismaMock.stagedRollout.update.mockResolvedValue({} as never);
+      prismaMock.release.findFirst.mockResolvedValue(activeRollout as never);
+      prismaMock.release.update.mockResolvedValue({} as never);
       fireEventAlertMock.mockResolvedValue(undefined as never);
 
       await arService.checkPipelines();
 
       // Verify auto-rollback updated the staged rollout to ROLLED_BACK
-      expect(prismaMock.stagedRollout.findFirst).toHaveBeenCalledWith({
+      expect(prismaMock.release.findFirst).toHaveBeenCalledWith({
         where: {
+          strategy: "CANARY",
           pipelineId: "pipe-1",
           status: { in: ["CANARY_DEPLOYED", "HEALTH_CHECK"] },
         },
       });
 
-      expect(prismaMock.stagedRollout.update).toHaveBeenCalledWith({
-        where: { id: "rollout-active" },
+      expect(prismaMock.release.update).toHaveBeenCalledWith({
+        where: { id: "rollout-active", strategy: "CANARY" },
         data: {
           status: "ROLLED_BACK",
           rolledBackAt: expect.any(Date),
@@ -680,18 +684,18 @@ describe("StagedRolloutService", () => {
         { id: "org-a" } as never,
         { id: "org-b" } as never,
       ]);
-      prismaMock.stagedRollout.findMany.mockResolvedValue([]);
+      prismaMock.release.findMany.mockResolvedValue([]);
 
       service.start();
       await vi.advanceTimersByTimeAsync(30_000);
 
-      expect(prismaMock.stagedRollout.findMany).toHaveBeenCalledTimes(2);
-      const calls = prismaMock.stagedRollout.findMany.mock.calls;
+      expect(prismaMock.release.findMany).toHaveBeenCalledTimes(2);
+      const calls = prismaMock.release.findMany.mock.calls;
       expect(calls[0][0]?.where).toEqual(
-        expect.objectContaining({ organizationId: "org-a" }),
+        expect.objectContaining({ organizationId: "org-a", strategy: "CANARY" }),
       );
       expect(calls[1][0]?.where).toEqual(
-        expect.objectContaining({ organizationId: "org-b" }),
+        expect.objectContaining({ organizationId: "org-b", strategy: "CANARY" }),
       );
       const orgArgs = prismaMock.organization.findMany.mock.calls[0][0];
       expect(orgArgs?.where?.suspendedAt).toBe(null);
@@ -706,7 +710,7 @@ describe("StagedRolloutService", () => {
       service.start();
       await vi.advanceTimersByTimeAsync(30_000);
 
-      expect(prismaMock.stagedRollout.findMany).not.toHaveBeenCalled();
+      expect(prismaMock.release.findMany).not.toHaveBeenCalled();
     });
   });
 });

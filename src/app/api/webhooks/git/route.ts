@@ -115,8 +115,8 @@ export async function POST(req: NextRequest) {
     const promotionRequestId = match[1];
 
     // Atomic idempotency guard
-    const updated = await prisma.promotionRequest.updateMany({
-      where: { id: promotionRequestId, status: "AWAITING_PR_MERGE" },
+    const updated = await prisma.release.updateMany({
+      where: { id: promotionRequestId, status: "AWAITING_PR_MERGE", strategy: "PROMOTION" },
       data: { status: "DEPLOYING" },
     });
 
@@ -127,12 +127,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const promotionRequest = await prisma.promotionRequest.findUnique({
-      where: { id: promotionRequestId },
-      select: { promotedById: true },
+    const promotionRequest = await prisma.release.findFirst({
+      where: { id: promotionRequestId, strategy: "PROMOTION" },
+      select: { requestedById: true },
     });
 
-    const executorId = promotionRequest?.promotedById ?? "system";
+    const executorId = promotionRequest?.requestedById ?? "system";
     await executePromotion(promotionRequestId, executorId);
 
     return NextResponse.json({ deployed: true, promotionRequestId });
@@ -388,8 +388,10 @@ export async function POST(req: NextRequest) {
           null,
         );
 
-        await prisma.deployRequest.create({
+        await prisma.release.create({
           data: {
+            strategy: "DIRECT",
+            status: "PENDING",
             pipelineId: pipeline.id,
             environmentId: matchedEnv.id,
             requestedById: null,

@@ -75,16 +75,17 @@ vi.mock("@/server/services/gitops-promotion", () => ({
 // ─── Import SUT + mocks ─────────────────────────────────────────────────────
 
 import { prisma } from "@/lib/prisma";
-import { promotionRouter } from "@/server/routers/promotion";
+import { promotionReleaseRouter } from "@/server/routers/release/promotion";
 import * as promotionService from "@/server/services/promotion-service";
 import * as gitopsPromotion from "@/server/services/gitops-promotion";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
-const promotionRequestGroupByMock = prismaMock.promotionRequest.groupBy as unknown as ReturnType<
+const releaseGroupByMock = prismaMock.release.groupBy as unknown as ReturnType<
   typeof vi.fn
 >;
-const caller = t.createCallerFactory(promotionRouter)({
+const appRouter = t.router({ release: t.router({ promotion: promotionReleaseRouter }) });
+const caller = t.createCallerFactory(appRouter)({
   session: { user: { id: "user-1", email: "test@test.com" } },
 });
 
@@ -123,13 +124,13 @@ function makeEnvironment(overrides: Record<string, unknown> = {}) {
 function makePromotionRequest(overrides: Record<string, unknown> = {}) {
   return {
     id: "req-1",
-    sourcePipelineId: "pipeline-1",
+    pipelineId: "pipeline-1",
     targetPipelineId: null,
-    sourceEnvironmentId: "env-source",
+    environmentId: "env-source",
     targetEnvironmentId: "env-target",
     status: "PENDING",
-    promotedById: "user-2",
-    approvedById: null,
+    requestedById: "user-2",
+    reviewedById: null,
     targetPipelineName: "My Pipeline",
     nodesSnapshot: null,
     edgesSnapshot: null,
@@ -144,7 +145,7 @@ function makePromotionRequest(overrides: Record<string, unknown> = {}) {
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
-describe("promotion router", () => {
+describe("release.promotion router", () => {
   beforeEach(() => {
     mockReset(prismaMock);
     vi.clearAllMocks();
@@ -163,7 +164,7 @@ describe("promotion router", () => {
         canProceed: false,
       });
 
-      const result = await caller.preflight({
+      const result = await caller.release.promotion.preflight({
         pipelineId: "pipeline-1",
         targetEnvironmentId: "env-target",
       });
@@ -183,7 +184,7 @@ describe("promotion router", () => {
         canProceed: true,
       });
 
-      const result = await caller.preflight({
+      const result = await caller.release.promotion.preflight({
         pipelineId: "pipeline-1",
         targetEnvironmentId: "env-target",
       });
@@ -204,7 +205,7 @@ describe("promotion router", () => {
         canProceed: true,
       });
 
-      const result = await caller.preflight({
+      const result = await caller.release.promotion.preflight({
         pipelineId: "pipeline-1",
         targetEnvironmentId: "env-target",
       });
@@ -224,7 +225,7 @@ describe("promotion router", () => {
         canProceed: true,
       });
 
-      const result = await caller.preflight({
+      const result = await caller.release.promotion.preflight({
         pipelineId: "pipeline-1",
         targetEnvironmentId: "env-target",
       });
@@ -242,7 +243,7 @@ describe("promotion router", () => {
         targetYaml: "sources:\n  stdin: {}\n",
       });
 
-      const result = await caller.diffPreview({ pipelineId: "pipeline-1" });
+      const result = await caller.release.promotion.diffPreview({ pipelineId: "pipeline-1" });
 
       expect(result.sourceYaml).toBeDefined();
       expect(result.targetYaml).toBeDefined();
@@ -264,18 +265,18 @@ describe("promotion router", () => {
         present: [],
         canProceed: true,
       });
-      prismaMock.promotionRequest.create.mockResolvedValue({
-        ...makePromotionRequest({ promotedById: "user-1" }),
+      prismaMock.release.create.mockResolvedValue({
+        ...makePromotionRequest({ requestedById: "user-1" }),
       } as never);
 
-      const result = await caller.initiate({
+      const result = await caller.release.promotion.initiate({
         pipelineId: "pipeline-1",
         targetEnvironmentId: "env-target",
       });
 
       expect(result.status).toBe("PENDING");
       expect(result.pendingApproval).toBe(true);
-      expect(prismaMock.promotionRequest.create).toHaveBeenCalledOnce();
+      expect(prismaMock.release.create).toHaveBeenCalledOnce();
       expect(promotionService.executePromotion).not.toHaveBeenCalled();
     });
 
@@ -290,15 +291,15 @@ describe("promotion router", () => {
         present: [],
         canProceed: true,
       });
-      prismaMock.promotionRequest.create.mockResolvedValue({
-        ...makePromotionRequest({ promotedById: "user-1" }),
+      prismaMock.release.create.mockResolvedValue({
+        ...makePromotionRequest({ requestedById: "user-1" }),
       } as never);
       vi.mocked(promotionService.executePromotion).mockResolvedValue({
         pipelineId: "new-pipeline-1",
         pipelineName: "My Pipeline",
       });
 
-      const result = await caller.initiate({
+      const result = await caller.release.promotion.initiate({
         pipelineId: "pipeline-1",
         targetEnvironmentId: "env-target",
       });
@@ -315,7 +316,7 @@ describe("promotion router", () => {
       prismaMock.environment.findUnique.mockResolvedValue(makeEnvironment() as never);
 
       await expect(
-        caller.initiate({
+        caller.release.promotion.initiate({
           pipelineId: "pipeline-1",
           targetEnvironmentId: "env-target",
         }),
@@ -331,7 +332,7 @@ describe("promotion router", () => {
       );
 
       await expect(
-        caller.initiate({
+        caller.release.promotion.initiate({
           pipelineId: "pipeline-1",
           targetEnvironmentId: "env-target",
         }),
@@ -347,7 +348,7 @@ describe("promotion router", () => {
       } as never);
 
       await expect(
-        caller.initiate({
+        caller.release.promotion.initiate({
           pipelineId: "pipeline-1",
           targetEnvironmentId: "env-target",
         }),
@@ -365,7 +366,7 @@ describe("promotion router", () => {
       });
 
       await expect(
-        caller.initiate({
+        caller.release.promotion.initiate({
           pipelineId: "pipeline-1",
           targetEnvironmentId: "env-target",
         }),
@@ -400,16 +401,16 @@ describe("promotion router", () => {
         present: [],
         canProceed: true,
       });
-      prismaMock.promotionRequest.create.mockResolvedValue({
-        ...makePromotionRequest({ promotedById: "user-1" }),
+      prismaMock.release.create.mockResolvedValue({
+        ...makePromotionRequest({ requestedById: "user-1" }),
       } as never);
 
-      await caller.initiate({
+      await caller.release.promotion.initiate({
         pipelineId: "pipeline-1",
         targetEnvironmentId: "env-target",
       });
 
-      const createCall = prismaMock.promotionRequest.create.mock.calls[0][0];
+      const createCall = prismaMock.release.create.mock.calls[0][0];
       expect(createCall.data.nodesSnapshot).toBeDefined();
       expect(createCall.data.edgesSnapshot).toBeDefined();
     });
@@ -419,37 +420,37 @@ describe("promotion router", () => {
 
   describe("approve", () => {
     it("self-review blocked — promoter cannot approve own request", async () => {
-      prismaMock.promotionRequest.findUnique.mockResolvedValue(
-        makePromotionRequest({ promotedById: "user-1" }) as never,
+      prismaMock.release.findFirst.mockResolvedValue(
+        makePromotionRequest({ requestedById: "user-1" }) as never,
       );
 
       await expect(
-        caller.approve({ requestId: "req-1" }),
+        caller.release.promotion.approve({ requestId: "req-1" }),
       ).rejects.toThrow("Cannot approve your own promotion request");
     });
 
     it("atomic approve prevents race condition — returns BAD_REQUEST if count 0", async () => {
-      prismaMock.promotionRequest.findUnique.mockResolvedValue(
-        makePromotionRequest({ promotedById: "user-2" }) as never,
+      prismaMock.release.findFirst.mockResolvedValue(
+        makePromotionRequest({ requestedById: "user-2" }) as never,
       );
-      prismaMock.promotionRequest.updateMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.release.updateMany.mockResolvedValue({ count: 0 } as never);
 
       await expect(
-        caller.approve({ requestId: "req-1" }),
+        caller.release.promotion.approve({ requestId: "req-1" }),
       ).rejects.toThrow("no longer pending");
     });
 
     it("succeeds for different user and calls executePromotion", async () => {
-      prismaMock.promotionRequest.findUnique.mockResolvedValue(
-        makePromotionRequest({ promotedById: "user-2" }) as never,
+      prismaMock.release.findFirst.mockResolvedValue(
+        makePromotionRequest({ requestedById: "user-2" }) as never,
       );
-      prismaMock.promotionRequest.updateMany.mockResolvedValue({ count: 1 } as never);
+      prismaMock.release.updateMany.mockResolvedValue({ count: 1 } as never);
       vi.mocked(promotionService.executePromotion).mockResolvedValue({
         pipelineId: "new-pipeline-1",
         pipelineName: "My Pipeline",
       });
 
-      const result = await caller.approve({ requestId: "req-1" });
+      const result = await caller.release.promotion.approve({ requestId: "req-1" });
 
       expect(result.success).toBe(true);
       expect(promotionService.executePromotion).toHaveBeenCalledWith("req-1", "user-1");
@@ -460,24 +461,24 @@ describe("promotion router", () => {
 
   describe("reject", () => {
     it("sets status REJECTED with review note", async () => {
-      prismaMock.promotionRequest.findUnique.mockResolvedValue(
-        makePromotionRequest({ promotedById: "user-2" }) as never,
+      prismaMock.release.findFirst.mockResolvedValue(
+        makePromotionRequest({ requestedById: "user-2" }) as never,
       );
-      prismaMock.promotionRequest.updateMany.mockResolvedValue({ count: 1 } as never);
+      prismaMock.release.updateMany.mockResolvedValue({ count: 1 } as never);
 
-      const result = await caller.reject({ requestId: "req-1", note: "Not ready" });
+      const result = await caller.release.promotion.reject({ requestId: "req-1", note: "Not ready" });
 
       expect(result.rejected).toBe(true);
-      const updateCall = prismaMock.promotionRequest.updateMany.mock.calls[0][0];
+      const updateCall = prismaMock.release.updateMany.mock.calls[0][0];
       expect(updateCall.data.status).toBe("REJECTED");
       expect(updateCall.data.reviewNote).toBe("Not ready");
     });
 
     it("throws if request not found or not pending", async () => {
-      prismaMock.promotionRequest.findUnique.mockResolvedValue(null);
+      prismaMock.release.findFirst.mockResolvedValue(null);
 
       await expect(
-        caller.reject({ requestId: "req-missing" }),
+        caller.release.promotion.reject({ requestId: "req-missing" }),
       ).rejects.toThrow("not found or not pending");
     });
   });
@@ -486,22 +487,22 @@ describe("promotion router", () => {
 
   describe("cancel", () => {
     it("only promoter can cancel — throws FORBIDDEN for different user", async () => {
-      prismaMock.promotionRequest.findUnique.mockResolvedValue(
-        makePromotionRequest({ promotedById: "user-2" }) as never,
+      prismaMock.release.findFirst.mockResolvedValue(
+        makePromotionRequest({ requestedById: "user-2" }) as never,
       );
 
       await expect(
-        caller.cancel({ requestId: "req-1" }),
+        caller.release.promotion.cancel({ requestId: "req-1" }),
       ).rejects.toThrow("Only the original promoter");
     });
 
     it("promoter can cancel their own request", async () => {
-      prismaMock.promotionRequest.findUnique.mockResolvedValue(
-        makePromotionRequest({ promotedById: "user-1" }) as never,
+      prismaMock.release.findFirst.mockResolvedValue(
+        makePromotionRequest({ requestedById: "user-1" }) as never,
       );
-      prismaMock.promotionRequest.updateMany.mockResolvedValue({ count: 1 } as never);
+      prismaMock.release.updateMany.mockResolvedValue({ count: 1 } as never);
 
-      const result = await caller.cancel({ requestId: "req-1" });
+      const result = await caller.release.promotion.cancel({ requestId: "req-1" });
 
       expect(result.cancelled).toBe(true);
     });
@@ -514,27 +515,27 @@ describe("promotion router", () => {
       const records = [
         {
           ...makePromotionRequest({ createdAt: new Date("2026-03-27") }),
-          promotedBy: { name: "Alice", email: "alice@test.com" },
-          approvedBy: null,
-          sourceEnvironment: { name: "Development" },
+          requestedBy: { name: "Alice", email: "alice@test.com" },
+          reviewedBy: null,
+          environment: { name: "Development" },
           targetEnvironment: { name: "Production" },
         },
         {
           ...makePromotionRequest({ id: "req-2", createdAt: new Date("2026-03-26") }),
-          promotedBy: { name: "Bob", email: "bob@test.com" },
-          approvedBy: null,
-          sourceEnvironment: { name: "Development" },
+          requestedBy: { name: "Bob", email: "bob@test.com" },
+          reviewedBy: null,
+          environment: { name: "Development" },
           targetEnvironment: { name: "Staging" },
         },
       ];
-      prismaMock.promotionRequest.findMany.mockResolvedValue(records as never);
+      prismaMock.release.findMany.mockResolvedValue(records as never);
 
-      const result = await caller.history({ pipelineId: "pipeline-1" });
+      const result = await caller.release.promotion.history({ pipelineId: "pipeline-1" });
 
       expect(result).toHaveLength(2);
-      expect(prismaMock.promotionRequest.findMany).toHaveBeenCalledWith(
+      expect(prismaMock.release.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { sourcePipelineId: "pipeline-1" },
+          where: { strategy: "PROMOTION", pipelineId: "pipeline-1" },
           orderBy: { createdAt: "desc" },
           take: 20,
         }),
@@ -546,12 +547,12 @@ describe("promotion router", () => {
 
   describe("summaryForTeam", () => {
     it("returns counts for each UI status and scopes by source pipeline team", async () => {
-      promotionRequestGroupByMock.mockResolvedValue([
+      releaseGroupByMock.mockResolvedValue([
         { status: "PENDING", _count: { _all: 3 } },
         { status: "DEPLOYED", _count: { _all: 5 } },
       ] as never);
 
-      const result = await caller.summaryForTeam({ teamId: "team-1" });
+      const result = await caller.release.promotion.summaryForTeam({ teamId: "team-1" });
 
       expect(result).toEqual({
         PENDING: 3,
@@ -562,9 +563,9 @@ describe("promotion router", () => {
         AWAITING_PR_MERGE: 0,
         DEPLOYING: 0,
       });
-      expect(prismaMock.promotionRequest.groupBy).toHaveBeenCalledWith({
+      expect(prismaMock.release.groupBy).toHaveBeenCalledWith({
         by: ["status"],
-        where: { sourcePipeline: { environment: { teamId: "team-1" } } },
+        where: { strategy: "PROMOTION", pipeline: { environment: { teamId: "team-1" } } },
         _count: { _all: true },
       });
     });
@@ -573,36 +574,36 @@ describe("promotion router", () => {
   // ─── recentForTeam ──────────────────────────────────────────────────────────
 
   describe("recentForTeam", () => {
-    it("scopes to team via sourcePipeline.environment.teamId and orders by createdAt desc", async () => {
+    it("scopes to team via pipeline.environment.teamId and orders by createdAt desc", async () => {
       const records = [
         {
           ...makePromotionRequest({ id: "req-a", createdAt: new Date("2026-04-01") }),
-          sourcePipeline: { id: "pipeline-1", name: "P1" },
+          pipeline: { id: "pipeline-1", name: "P1" },
           targetPipeline: null,
-          promotedBy: { name: "Alice", email: "alice@test.com" },
-          approvedBy: null,
-          sourceEnvironment: { name: "Development" },
+          requestedBy: { name: "Alice", email: "alice@test.com" },
+          reviewedBy: null,
+          environment: { name: "Development" },
           targetEnvironment: { name: "Production" },
         },
         {
           ...makePromotionRequest({ id: "req-b", createdAt: new Date("2026-03-30") }),
-          sourcePipeline: { id: "pipeline-2", name: "P2" },
+          pipeline: { id: "pipeline-2", name: "P2" },
           targetPipeline: null,
-          promotedBy: { name: "Bob", email: "bob@test.com" },
-          approvedBy: null,
-          sourceEnvironment: { name: "Development" },
+          requestedBy: { name: "Bob", email: "bob@test.com" },
+          reviewedBy: null,
+          environment: { name: "Development" },
           targetEnvironment: { name: "Staging" },
         },
       ];
-      prismaMock.promotionRequest.findMany.mockResolvedValue(records as never);
+      prismaMock.release.findMany.mockResolvedValue(records as never);
 
-      const result = await caller.recentForTeam({ teamId: "team-1" });
+      const result = await caller.release.promotion.recentForTeam({ teamId: "team-1" });
 
       expect(result.items).toHaveLength(2);
       expect(result.nextCursor).toBeNull();
-      expect(prismaMock.promotionRequest.findMany).toHaveBeenCalledWith(
+      expect(prismaMock.release.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { sourcePipeline: { environment: { teamId: "team-1" } } },
+          where: { strategy: "PROMOTION", pipeline: { environment: { teamId: "team-1" } } },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: 51,
         }),
@@ -616,16 +617,16 @@ describe("promotion router", () => {
           createdAt: new Date(2026, 3, 10 - idx),
           status: "PENDING",
         }),
-        sourcePipeline: { id: "pipeline-1", name: "P1" },
+        pipeline: { id: "pipeline-1", name: "P1" },
         targetPipeline: null,
-        promotedBy: { name: "Alice", email: "alice@test.com" },
-        approvedBy: null,
-        sourceEnvironment: { name: "Development" },
+        requestedBy: { name: "Alice", email: "alice@test.com" },
+        reviewedBy: null,
+        environment: { name: "Development" },
         targetEnvironment: { name: "Production" },
       }));
-      prismaMock.promotionRequest.findMany.mockResolvedValue(records as never);
+      prismaMock.release.findMany.mockResolvedValue(records as never);
 
-      const result = await caller.recentForTeam({
+      const result = await caller.release.promotion.recentForTeam({
         teamId: "team-1",
         status: "PENDING",
         limit: 2,
@@ -634,10 +635,11 @@ describe("promotion router", () => {
 
       expect(result.items).toHaveLength(2);
       expect(result.nextCursor).toBe("req-1");
-      expect(prismaMock.promotionRequest.findMany).toHaveBeenCalledWith(
+      expect(prismaMock.release.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
-            sourcePipeline: { environment: { teamId: "team-1" } },
+            strategy: "PROMOTION",
+            pipeline: { environment: { teamId: "team-1" } },
             status: "PENDING",
           },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -649,19 +651,20 @@ describe("promotion router", () => {
     });
 
     it("passes status arrays to Prisma status.in when no explicit status is present", async () => {
-      prismaMock.promotionRequest.findMany.mockResolvedValue([]);
+      prismaMock.release.findMany.mockResolvedValue([]);
 
-      const result = await caller.recentForTeam({
+      const result = await caller.release.promotion.recentForTeam({
         teamId: "team-1",
         statuses: ["APPROVED", "AWAITING_PR_MERGE", "DEPLOYING"],
       });
 
       expect(result.items).toHaveLength(0);
       expect(result.nextCursor).toBeNull();
-      expect(prismaMock.promotionRequest.findMany).toHaveBeenCalledWith(
+      expect(prismaMock.release.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
-            sourcePipeline: { environment: { teamId: "team-1" } },
+            strategy: "PROMOTION",
+            pipeline: { environment: { teamId: "team-1" } },
             status: { in: ["APPROVED", "AWAITING_PR_MERGE", "DEPLOYING"] },
           },
         }),
@@ -681,12 +684,12 @@ describe("promotion router", () => {
         pipelineId: "new-pipeline-1",
         pipelineName: "My Pipeline",
       });
-      prismaMock.promotionRequest.findUnique.mockResolvedValue(
-        makePromotionRequest({ promotedById: "user-2" }) as never,
+      prismaMock.release.findFirst.mockResolvedValue(
+        makePromotionRequest({ requestedById: "user-2" }) as never,
       );
-      prismaMock.promotionRequest.updateMany.mockResolvedValue({ count: 1 } as never);
+      prismaMock.release.updateMany.mockResolvedValue({ count: 1 } as never);
 
-      const result = await caller.approve({ requestId: "req-1" });
+      const result = await caller.release.promotion.approve({ requestId: "req-1" });
 
       // Verify executePromotion was called (which internally uses copyPipelineGraph without stripping)
       expect(promotionService.executePromotion).toHaveBeenCalledWith("req-1", "user-1");
@@ -700,7 +703,7 @@ describe("promotion router", () => {
         targetYaml: "password: ${VF_SECRET_API_KEY}\n",
       });
 
-      const result = await caller.diffPreview({ pipelineId: "pipeline-1" });
+      const result = await caller.release.promotion.diffPreview({ pipelineId: "pipeline-1" });
 
       // Source YAML preserves SECRET[name] reference format
       expect(result.sourceYaml).toContain("SECRET[api_key]");
@@ -729,17 +732,17 @@ describe("promotion router", () => {
         present: [],
         canProceed: true,
       });
-      prismaMock.promotionRequest.create.mockResolvedValue({
-        ...makePromotionRequest({ promotedById: "user-1" }),
+      prismaMock.release.create.mockResolvedValue({
+        ...makePromotionRequest({ requestedById: "user-1" }),
       } as never);
       vi.mocked(gitopsPromotion.createPromotionPR).mockResolvedValue({
         prNumber: 42,
         prUrl: "https://github.com/myorg/myrepo/pull/42",
         prBranch: "vf-promote/production-my-pipeline-req1",
       });
-      prismaMock.promotionRequest.update.mockResolvedValue({} as never);
+      prismaMock.release.update.mockResolvedValue({} as never);
 
-      const result = await caller.initiate({
+      const result = await caller.release.promotion.initiate({
         pipelineId: "pipeline-1",
         targetEnvironmentId: "env-target",
       });
@@ -767,23 +770,23 @@ describe("promotion router", () => {
         present: [],
         canProceed: true,
       });
-      prismaMock.promotionRequest.create.mockResolvedValue({
-        ...makePromotionRequest({ id: "req-gitops-1", promotedById: "user-1" }),
+      prismaMock.release.create.mockResolvedValue({
+        ...makePromotionRequest({ id: "req-gitops-1", requestedById: "user-1" }),
       } as never);
       vi.mocked(gitopsPromotion.createPromotionPR).mockResolvedValue({
         prNumber: 7,
         prUrl: "https://github.com/myorg/myrepo/pull/7",
         prBranch: "vf-promote/production-my-pipeline-req-gito",
       });
-      prismaMock.promotionRequest.update.mockResolvedValue({} as never);
+      prismaMock.release.update.mockResolvedValue({} as never);
 
-      await caller.initiate({
+      await caller.release.promotion.initiate({
         pipelineId: "pipeline-1",
         targetEnvironmentId: "env-target",
       });
 
-      expect(prismaMock.promotionRequest.update).toHaveBeenCalledWith({
-        where: { id: "req-gitops-1" },
+      expect(prismaMock.release.update).toHaveBeenCalledWith({
+        where: { id: "req-gitops-1", strategy: "PROMOTION" },
         data: {
           prUrl: "https://github.com/myorg/myrepo/pull/7",
           prNumber: 7,
@@ -803,11 +806,11 @@ describe("promotion router", () => {
         present: [],
         canProceed: true,
       });
-      prismaMock.promotionRequest.create.mockResolvedValue({
-        ...makePromotionRequest({ promotedById: "user-1" }),
+      prismaMock.release.create.mockResolvedValue({
+        ...makePromotionRequest({ requestedById: "user-1" }),
       } as never);
 
-      const result = await caller.initiate({
+      const result = await caller.release.promotion.initiate({
         pipelineId: "pipeline-1",
         targetEnvironmentId: "env-target",
       });
@@ -832,15 +835,15 @@ describe("promotion router", () => {
         present: [],
         canProceed: true,
       });
-      prismaMock.promotionRequest.create.mockResolvedValue({
-        ...makePromotionRequest({ promotedById: "user-1" }),
+      prismaMock.release.create.mockResolvedValue({
+        ...makePromotionRequest({ requestedById: "user-1" }),
       } as never);
       vi.mocked(promotionService.executePromotion).mockResolvedValue({
         pipelineId: "new-pipeline-1",
         pipelineName: "My Pipeline",
       });
 
-      const result = await caller.initiate({
+      const result = await caller.release.promotion.initiate({
         pipelineId: "pipeline-1",
         targetEnvironmentId: "env-target",
       });

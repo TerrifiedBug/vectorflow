@@ -37,40 +37,45 @@ vi.mock("@/trpc/client", () => ({
     team: {
       teamRole: { queryOptions: makeQueryOptions({ role: "ADMIN" }) },
     },
-    deploy: {
-      preview: {
-        queryOptions: makeQueryOptions({
-          validation: { valid: true, errors: [] },
-          configYaml: "sources:\n  kafka: {}",
-          currentConfigYaml: null,
-          currentVersion: null,
-          nodeSelector: {},
-          deploymentStrategy: null,
-        }),
+    release: {
+      direct: {
+        preview: {
+          queryOptions: makeQueryOptions({
+            validation: { valid: true, errors: [] },
+            configYaml: "sources:\n  kafka: {}",
+            currentConfigYaml: null,
+            currentVersion: null,
+            nodeSelector: {},
+            deploymentStrategy: null,
+          }),
+        },
+        environmentInfo: {
+          queryOptions: makeQueryOptions({
+            environmentId: "env-1",
+            environmentName: "Production",
+            nodes: [{ id: "node-1", labels: {} }],
+            requireDeployApproval: false,
+          }),
+        },
+        listPendingRequests: { queryOptions: makeQueryOptions([]) },
+        agent: {
+          mutationOptions: vi.fn((opts) => opts),
+        },
+        cancelDeployRequest: {
+          mutationOptions: vi.fn((opts) => opts),
+        },
+        approveDeployRequest: {
+          mutationOptions: vi.fn((opts) => opts),
+        },
+        rejectDeployRequest: {
+          mutationOptions: vi.fn((opts) => opts),
+        },
+        executeApprovedRequest: {
+          mutationOptions: vi.fn((opts) => opts),
+        },
       },
-      environmentInfo: {
-        queryOptions: makeQueryOptions({
-          environmentId: "env-1",
-          environmentName: "Production",
-          nodes: [{ id: "node-1", labels: {} }],
-          requireDeployApproval: false,
-        }),
-      },
-      listPendingRequests: { queryOptions: makeQueryOptions([]) },
-      agent: {
-        mutationOptions: vi.fn((opts) => opts),
-      },
-      cancelDeployRequest: {
-        mutationOptions: vi.fn((opts) => opts),
-      },
-      approveDeployRequest: {
-        mutationOptions: vi.fn((opts) => opts),
-      },
-      rejectDeployRequest: {
-        mutationOptions: vi.fn((opts) => opts),
-      },
-      executeApprovedRequest: {
-        mutationOptions: vi.fn((opts) => opts),
+      canary: {
+        create: { mutationOptions: vi.fn((opts) => opts) },
       },
     },
     fleet: {
@@ -82,9 +87,6 @@ vi.mock("@/trpc/client", () => ({
     },
     analytics: {
       pipelineCostSnapshot: { queryOptions: makeQueryOptions({ bytesIn: 0, bytesOut: 0, reductionPercent: null, costCents: 0, periodHours: 24, costPerGbCents: 0 }) },
-    },
-    stagedRollout: {
-      create: { mutationOptions: vi.fn((opts) => opts) },
     },
   }),
 }));

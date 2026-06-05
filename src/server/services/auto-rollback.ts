@@ -266,15 +266,16 @@ export class AutoRollbackService {
 
         // If there's an active staged rollout for this pipeline, mark it rolled back
         try {
-          const activeRollout = await prisma.stagedRollout.findFirst({
+          const activeRollout = await prisma.release.findFirst({
             where: {
+              strategy: "CANARY",
               pipelineId: pipeline.id,
               status: { in: ["CANARY_DEPLOYED", "HEALTH_CHECK"] },
             },
           });
           if (activeRollout) {
-            await prisma.stagedRollout.update({
-              where: { id: activeRollout.id },
+            await prisma.release.update({
+              where: { id: activeRollout.id, strategy: "CANARY" },
               data: {
                 status: "ROLLED_BACK",
                 rolledBackAt: new Date(),

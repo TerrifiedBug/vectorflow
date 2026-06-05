@@ -284,14 +284,14 @@ export function FlowToolbar({
 
   // Query pending deploy requests for this pipeline
   const pendingRequestsQuery = useQuery({
-    ...trpc.deploy.listPendingRequests.queryOptions({ pipelineId: pipelineId! }),
+    ...trpc.release.direct.listPendingRequests.queryOptions({ pipelineId: pipelineId! }),
     enabled: !!pipelineId,
   });
   const pendingRequest = (pendingRequestsQuery.data ?? [])[0];
   const isMyRequest = pendingRequest?.requestedById === session?.user?.id;
 
   const cancelRequestMutation = useMutation(
-    trpc.deploy.cancelDeployRequest.mutationOptions({
+    trpc.release.direct.cancelDeployRequest.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries();
         toast.success("Deploy request cancelled");

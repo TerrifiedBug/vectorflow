@@ -550,7 +550,7 @@ export const withTeamAccess = (minRole: Role) =>
 
     // Resolve requestId → DeployRequest → environment.teamId
     if (!teamId && rawInput?.requestId) {
-      const deployReq = await prisma.deployRequest.findUnique({
+      const deployReq = await prisma.release.findUnique({
         where: { id: rawInput.requestId as string },
         select: { environment: { select: { teamId: true } } },
       });
@@ -559,14 +559,14 @@ export const withTeamAccess = (minRole: Role) =>
       }
     }
 
-    // Resolve requestId → PromotionRequest → sourceEnvironment.teamId
+    // Resolve requestId → Release (PROMOTION) → environment.teamId
     if (!teamId && rawInput?.requestId) {
-      const promoReq = await prisma.promotionRequest.findUnique({
+      const promoReq = await prisma.release.findUnique({
         where: { id: rawInput.requestId as string },
-        select: { sourceEnvironment: { select: { teamId: true } } },
+        select: { environment: { select: { teamId: true } } },
       });
       if (promoReq) {
-        teamId = promoReq.sourceEnvironment.teamId ?? undefined;
+        teamId = promoReq.environment.teamId ?? undefined;
       }
     }
 
@@ -606,7 +606,7 @@ export const withTeamAccess = (minRole: Role) =>
     // Resolve rolloutId → StagedRollout → environment.teamId
     // (for stagedRollout.broaden / stagedRollout.rollback)
     if (!teamId && rawInput?.rolloutId) {
-      const rollout = await prisma.stagedRollout.findUnique({
+      const rollout = await prisma.release.findUnique({
         where: { id: rawInput.rolloutId as string },
         select: { environment: { select: { teamId: true } } },
       });

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { stagedRolloutService } from "@/server/services/staged-rollout";
 import { writeAuditLog } from "@/server/services/audit";
 
-export const stagedRolloutRouter = router({
+export const canaryReleaseRouter = router({
   create: protectedProcedure
     .input(
       z.object({
@@ -66,8 +66,8 @@ export const stagedRolloutRouter = router({
     .use(withTeamAccess("EDITOR"))
     .mutation(async ({ input, ctx }) => {
       // Fetch rollout to get pipelineId for audit log
-      const rollout = await prisma.stagedRollout.findUnique({
-        where: { id: input.rolloutId },
+      const rollout = await prisma.release.findFirst({
+        where: { id: input.rolloutId, strategy: "CANARY" },
         select: { pipelineId: true, pipeline: { select: { environmentId: true } } },
       });
 
@@ -100,8 +100,8 @@ export const stagedRolloutRouter = router({
     .use(withTeamAccess("EDITOR"))
     .mutation(async ({ input, ctx }) => {
       // Fetch rollout to get pipelineId for audit log
-      const rollout = await prisma.stagedRollout.findUnique({
-        where: { id: input.rolloutId },
+      const rollout = await prisma.release.findFirst({
+        where: { id: input.rolloutId, strategy: "CANARY" },
         select: { pipelineId: true, pipeline: { select: { environmentId: true } } },
       });
 
@@ -133,10 +133,11 @@ export const stagedRolloutRouter = router({
     .input(z.object({ pipelineId: z.string() }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      const rollout = await prisma.stagedRollout.findFirst({
+      const rollout = await prisma.release.findFirst({
         where: {
           pipelineId: input.pipelineId,
           status: { in: ["CANARY_DEPLOYED", "HEALTH_CHECK"] },
+          strategy: "CANARY",
         },
         include: {
           canaryVersion: {
@@ -145,7 +146,7 @@ export const stagedRolloutRouter = router({
           previousVersion: {
             select: { id: true, version: true },
           },
-          createdBy: {
+          requestedBy: {
             select: { name: true, email: true },
           },
         },
@@ -157,8 +158,8 @@ export const stagedRolloutRouter = router({
     .input(z.object({ pipelineId: z.string() }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      return prisma.stagedRollout.findMany({
-        where: { pipelineId: input.pipelineId },
+      return prisma.release.findMany({
+        where: { pipelineId: input.pipelineId, strategy: "CANARY" },
         orderBy: { createdAt: "desc" },
         take: 10,
         include: {
@@ -168,7 +169,7 @@ export const stagedRolloutRouter = router({
           previousVersion: {
             select: { id: true, version: true },
           },
-          createdBy: {
+          requestedBy: {
             select: { name: true, email: true },
           },
         },

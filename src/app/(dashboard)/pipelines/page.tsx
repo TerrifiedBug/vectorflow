@@ -451,7 +451,7 @@ export default function PipelinesPage() {
 
   // Fetch pending deploy requests for the current environment
   const pendingRequestsQuery = useQuery(
-    trpc.deploy.listPendingRequests.queryOptions(
+    trpc.release.direct.listPendingRequests.queryOptions(
       { environmentId: effectiveEnvId },
       { enabled: !!effectiveEnvId },
     ),

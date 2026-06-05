@@ -110,8 +110,9 @@ export class StagedRolloutService {
   ): Promise<void> {
     try {
       const now = new Date();
-      const expiredRollouts = await prisma.stagedRollout.findMany({
+      const expiredRollouts = await prisma.release.findMany({
         where: {
+          strategy: "CANARY",
           status: "CANARY_DEPLOYED",
           healthCheckExpiresAt: { lte: now },
           ...(opts.organizationId ? { organizationId: opts.organizationId } : {}),
@@ -127,8 +128,8 @@ export class StagedRolloutService {
 
       for (const rollout of expiredRollouts) {
         try {
-          await prisma.stagedRollout.update({
-            where: { id: rollout.id },
+          await prisma.release.update({
+            where: { id: rollout.id, strategy: "CANARY" },
             data: { status: "HEALTH_CHECK" },
           });
 
@@ -184,8 +185,9 @@ export class StagedRolloutService {
     changelog?: string,
   ): Promise<{ rolloutId: string }> {
     // Guard: no active rollout for this pipeline
-    const existing = await prisma.stagedRollout.findFirst({
+    const existing = await prisma.release.findFirst({
       where: {
+        strategy: "CANARY",
         pipelineId,
         status: { in: ["CANARY_DEPLOYED", "HEALTH_CHECK"] },
       },
@@ -328,8 +330,9 @@ export class StagedRolloutService {
       now.getTime() + healthCheckWindowMinutes * 60 * 1000,
     );
 
-    const rollout = await prisma.stagedRollout.create({
+    const rollout = await prisma.release.create({
       data: {
+        strategy: "CANARY",
         pipelineId,
         environmentId: pipeline.environmentId,
         canaryVersionId: canaryVersion.id,
@@ -343,7 +346,7 @@ export class StagedRolloutService {
         status: "CANARY_DEPLOYED",
         healthCheckWindowMinutes,
         healthCheckExpiresAt,
-        createdById: userId,
+        requestedById: userId,
       },
     });
 
@@ -412,8 +415,8 @@ export class StagedRolloutService {
    * Only allowed when status is HEALTH_CHECK (health-check window has expired).
    */
   async broadenRollout(rolloutId: string): Promise<void> {
-    const rollout = await prisma.stagedRollout.findUnique({
-      where: { id: rolloutId },
+    const rollout = await prisma.release.findFirst({
+      where: { id: rolloutId, strategy: "CANARY" },
       include: {
         pipeline: { select: { name: true, environmentId: true } },
       },
@@ -444,8 +447,8 @@ export class StagedRolloutService {
     }
 
     // Update status
-    await prisma.stagedRollout.update({
-      where: { id: rolloutId },
+    await prisma.release.update({
+      where: { id: rolloutId, strategy: "CANARY" },
       data: {
         status: "BROADENED",
         broadenedAt: new Date(),
@@ -478,8 +481,8 @@ export class StagedRolloutService {
    * Allowed from CANARY_DEPLOYED (early rollback) or HEALTH_CHECK status.
    */
   async rollbackRollout(rolloutId: string): Promise<void> {
-    const rollout = await prisma.stagedRollout.findUnique({
-      where: { id: rolloutId },
+    const rollout = await prisma.release.findFirst({
+      where: { id: rolloutId, strategy: "CANARY" },
       include: {
         pipeline: { select: { name: true, environmentId: true } },
         canaryVersion: { select: { createdById: true } },
@@ -502,7 +505,13 @@ export class StagedRolloutService {
 
     // If there's a previous version, deploy it (pushes to all matching nodes via pipeline's nodeSelector)
     if (rollout.previousVersionId) {
-      const userId = rollout.canaryVersion.createdById ?? rollout.createdById;
+      const userId = rollout.canaryVersion?.createdById ?? rollout.requestedById;
+      if (!userId) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Cannot roll back: the rollout's originating user no longer exists",
+        });
+      }
       await deployFromVersion(
         rollout.pipelineId,
         rollout.previousVersionId,
@@ -512,8 +521,8 @@ export class StagedRolloutService {
     }
 
     // Update status
-    await prisma.stagedRollout.update({
-      where: { id: rolloutId },
+    await prisma.release.update({
+      where: { id: rolloutId, strategy: "CANARY" },
       data: {
         status: "ROLLED_BACK",
         rolledBackAt: new Date(),

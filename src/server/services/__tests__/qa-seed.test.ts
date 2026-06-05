@@ -11,7 +11,14 @@ describe("resetQaSeed", () => {
     mockReset(prismaMock);
     prismaMock.pipeline.findMany.mockResolvedValue(QA_IDS.pipelines.map((id) => ({ id })) as never);
     prismaMock.vectorNode.findMany.mockResolvedValue(QA_IDS.vectorNodes.map((id) => ({ id })) as never);
-    prismaMock.promotionRequest.findMany.mockResolvedValue(QA_IDS.promotions.map((id) => ({ id })) as never);
+    prismaMock.release.findMany.mockImplementation(((args: {
+      where?: { strategy?: string };
+    }) =>
+      Promise.resolve(
+        args?.where?.strategy === "PROMOTION"
+          ? QA_IDS.promotions.map((id) => ({ id }))
+          : [],
+      )) as never);
     prismaMock.alertRule.findMany.mockResolvedValue(QA_IDS.alertRules.map((id) => ({ id })) as never);
     prismaMock.notificationChannel.findMany.mockResolvedValue(QA_IDS.notificationChannels.map((id) => ({ id })) as never);
     prismaMock.alertCorrelationGroup.findMany.mockResolvedValue(QA_IDS.correlationGroups.map((id) => ({ id })) as never);
@@ -20,7 +27,6 @@ describe("resetQaSeed", () => {
     prismaMock.secret.findMany.mockResolvedValue([] as never);
     prismaMock.anomalyEvent.findMany.mockResolvedValue([] as never);
     prismaMock.alertEvent.findMany.mockResolvedValue([] as never);
-    prismaMock.deployRequest.findMany.mockResolvedValue([] as never);
     prismaMock.gitSyncJob.findMany.mockResolvedValue([] as never);
     prismaMock.costRecommendation.findMany.mockResolvedValue([] as never);
     prismaMock.auditLog.findMany.mockResolvedValue([] as never);
@@ -57,8 +63,9 @@ describe("resetQaSeed", () => {
     expect(prismaMock.filterPreset.deleteMany).toHaveBeenCalledWith({
       where: { environmentId: { in: QA_IDS.environments } },
     });
-    expect(prismaMock.stagedRollout.deleteMany).toHaveBeenCalledWith({
+    expect(prismaMock.release.deleteMany).toHaveBeenCalledWith({
       where: {
+        strategy: "CANARY",
         OR: [
           { environmentId: { in: QA_IDS.environments } },
           { pipelineId: { in: QA_IDS.pipelines } },
@@ -71,6 +78,6 @@ describe("resetQaSeed", () => {
     expect(prismaMock.auditLog.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(envDeleteOrder);
     expect(prismaMock.sharedComponent.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(envDeleteOrder);
     expect(prismaMock.filterPreset.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(envDeleteOrder);
-    expect(prismaMock.stagedRollout.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(envDeleteOrder);
+    expect(prismaMock.release.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(envDeleteOrder);
   });
 });

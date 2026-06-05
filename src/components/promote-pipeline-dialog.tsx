@@ -84,7 +84,7 @@ export function PromotePipelineDialog({
 
   // Step 2: Preflight check
   const preflightQuery = useQuery(
-    trpc.promotion.preflight.queryOptions(
+    trpc.release.promotion.preflight.queryOptions(
       { pipelineId: pipeline.id, targetEnvironmentId: targetEnvId, name },
       { enabled: step === "preflight" && !!targetEnvId }
     )
@@ -92,7 +92,7 @@ export function PromotePipelineDialog({
 
   // Step 3: Diff preview
   const diffQuery = useQuery(
-    trpc.promotion.diffPreview.queryOptions(
+    trpc.release.promotion.diffPreview.queryOptions(
       { pipelineId: pipeline.id },
       { enabled: step === "diff" }
     )
@@ -100,7 +100,7 @@ export function PromotePipelineDialog({
 
   // Step 4: Initiate mutation
   const initiateMutation = useMutation(
-    trpc.promotion.initiate.mutationOptions({
+    trpc.release.promotion.initiate.mutationOptions({
       onSuccess: (data) => {
         setResult(data);
         setStep("result");
@@ -108,7 +108,7 @@ export function PromotePipelineDialog({
           queryKey: trpc.pipeline.list.queryKey(),
         });
         queryClient.invalidateQueries({
-          queryKey: trpc.promotion.history.queryKey({ pipelineId: pipeline.id }),
+          queryKey: trpc.release.promotion.history.queryKey({ pipelineId: pipeline.id }),
         });
       },
       onError: (err) => {

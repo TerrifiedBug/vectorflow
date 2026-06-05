@@ -112,29 +112,31 @@ vi.mock("@/components/promote-pipeline-dialog", () => ({
 
 vi.mock("@/trpc/client", () => ({
   useTRPC: () => ({
-    promotion: {
-      recentForTeam: {
-        infiniteQueryOptions: (input: { teamId: string }) => ({
-          queryKey: ["promotion.recentForTeam", input.teamId],
-        }),
-        queryKey: () => ["promotion.recentForTeam"],
-      },
-      summaryForTeam: {
-        queryOptions: (input: { teamId: string }) => ({
-          queryKey: ["promotion.summaryForTeam", input.teamId],
-        }),
-        queryKey: (input: { teamId: string }) => ["promotion.summaryForTeam", input.teamId],
-      },
-      diffPreview: {
-        queryOptions: (input: { pipelineId: string }) => ({
-          queryKey: ["promotion.diffPreview", input.pipelineId],
-        }),
-      },
-      reject: {
-        mutationOptions: (opts: unknown) => opts,
-      },
-      approve: {
-        mutationOptions: (opts: unknown) => opts,
+    release: {
+      promotion: {
+        recentForTeam: {
+          infiniteQueryOptions: (input: { teamId: string }) => ({
+            queryKey: ["release.promotion.recentForTeam", input.teamId],
+          }),
+          queryKey: () => ["release.promotion.recentForTeam"],
+        },
+        summaryForTeam: {
+          queryOptions: (input: { teamId: string }) => ({
+            queryKey: ["release.promotion.summaryForTeam", input.teamId],
+          }),
+          queryKey: (input: { teamId: string }) => ["release.promotion.summaryForTeam", input.teamId],
+        },
+        diffPreview: {
+          queryOptions: (input: { pipelineId: string }) => ({
+            queryKey: ["release.promotion.diffPreview", input.pipelineId],
+          }),
+        },
+        reject: {
+          mutationOptions: (opts: unknown) => opts,
+        },
+        approve: {
+          mutationOptions: (opts: unknown) => opts,
+        },
       },
     },
     environment: {
@@ -158,10 +160,10 @@ vi.mock("@tanstack/react-query", () => ({
   useInfiniteQuery: () => queryState.promotions,
   useQuery: (options: { queryKey?: unknown[] }) => {
     const key = options.queryKey?.[0];
-    if (key === "promotion.summaryForTeam") {
+    if (key === "release.promotion.summaryForTeam") {
       return { data: queryState.promotionSummary, isPending: false, isError: false, isSuccess: true, error: null };
     }
-    if (key === "promotion.diffPreview") {
+    if (key === "release.promotion.diffPreview") {
       return { data: queryState.promotionDiff, isPending: false, isError: false, isSuccess: true, error: null };
     }
     if (key === "environment.list") {

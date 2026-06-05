@@ -84,23 +84,23 @@ model Organization {
   webhookConfirmations WebhookConfirmation[]
   billingProviderRefs  BillingProviderRef[]
   operatorApprovals    OperatorApprovalRequest[]
-  domainClaims OrganizationDomainClaim[]
-  scimGroups   ScimGroup[]
+  domainClaims         OrganizationDomainClaim[]
+  scimGroups           ScimGroup[]
 }
 
 model OrgMember {
-  id             String        @id @default(cuid())
+  id             String              @id @default(cuid())
   userId         String
   organizationId String
-  role           OrgMemberRole @default(MEMBER)
+  role           OrgMemberRole       @default(MEMBER)
   /// Identity provenance for SCIM/local coexistence guards (see
   /// OrgMemberProvenance). Defaults to LOCAL so existing rows and every
   /// non-SCIM creator (signup, invite, first-run setup) are treated as local
   /// and protected from SCIM deprovisioning. scimCreateUser sets SCIM.
   provisionedVia OrgMemberProvenance @default(LOCAL)
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt      DateTime      @default(now())
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime            @default(now())
 
   @@unique([userId, organizationId])
   @@index([userId])
@@ -404,16 +404,13 @@ model User {
   vrlSnippets              VrlSnippet[]
   dashboardViews           DashboardView[]
   serviceAccounts          ServiceAccount[]
-  deployRequestsMade       DeployRequest[]      @relation("deployRequester")
-  deployRequestsReviewed   DeployRequest[]      @relation("deployReviewer")
-  deployRequestsExecuted   DeployRequest[]      @relation("deployExecutor")
-  promotionRequests        PromotionRequest[]   @relation("PromotionRequester")
-  promotionApprovals       PromotionRequest[]   @relation("PromotionApprover")
+  releasesRequested        Release[]            @relation("ReleaseRequestedBy")
+  releasesReviewed         Release[]            @relation("ReleaseReviewedBy")
+  releasesDeployed         Release[]            @relation("ReleaseDeployedBy")
   preferences              UserPreference[]
   aiConversationsCreated   AiConversation[]     @relation("AiConversationCreatedBy")
   aiMessagesCreated        AiMessage[]          @relation("AiMessageCreatedBy")
   pipelineVersionsCreated  PipelineVersion[]    @relation("PipelineVersionCreatedBy")
-  stagedRolloutsCreated    StagedRollout[]      @relation("StagedRolloutCreatedBy")
   filterPresets            FilterPreset[]
   migrationProjectsCreated MigrationProject[]   @relation("MigrationProjectCreatedBy")
   dismissedRecommendations CostRecommendation[] @relation("CostRecommendationDismissedBy")
@@ -463,22 +460,22 @@ model WebAuthnCredential {
 /// Rows MUST be expired aggressively — default 5 minutes is more than
 /// enough for the platform/authenticator round trip.
 model WebAuthnChallenge {
-  id        String   @id @default(cuid())
+  id             String   @id @default(cuid())
   /// Tenant scope. The challenge bytes are themselves a
   /// 256-bit secret so cross-org enumeration is not feasible without
   /// guessing, but having the column lets the cleanup job filter by
   /// tenant and lets RLS fence direct reads end-to-end.
-  organizationId String  @default("default")
+  organizationId String   @default("default")
   /// One of "register" or "authenticate".
-  kind      String
+  kind           String
   /// The challenge bytes, base64url-encoded.
-  challenge String   @unique
+  challenge      String   @unique
   /// Userid the challenge was minted for. Nullable because the
   /// authentication flow may begin without a known user (usernameless
   /// passkey UX).
-  userId    String?
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  userId         String?
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
 
   @@index([expiresAt])
   @@index([userId])
@@ -678,14 +675,12 @@ model Environment {
   alertRules            AlertRule[]
   notificationChannels  NotificationChannel[]
   serviceAccounts       ServiceAccount[]
-  deployRequests        DeployRequest[]
+  releases              Release[]               @relation("ReleaseEnvironment")
   teamDefaults          Team[]                  @relation("teamDefault")
   sharedComponents      SharedComponent[]
   pipelineGroups        PipelineGroup[]
   nodeGroups            NodeGroup[]
-  stagedRollouts        StagedRollout[]
-  promotionSources      PromotionRequest[]      @relation("PromotionSourceEnv")
-  promotionTargets      PromotionRequest[]      @relation("PromotionTargetEnv")
+  releasesAsTarget      Release[]               @relation("ReleaseTargetEnvironment")
   filterPresets         FilterPreset[]
   gitSyncJobs           GitSyncJob[]
   costPerGbCents        Int                     @default(0) // cents per GB processed (0 = volume-only)
@@ -911,18 +906,16 @@ model Pipeline {
   deploymentStrategy        Json? // DeploymentStrategy | null (null = direct deploy)
   variables                 Json? // Record<string, string> — pipeline-scoped variable key-value pairs
   aiConversations           AiConversation[]
-  deployRequests            DeployRequest[]
-  stagedRollouts            StagedRollout[]
+  releases                  Release[]            @relation("ReleasePipeline")
   upstreamDeps              PipelineDependency[] @relation("PipelineDownstream")
   downstreamDeps            PipelineDependency[] @relation("PipelineUpstream")
-  promotionSources          PromotionRequest[]   @relation("PromotionSource")
-  promotionTargets          PromotionRequest[]   @relation("PromotionTarget")
+  releasesAsTarget          Release[]            @relation("ReleaseTargetPipeline")
   gitSyncJobs               GitSyncJob[]
   migrationProject          MigrationProject?
   costRecommendations       CostRecommendation[]
   anomalyEvents             AnomalyEvent[]
   pausedAt                  DateTime?
-  pausedBy                  String?              // userId or "VectorFlow Support" when paused by operator
+  pausedBy                  String? // userId or "VectorFlow Support" when paused by operator
   createdAt                 DateTime             @default(now())
   updatedAt                 DateTime             @updatedAt
 
@@ -1070,16 +1063,16 @@ model EventSampleRequest {
 /// Live tap authorization state. Persisted (rather than in-memory) so authorization
 /// survives across server instances in HA deployments.
 model ActiveTap {
-  requestId   String   @id
+  requestId      String   @id
   /// Tenant scope. `pipeline.stopTap` runs inline
   /// authorisation on top of this row; the column adds RLS coverage
   /// for any future direct query that bypasses the handler.
   organizationId String   @default("default")
-  nodeId      String
-  pipelineId  String
-  componentId String
-  startedAt   DateTime @default(now())
-  expiresAt   DateTime
+  nodeId         String
+  pipelineId     String
+  componentId    String
+  startedAt      DateTime @default(now())
+  expiresAt      DateTime
 
   @@index([expiresAt])
   @@index([nodeId])
@@ -1225,40 +1218,10 @@ model PipelineVersion {
   changelog         String?
   createdAt         DateTime @default(now())
 
-  stagedRolloutsAsCanary   StagedRollout[] @relation("StagedRolloutCanaryVersion")
-  stagedRolloutsAsPrevious StagedRollout[] @relation("StagedRolloutPreviousVersion")
+  releasesAsCanary   Release[] @relation("ReleaseCanaryVersion")
+  releasesAsPrevious Release[] @relation("ReleasePreviousVersion")
 
   @@index([pipelineId, version])
-  @@index([organizationId])
-}
-
-model StagedRollout {
-  id                       String           @id @default(cuid())
-  organizationId           String           @default("default")
-  pipelineId               String
-  pipeline                 Pipeline         @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  environmentId            String
-  environment              Environment      @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  canaryVersionId          String
-  canaryVersion            PipelineVersion  @relation("StagedRolloutCanaryVersion", fields: [canaryVersionId], references: [id], onDelete: Cascade)
-  previousVersionId        String?
-  previousVersion          PipelineVersion? @relation("StagedRolloutPreviousVersion", fields: [previousVersionId], references: [id])
-  canarySelector           Json
-  originalSelector         Json?
-  canaryNodeIds            Json
-  remainingNodeIds         Json?
-  status                   String           @default("CANARY_DEPLOYED")
-  healthCheckWindowMinutes Int              @default(5)
-  healthCheckExpiresAt     DateTime?
-  broadenedAt              DateTime?
-  rolledBackAt             DateTime?
-  createdById              String
-  createdBy                User             @relation("StagedRolloutCreatedBy", fields: [createdById], references: [id])
-  createdAt                DateTime         @default(now())
-  updatedAt                DateTime         @updatedAt
-
-  @@index([pipelineId, status])
-  @@index([status, healthCheckExpiresAt])
   @@index([organizationId])
 }
 
@@ -1281,19 +1244,19 @@ model Secret {
 }
 
 model Certificate {
-  id            String              @id @default(cuid())
+  id             String              @id @default(cuid())
   /// Tenant scope — see Secret.organizationId.
   organizationId String              @default("default")
-  name          String
-  filename      String
-  fileType      String
-  encryptedData String
-  environmentId String
-  environment   Environment         @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  bundlesAsCa   CertificateBundle[] @relation("bundleCa")
-  bundlesAsCert CertificateBundle[] @relation("bundleCert")
-  bundlesAsKey  CertificateBundle[] @relation("bundleKey")
-  createdAt     DateTime            @default(now())
+  name           String
+  filename       String
+  fileType       String
+  encryptedData  String
+  environmentId  String
+  environment    Environment         @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  bundlesAsCa    CertificateBundle[] @relation("bundleCa")
+  bundlesAsCert  CertificateBundle[] @relation("bundleCert")
+  bundlesAsKey   CertificateBundle[] @relation("bundleKey")
+  createdAt      DateTime            @default(now())
 
   @@unique([environmentId, name])
   @@index([organizationId])
@@ -1301,20 +1264,20 @@ model Certificate {
 }
 
 model CertificateBundle {
-  id            String       @id @default(cuid())
+  id             String       @id @default(cuid())
   /// Tenant scope — see Secret.organizationId.
   organizationId String       @default("default")
-  name          String
-  environmentId String
-  environment   Environment  @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  caId          String?
-  ca            Certificate? @relation("bundleCa", fields: [caId], references: [id], onDelete: SetNull)
-  certId        String?
-  cert          Certificate? @relation("bundleCert", fields: [certId], references: [id], onDelete: SetNull)
-  keyId         String?
-  key           Certificate? @relation("bundleKey", fields: [keyId], references: [id], onDelete: SetNull)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  name           String
+  environmentId  String
+  environment    Environment  @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  caId           String?
+  ca             Certificate? @relation("bundleCa", fields: [caId], references: [id], onDelete: SetNull)
+  certId         String?
+  cert           Certificate? @relation("bundleCert", fields: [certId], references: [id], onDelete: SetNull)
+  keyId          String?
+  key            Certificate? @relation("bundleKey", fields: [keyId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@unique([environmentId, name])
   @@index([organizationId])
@@ -1712,64 +1675,82 @@ model VrlSnippet {
   @@index([organizationId])
 }
 
-model DeployRequest {
-  id             String      @id @default(cuid())
-  organizationId String      @default("default")
-  pipelineId     String
-  pipeline       Pipeline    @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  environmentId  String
-  environment    Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  requestedById  String?
-  requestedBy    User?       @relation("deployRequester", fields: [requestedById], references: [id], onDelete: SetNull)
-  configYaml     String
-  changelog      String
-  nodeSelector   Json?
-  status         String      @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED | DEPLOYED
-  reviewedById   String?
-  reviewedBy     User?       @relation("deployReviewer", fields: [reviewedById], references: [id])
-  reviewNote     String?
-  createdAt      DateTime    @default(now())
-  reviewedAt     DateTime?
-  deployedById   String?
-  deployedBy     User?       @relation("deployExecutor", fields: [deployedById], references: [id], onDelete: SetNull)
-  deployedAt     DateTime?
-
-  @@index([pipelineId, status])
-  @@index([environmentId, status])
-  @@index([organizationId])
+enum ReleaseStrategy {
+  DIRECT
+  PROMOTION
+  CANARY
 }
 
-model PromotionRequest {
-  id                   String      @id @default(cuid())
-  organizationId       String      @default("default")
-  sourcePipelineId     String
-  sourcePipeline       Pipeline    @relation("PromotionSource", fields: [sourcePipelineId], references: [id], onDelete: Cascade)
+/// Unified release record. Subsumes the former DeployRequest (DIRECT),
+/// PromotionRequest (PROMOTION) and StagedRollout (CANARY) models. The
+/// `strategy` discriminator selects which facet fields are populated; `status`
+/// holds the per-strategy state-machine value:
+///   DIRECT:    PENDING | APPROVED | REJECTED | CANCELLED | DEPLOYED
+///   PROMOTION: PENDING | APPROVED | DEPLOYED | REJECTED | CANCELLED | AWAITING_PR_MERGE | DEPLOYING
+///   CANARY:    CANARY_DEPLOYED | HEALTH_CHECK | BROADENED | ROLLED_BACK
+model Release {
+  id             String          @id @default(cuid())
+  organizationId String          @default("default")
+  strategy       ReleaseStrategy
+  status         String
+
+  // Primary pipeline + environment. For PROMOTION this is the SOURCE side.
+  pipelineId    String
+  pipeline      Pipeline    @relation("ReleasePipeline", fields: [pipelineId], references: [id], onDelete: Cascade)
+  environmentId String
+  environment   Environment @relation("ReleaseEnvironment", fields: [environmentId], references: [id], onDelete: Cascade)
+
+  changelog  String  @default("")
+  reviewNote String?
+
+  // Actors (unified across strategies).
+  requestedById String?
+  requestedBy   User?   @relation("ReleaseRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  reviewedById  String?
+  reviewedBy    User?   @relation("ReleaseReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  deployedById  String?
+  deployedBy    User?   @relation("ReleaseDeployedBy", fields: [deployedById], references: [id], onDelete: SetNull)
+
+  // ── DIRECT facet (was DeployRequest) ──
+  configYaml   String?
+  nodeSelector Json?
+
+  // ── PROMOTION facet (was PromotionRequest) ──
   targetPipelineId     String?
-  targetPipeline       Pipeline?   @relation("PromotionTarget", fields: [targetPipelineId], references: [id], onDelete: SetNull)
-  sourceEnvironmentId  String
-  sourceEnvironment    Environment @relation("PromotionSourceEnv", fields: [sourceEnvironmentId], references: [id], onDelete: Cascade)
-  targetEnvironmentId  String
-  targetEnvironment    Environment @relation("PromotionTargetEnv", fields: [targetEnvironmentId], references: [id], onDelete: Cascade)
-  status               String      @default("PENDING") // PENDING | APPROVED | DEPLOYED | REJECTED | CANCELLED | AWAITING_PR_MERGE | DEPLOYING
-  promotedById         String?
-  promotedBy           User?       @relation("PromotionRequester", fields: [promotedById], references: [id], onDelete: SetNull)
-  approvedById         String?
-  approvedBy           User?       @relation("PromotionApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  targetPipeline       Pipeline?    @relation("ReleaseTargetPipeline", fields: [targetPipelineId], references: [id], onDelete: SetNull)
+  targetEnvironmentId  String?
+  targetEnvironment    Environment? @relation("ReleaseTargetEnvironment", fields: [targetEnvironmentId], references: [id], onDelete: Cascade)
+  targetPipelineName   String?
   nodesSnapshot        Json?
   edgesSnapshot        Json?
   globalConfigSnapshot Json?
-  targetPipelineName   String?
-  reviewNote           String?
-  prUrl                String? // GitHub PR HTML URL (GitOps promotion only)
-  prNumber             Int? // GitHub PR number (GitOps promotion only)
-  createdAt            DateTime    @default(now())
-  reviewedAt           DateTime?
-  deployedAt           DateTime?
+  prUrl                String?
+  prNumber             Int?
 
-  @@index([sourcePipelineId, status])
-  @@index([sourceEnvironmentId])
-  @@index([targetEnvironmentId])
+  // ── CANARY facet (was StagedRollout) ──
+  canaryVersionId          String?
+  canaryVersion            PipelineVersion? @relation("ReleaseCanaryVersion", fields: [canaryVersionId], references: [id], onDelete: Cascade)
+  previousVersionId        String?
+  previousVersion          PipelineVersion? @relation("ReleasePreviousVersion", fields: [previousVersionId], references: [id])
+  canarySelector           Json?
+  originalSelector         Json?
+  canaryNodeIds            Json?
+  remainingNodeIds         Json?
+  healthCheckWindowMinutes Int?
+  healthCheckExpiresAt     DateTime?
+  broadenedAt              DateTime?
+  rolledBackAt             DateTime?
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  reviewedAt DateTime?
+  deployedAt DateTime?
+
   @@index([organizationId])
+  @@index([pipelineId, strategy, status])
+  @@index([environmentId, status])
+  @@index([targetEnvironmentId])
+  @@index([status, healthCheckExpiresAt])
 }
 
 model GitSyncJob {
