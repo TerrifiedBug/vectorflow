@@ -447,6 +447,11 @@ describe("listTraces — trace grouping", () => {
     expect(sql).toContain("eventType = 'trace'");
     expect(sql).toContain("traceId != ''");
     expect(sql).toContain("count() AS spanCount");
+    // duration = last span end (start + duration attr) − first span start,
+    // not just the gap between span starts (so single-span traces aren't 0ms).
+    expect(sql).toContain("toUnixTimestamp64Milli(timestamp)");
+    expect(sql).toContain("duration_ms");
+    expect(sql).not.toContain("dateDiff('millisecond', min(timestamp), max(timestamp)) AS durationMs");
     expect(sql).toContain("organizationId = {orgId:String}");
     expect(sql).not.toContain("org-A");
     expect(params).toMatchObject({ orgId: "org-A", pipelineId: "p1" });

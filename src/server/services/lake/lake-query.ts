@@ -690,7 +690,8 @@ export interface LakeTraceSummary {
   spanCount: number;
   startTime: string;
   endTime: string;
-  /** Wall-time across spans (max - min span start), milliseconds. */
+  /** Wall-time from the first span's start to the last span's end (start +
+   *  duration attr when present; falls back to last span start), milliseconds. */
   durationMs: number;
   /** "error" iff any span's severity looks error-like, else "ok". */
   status: string;
@@ -714,10 +715,20 @@ export async function listTraces(args: {
   const from = clampFrom(args.from, to);
   const limit = clampLimit(args.limit, LAKE_TRACES_DEFAULT_LIMIT, LAKE_TRACES_MAX_LIMIT);
 
+  // Trace wall-time = last span END − first span START. A span's end is its
+  // start plus a duration attr (so a single-span 2s trace reports 2000ms, not
+  // 0); when no span carries a duration attr this degrades to max−min start.
+  // Attr keys are hardcoded constants (SPAN_DURATION_ATTRS), never user input.
+  const durationCoalesce =
+    "coalesce(" +
+    SPAN_DURATION_ATTRS.map((k) => `nullIf(attrs['${k}'], '')`).join(", ") +
+    ", '')";
+  const spanEndMs = `(toUnixTimestamp64Milli(timestamp) + toFloat64OrZero(${durationCoalesce}))`;
+
   const sql =
     `SELECT traceId, count() AS spanCount, ` +
     `min(timestamp) AS startTime, max(timestamp) AS endTime, ` +
-    `dateDiff('millisecond', min(timestamp), max(timestamp)) AS durationMs, ` +
+    `toInt64(round(greatest(0, max(${spanEndMs}) - min(toUnixTimestamp64Milli(timestamp))))) AS durationMs, ` +
     `if(countIf(positionCaseInsensitive(severity, 'error') > 0) > 0, 'error', 'ok') AS status ` +
     `FROM ${LAKE_EVENTS_TABLE} ` +
     `WHERE organizationId = {orgId:String} AND pipelineId = {pipelineId:String} ` +

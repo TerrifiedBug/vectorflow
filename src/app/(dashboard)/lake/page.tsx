@@ -227,8 +227,14 @@ export default function LakePage() {
   const summarizeNeedsField = summarizeMetric !== "count";
   const summarizeFieldArg =
     summarizeNeedsField && summarizeMetricField ? summarizeMetricField : undefined;
+  // Summarize/alerts only carry guided filters (eventType/query) — there is no
+  // raw-WHERE summarize path, so gate them to guided searches to avoid charting
+  // (and alerting on) the whole window instead of the raw-filtered result set.
   const summarizeReady =
-    !!applied && resultsView === "summarize" && (!summarizeNeedsField || !!summarizeFieldArg);
+    !!applied &&
+    applied.mode === "guided" &&
+    resultsView === "summarize" &&
+    (!summarizeNeedsField || !!summarizeFieldArg);
   const summarizeMetricLabel =
     summarizeMetric === "count"
       ? "count"
@@ -246,7 +252,10 @@ export default function LakePage() {
 
   const summarizeQuery = useQuery({
     ...trpc.lake.summarize.queryOptions(
-      applied && resultsView === "summarize" && (!summarizeNeedsField || !!summarizeFieldArg)
+      applied &&
+      applied.mode === "guided" &&
+      resultsView === "summarize" &&
+      (!summarizeNeedsField || !!summarizeFieldArg)
         ? {
             pipelineId: applied.pipelineId,
             from: applied.from,
@@ -573,6 +582,13 @@ export default function LakePage() {
                         onRetry={() => tracesQuery.refetch()}
                       />
                     )
+                  ) : applied?.mode === "raw" ? (
+                    <EmptyState
+                      icon={BarChart3}
+                      title="Summarize uses guided search"
+                      description="Re-run in Guided mode to chart these events — Summarize can't apply a raw SQL filter."
+                      compact
+                    />
                   ) : (
                     <>
                       <div className="mb-4 flex flex-wrap items-end gap-3">
