@@ -9,6 +9,8 @@ vi.mock("@/lib/prisma", () => { const __pm = {
   nodeMetric: { deleteMany: vi.fn() },
   pipelineLog: { deleteMany: vi.fn() },
   nodeStatusEvent: { deleteMany: vi.fn() },
+  nodeMetricRollup: { deleteMany: vi.fn() },
+  pipelineMetricRollup: { deleteMany: vi.fn() },
   $queryRawUnsafe: vi.fn(),
 }; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
@@ -155,6 +157,71 @@ describe("cleanupOldMetrics", () => {
       const calls = mockQueryRaw.mock.calls;
       expect(calls[0][1]).toBe(7);
       expect(calls[2][1]).toBe(3);
+    });
+  });
+
+  describe("rollup retention (independent of raw)", () => {
+    it("purges rollups at metricsRollupRetentionDays while raw uses its own window", async () => {
+      mockIsTimescale.mockReturnValue(true);
+      mockQueryRaw.mockResolvedValue([]);
+      vi.mocked(prisma.organizationSettings.findUnique).mockResolvedValue(
+        mockOrgSettings({
+          metricsRetentionDays: 7,
+          metricsRollupRetentionDays: 90,
+        }),
+      );
+
+      const before = Date.now();
+      await cleanupOldMetrics();
+      const after = Date.now();
+
+      // Raw metrics still purged via drop_chunks (4 hypertables) at 7 days.
+      expect(mockQueryRaw).toHaveBeenCalledTimes(4);
+
+      // Rollups purged via deleteMany (not hypertables) at the 90-day cutoff.
+      expect(prisma.nodeMetricRollup.deleteMany).toHaveBeenCalledTimes(1);
+      expect(prisma.pipelineMetricRollup.deleteMany).toHaveBeenCalledTimes(1);
+
+      const arg = vi.mocked(prisma.nodeMetricRollup.deleteMany).mock
+        .calls[0][0] as unknown as { where: { bucketStart: { lt: Date } } };
+      const cutoff = arg.where.bucketStart.lt.getTime();
+      const ninetyDays = 90 * 24 * 60 * 60 * 1000;
+      expect(cutoff).toBeGreaterThanOrEqual(before - ninetyDays);
+      expect(cutoff).toBeLessThanOrEqual(after - ninetyDays);
+    });
+
+    it("purges rollups even on the legacy (non-TimescaleDB) path", async () => {
+      mockIsTimescale.mockReturnValue(false);
+      vi.mocked(prisma.pipelineMetric.deleteMany).mockResolvedValue({ count: 0 });
+      vi.mocked(prisma.nodeMetric.deleteMany).mockResolvedValue({ count: 0 });
+      vi.mocked(prisma.pipelineLog.deleteMany).mockResolvedValue({ count: 0 });
+      vi.mocked(prisma.nodeStatusEvent.deleteMany).mockResolvedValue({ count: 0 });
+
+      await cleanupOldMetrics();
+
+      expect(prisma.nodeMetricRollup.deleteMany).toHaveBeenCalledTimes(1);
+      expect(prisma.pipelineMetricRollup.deleteMany).toHaveBeenCalledTimes(1);
+    });
+
+    it("defaults rollup retention to 90 days when the setting is unset", async () => {
+      mockIsTimescale.mockReturnValue(true);
+      mockQueryRaw.mockResolvedValue([]);
+      vi.mocked(prisma.organizationSettings.findUnique).mockResolvedValue(
+        // Force the field to be absent so cleanup must fall back to the default.
+        mockOrgSettings({
+          metricsRollupRetentionDays: undefined as unknown as number,
+        }),
+      );
+
+      const before = Date.now();
+      await cleanupOldMetrics();
+
+      const arg = vi.mocked(prisma.pipelineMetricRollup.deleteMany).mock
+        .calls[0][0] as unknown as { where: { bucketStart: { lt: Date } } };
+      const cutoff = arg.where.bucketStart.lt.getTime();
+      const ninetyDays = 90 * 24 * 60 * 60 * 1000;
+      expect(before - cutoff).toBeGreaterThanOrEqual(ninetyDays - 5000);
+      expect(before - cutoff).toBeLessThanOrEqual(ninetyDays + 5000);
     });
   });
 });

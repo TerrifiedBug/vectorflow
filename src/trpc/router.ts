@@ -36,6 +36,7 @@ import { telemetryRouter } from "@/server/routers/telemetry";
 import { governanceRouter } from "@/server/routers/governance";
 import { orgAccessGrantRouter } from "@/server/routers/org-access-grant";
 import { orgRouter } from "@/server/routers/org";
+import { tapCaptureRouter } from "@/server/routers/tap-capture";
 
 export const appRouter = router({
   team: teamRouter,
@@ -75,6 +76,7 @@ export const appRouter = router({
   governance: governanceRouter,
   orgAccessGrant: orgAccessGrantRouter,
   org: orgRouter,
+  tapCapture: tapCaptureRouter,
 });
 
 export type AppRouter = typeof appRouter;

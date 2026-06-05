@@ -16,6 +16,7 @@ import {
   queryVolumeTimeSeries,
   queryNodeMetricsAggregated,
   resolveMetricsSource,
+  resolveRollupGranularity,
 } from "@/server/services/metrics-query";
 
 
@@ -451,7 +452,10 @@ export const dashboardRouter = router({
         eventsOut: number;
       }>;
 
-      if (source !== "raw") {
+      // Long ranges (beyond raw retention) read downsampled rollups via
+      // queryVolumeTimeSeries even without TimescaleDB; shorter ranges still use
+      // the continuous aggregate when available, else the raw JS fallback below.
+      if (source !== "raw" || resolveRollupGranularity(rangeMinutes) !== null) {
         // Use pre-computed continuous aggregate
         const pipelineIds = await prisma.pipeline.findMany({
           where: { environmentId: input.environmentId },

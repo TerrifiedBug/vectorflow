@@ -4,7 +4,10 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { join } from "path";
 import { tmpdir } from "os";
-import { router, protectedProcedure } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
+import { TRPCError } from "@trpc/server";
+import { prisma } from "@/lib/prisma";
+import { evaluateVrl } from "@/server/services/transform-eval";
 
 const execFileAsync = promisify(execFile);
 
@@ -179,5 +182,39 @@ export const vrlRouter = router({
         await unlink(programPath).catch(() => {});
         await unlink(inputPath).catch(() => {});
       }
+    }),
+
+  /**
+   * Run a VRL program against a persisted tap capture's real events — the
+   * multi-event generalisation of `vrl.test` (which runs against a single
+   * pasted JSON input). Loads the capture org-scoped (`withTeamAccess` resolves
+   * the team via `pipelineId`) and returns the full `evaluateVrl` result
+   * (outputs + reduction stats) so the editor can show a before/after diff.
+   */
+  testAgainstCapture: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        captureId: z.string(),
+        source: z.string().min(1),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .mutation(async ({ input, ctx }) => {
+      const capture = await prisma.tapCapture.findUnique({
+        where: { id: input.captureId },
+        select: { pipelineId: true, organizationId: true, events: true },
+      });
+      if (
+        !capture ||
+        capture.pipelineId !== input.pipelineId ||
+        capture.organizationId !== ctx.organizationId
+      ) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Capture not found" });
+      }
+      const events = Array.isArray(capture.events)
+        ? (capture.events as unknown[])
+        : [];
+      return evaluateVrl(input.source, events);
     }),
 });

@@ -128,10 +128,11 @@ model OrganizationSettings {
   oidcDefaultTeamId           String?
 
   // Fleet tuning (moved from SystemSettings)
-  fleetPollIntervalMs     Int @default(15000)
-  fleetUnhealthyThreshold Int @default(3)
-  metricsRetentionDays    Int @default(7)
-  logsRetentionDays       Int @default(3)
+  fleetPollIntervalMs        Int @default(15000)
+  fleetUnhealthyThreshold    Int @default(3)
+  metricsRetentionDays       Int @default(7)
+  metricsRollupRetentionDays Int @default(90)
+  logsRetentionDays          Int @default(3)
 
   // Anomaly detection tuning (moved from SystemSettings)
   anomalyBaselineWindowDays    Int    @default(7)
@@ -407,6 +408,7 @@ model User {
   releasesRequested        Release[]            @relation("ReleaseRequestedBy")
   releasesReviewed         Release[]            @relation("ReleaseReviewedBy")
   releasesDeployed         Release[]            @relation("ReleaseDeployedBy")
+  tapCaptures              TapCapture[]         @relation("TapCaptureCreatedBy")
   preferences              UserPreference[]
   aiConversationsCreated   AiConversation[]     @relation("AiConversationCreatedBy")
   aiMessagesCreated        AiMessage[]          @relation("AiMessageCreatedBy")
@@ -736,6 +738,7 @@ model VectorNode {
   labels            Json?                @default("{}")
   pipelineStatuses  NodePipelineStatus[]
   nodeMetrics       NodeMetric[]
+  nodeMetricRollups NodeMetricRollup[]
   pipelineLogs      PipelineLog[]
   alertEvents       AlertEvent[]
   statusEvents      NodeStatusEvent[]
@@ -870,27 +873,27 @@ model NodeGroup {
 }
 
 model Pipeline {
-  id                        String               @id @default(cuid())
-  organizationId            String               @default("default")
+  id                        String                 @id @default(cuid())
+  organizationId            String                 @default("default")
   name                      String
   description               String?
   environmentId             String
-  environment               Environment          @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  environment               Environment            @relation(fields: [environmentId], references: [id], onDelete: Cascade)
   groupId                   String?
-  group                     PipelineGroup?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  group                     PipelineGroup?         @relation(fields: [groupId], references: [id], onDelete: SetNull)
   nodes                     PipelineNode[]
   edges                     PipelineEdge[]
   versions                  PipelineVersion[]
   globalConfig              Json?
   nodeSelector              Json?
   gitPath                   String? // Stable git file path, e.g. "production/my-pipeline.yaml"
-  isDraft                   Boolean              @default(true)
-  isSystem                  Boolean              @default(false)
+  isDraft                   Boolean                @default(true)
+  isSystem                  Boolean                @default(false)
   deployedAt                DateTime?
   createdById               String?
-  createdBy                 User?                @relation("PipelineCreatedBy", fields: [createdById], references: [id])
+  createdBy                 User?                  @relation("PipelineCreatedBy", fields: [createdById], references: [id])
   updatedById               String?
-  updatedBy                 User?                @relation("PipelineUpdatedBy", fields: [updatedById], references: [id])
+  updatedBy                 User?                  @relation("PipelineUpdatedBy", fields: [updatedById], references: [id])
   nodeStatuses              NodePipelineStatus[]
   metrics                   PipelineMetric[]
   pipelineLogs              PipelineLog[]
@@ -898,26 +901,28 @@ model Pipeline {
   sampleRequests            EventSampleRequest[]
   eventSamples              EventSample[]
   slis                      PipelineSli[]
-  enrichMetadata            Boolean              @default(false)
-  tags                      Json?                @default("[]") // string[] of compliance tags like ["PII", "PCI-DSS"]
-  autoRollbackEnabled       Boolean              @default(false)
-  autoRollbackThreshold     Float                @default(5.0)
-  autoRollbackWindowMinutes Int                  @default(5)
+  enrichMetadata            Boolean                @default(false)
+  tags                      Json?                  @default("[]") // string[] of compliance tags like ["PII", "PCI-DSS"]
+  autoRollbackEnabled       Boolean                @default(false)
+  autoRollbackThreshold     Float                  @default(5.0)
+  autoRollbackWindowMinutes Int                    @default(5)
   deploymentStrategy        Json? // DeploymentStrategy | null (null = direct deploy)
   variables                 Json? // Record<string, string> — pipeline-scoped variable key-value pairs
   aiConversations           AiConversation[]
-  releases                  Release[]            @relation("ReleasePipeline")
-  upstreamDeps              PipelineDependency[] @relation("PipelineDownstream")
-  downstreamDeps            PipelineDependency[] @relation("PipelineUpstream")
-  releasesAsTarget          Release[]            @relation("ReleaseTargetPipeline")
+  releases                  Release[]              @relation("ReleasePipeline")
+  upstreamDeps              PipelineDependency[]   @relation("PipelineDownstream")
+  downstreamDeps            PipelineDependency[]   @relation("PipelineUpstream")
+  releasesAsTarget          Release[]              @relation("ReleaseTargetPipeline")
+  pipelineMetricRollups     PipelineMetricRollup[]
+  tapCaptures               TapCapture[]
   gitSyncJobs               GitSyncJob[]
   migrationProject          MigrationProject?
   costRecommendations       CostRecommendation[]
   anomalyEvents             AnomalyEvent[]
   pausedAt                  DateTime?
   pausedBy                  String? // userId or "VectorFlow Support" when paused by operator
-  createdAt                 DateTime             @default(now())
-  updatedAt                 DateTime             @updatedAt
+  createdAt                 DateTime               @default(now())
+  updatedAt                 DateTime               @updatedAt
 
   @@index([organizationId])
 }
@@ -1002,6 +1007,7 @@ enum RecommendationType {
   LOW_REDUCTION
   HIGH_ERROR_RATE
   STALE_PIPELINE
+  HIGH_CARDINALITY
 }
 
 enum RecommendationStatus {
@@ -2163,4 +2169,105 @@ model AnomalyEvent {
   @@index([detectedAt])
   @@index([correlationGroupId])
   @@index([organizationId])
+}
+
+/// Per-organisation price model for a destination (Vector sink type), used to
+/// turn byte-volume estimates into projected dollar cost in analytics and cost
+/// recommendations (B3).
+model DestinationCostModel {
+  id              String   @id @default(cuid())
+  organizationId  String   @default("default")
+  /// Vector sink component type, e.g. "datadog_logs", "splunk_hec",
+  /// "elasticsearch", "aws_s3".
+  sinkType        String
+  /// Human label shown in the UI (defaults to the sink type).
+  label           String?
+  /// Destination price in cents per GB.
+  pricePerGbCents Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([organizationId, sinkType])
+  @@index([organizationId])
+}
+
+/// Downsampled NodeMetric rollup (hourly/daily) retained far longer than raw
+/// metrics (B5). Gauge columns hold the bucket AVERAGE; max* columns hold the
+/// bucket peak for the alerting-relevant gauges.
+model NodeMetricRollup {
+  id                 String     @id @default(cuid())
+  organizationId     String     @default("default")
+  nodeId             String
+  node               VectorNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  bucketStart        DateTime
+  granularity        String
+  sampleCount        Int        @default(0)
+  memoryUsedBytes    BigInt     @default(0)
+  memoryTotalBytes   BigInt     @default(0)
+  cpuSecondsTotal    Float      @default(0)
+  cpuSecondsIdle     Float      @default(0)
+  loadAvg1           Float      @default(0)
+  loadAvg5           Float      @default(0)
+  loadAvg15          Float      @default(0)
+  fsUsedBytes        BigInt     @default(0)
+  fsTotalBytes       BigInt     @default(0)
+  diskReadBytes      BigInt     @default(0)
+  diskWrittenBytes   BigInt     @default(0)
+  netRxBytes         BigInt     @default(0)
+  netTxBytes         BigInt     @default(0)
+  maxMemoryUsedBytes BigInt     @default(0)
+  maxLoadAvg1        Float      @default(0)
+
+  @@unique([nodeId, granularity, bucketStart])
+  @@index([nodeId, granularity, bucketStart])
+  @@index([organizationId])
+}
+
+/// Downsampled PipelineMetric rollup (B5). Counter columns hold the bucket SUM;
+/// utilization/latency hold the bucket AVERAGE. componentId "" = pipeline
+/// aggregate row (mirrors PipelineMetric's null-aggregate, but non-null so the
+/// unique key dedupes aggregate rows on upsert).
+model PipelineMetricRollup {
+  id              String   @id @default(cuid())
+  organizationId  String   @default("default")
+  pipelineId      String
+  pipeline        Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  componentId     String   @default("")
+  bucketStart     DateTime
+  granularity     String
+  sampleCount     Int      @default(0)
+  eventsIn        BigInt   @default(0)
+  eventsOut       BigInt   @default(0)
+  eventsDiscarded BigInt   @default(0)
+  errorsTotal     BigInt   @default(0)
+  bytesIn         BigInt   @default(0)
+  bytesOut        BigInt   @default(0)
+  utilization     Float    @default(0)
+  latencyMeanMs   Float?
+  maxLatencyMs    Float?
+
+  @@unique([pipelineId, componentId, granularity, bucketStart])
+  @@index([pipelineId, granularity, bucketStart])
+  @@index([organizationId])
+}
+
+/// A persisted live-tap capture (B4): a named snapshot of real events captured
+/// from a pipeline component, retained beyond the ephemeral EventSample TTL so
+/// it can be replayed through the transform-eval harness for iteration.
+model TapCapture {
+  id             String   @id @default(cuid())
+  organizationId String   @default("default")
+  pipelineId     String
+  pipeline       Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  name           String
+  componentKey   String
+  events         Json
+  schema         Json
+  eventCount     Int      @default(0)
+  createdById    String?
+  createdBy      User?    @relation("TapCaptureCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([pipelineId])
 }

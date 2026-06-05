@@ -14,6 +14,8 @@ vi.mock("@/lib/prisma", () => { const __pm = {
   },
   pipelineLog: { deleteMany: vi.fn() },
   nodeStatusEvent: { deleteMany: vi.fn() },
+  nodeMetricRollup: { deleteMany: vi.fn() },
+  pipelineMetricRollup: { deleteMany: vi.fn() },
 }; return { prisma: __pm, basePrisma: __pm, adminPrisma: __pm }; });
 
 vi.mock("@/server/services/timescaledb", () => ({

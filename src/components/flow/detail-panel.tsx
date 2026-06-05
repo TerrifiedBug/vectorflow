@@ -1,6 +1,6 @@
 "use client";
 
-import { createElement, useCallback, useMemo } from "react";
+import { createElement, useCallback, useMemo, useState } from "react";
 import {
   Copy,
   Trash2,
@@ -191,6 +191,93 @@ function InspectorHeader({
           </Pill>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Test-against-capture (B4 live-tap iteration loop)                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Run the current VRL `source` against a saved tap capture and show the
+ * before/after reduction (kept / dropped / event % / byte %). Captures are
+ * created from the live-tail panel's "Save capture" affordance.
+ */
+function TestAgainstCapture({
+  pipelineId,
+  source,
+}: {
+  pipelineId: string;
+  source: string;
+}) {
+  const trpc = useTRPC();
+  const [captureId, setCaptureId] = useState("");
+  const capturesQuery = useQuery(
+    trpc.tapCapture.list.queryOptions({ pipelineId }, { enabled: !!pipelineId }),
+  );
+  const captures = capturesQuery.data ?? [];
+  const testMutation = useMutation(trpc.tapCapture.testTransform.mutationOptions());
+  const result = testMutation.data;
+
+  const handleTest = () => {
+    if (!captureId || !source.trim()) return;
+    testMutation.mutate({ pipelineId, captureId, source });
+  };
+
+  if (captures.length === 0) {
+    return (
+      <p className="text-[10.5px] text-fg-2">
+        No saved captures yet. Use the live tail&rsquo;s &ldquo;Save capture&rdquo; to
+        retain real events, then test changes against them here.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5">
+        <select
+          value={captureId}
+          onChange={(e) => setCaptureId(e.target.value)}
+          aria-label="Select capture"
+          className="h-7 min-w-0 flex-1 rounded-[3px] border border-line-2 bg-bg-2 px-2 text-[11px] text-fg"
+        >
+          <option value="">Select a capture&hellip;</option>
+          {captures.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name} &middot; {c.componentKey} &middot; {c.eventCount} ev
+            </option>
+          ))}
+        </select>
+        <Button
+          size="xs"
+          variant="secondary"
+          disabled={!captureId || !source.trim() || testMutation.isPending}
+          onClick={handleTest}
+        >
+          {testMutation.isPending ? "Testing…" : "Test"}
+        </Button>
+      </div>
+
+      {testMutation.error && (
+        <p className="text-[10.5px] text-status-error">{testMutation.error.message}</p>
+      )}
+
+      {result &&
+        (result.error ? (
+          <p className="rounded-[3px] border border-line bg-bg-1 p-2 font-mono text-[10.5px] text-status-error">
+            {result.error}
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 rounded-[3px] border border-line bg-bg-1 p-2 font-mono text-[10.5px] text-fg-1">
+            <span>in {result.stats.inputCount}</span>
+            <span className="text-status-success">kept {result.stats.outputCount}</span>
+            <span className="text-status-error">dropped {result.stats.droppedCount}</span>
+            <span>events &minus;{result.stats.eventReductionPercent}%</span>
+            <span>bytes &minus;{result.stats.byteReductionPercent}%</span>
+          </div>
+        ))}
     </div>
   );
 }
@@ -701,6 +788,7 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
                 <>
                   {/* VRL Editor for remap source field */}
                   {componentDef.type === "remap" && (
+                    <>
                     <div className="space-y-1.5">
                       <Label className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-fg-2">
                         VRL Source
@@ -714,6 +802,16 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
                         upstreamSourceKeys={upstream.sourceKeys}
                       />
                     </div>
+                      <div className="space-y-1.5 pt-1">
+                        <Label className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-fg-2">
+                          Test against capture
+                        </Label>
+                        <TestAgainstCapture
+                          pipelineId={pipelineId}
+                          source={(config.source as string) ?? ""}
+                        />
+                      </div>
+                    </>
                   )}
 
                   {/* VRL Editor for filter condition field */}
