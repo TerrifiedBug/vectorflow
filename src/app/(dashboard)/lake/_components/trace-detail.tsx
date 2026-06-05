@@ -23,19 +23,32 @@ export interface TraceSpanRow {
 interface OrderedSpan {
   span: TraceSpanRow;
   depth: number;
+  /** Stable unique id for React keys + expansion state. Falls back to the
+   *  source index when a span has no span id (log-like trace events share ""),
+   *  so they don't collide. */
+  key: string;
 }
 
 /**
  * Flatten spans into a parent→child pre-order with depth, so the list renders
  * indented like a tree. Spans whose parent is absent are roots; cycles/orphans
- * are appended defensively so nothing is dropped.
+ * are appended defensively so nothing is dropped. Span ids may be empty (events
+ * with a trace id but no span id) — visited tracking is by object identity and
+ * each row gets a unique `key`, so empty ids never collapse rows together.
  */
 function orderSpans(spans: TraceSpanRow[]): OrderedSpan[] {
-  const byId = new Map(spans.map((s) => [s.spanId, s]));
+  const indexOf = new Map<TraceSpanRow, number>();
+  spans.forEach((s, i) => indexOf.set(s, i));
+  const keyOf = (s: TraceSpanRow) => s.spanId || `__idx_${indexOf.get(s) ?? 0}`;
+
+  // Real span ids → span, for parent resolution. Empty ids can't be a parent.
+  const byId = new Map<string, TraceSpanRow>();
+  for (const s of spans) if (s.spanId) byId.set(s.spanId, s);
+
   const children = new Map<string, TraceSpanRow[]>();
   const roots: TraceSpanRow[] = [];
   for (const s of spans) {
-    if (s.parentSpanId && byId.has(s.parentSpanId)) {
+    if (s.parentSpanId && s.parentSpanId !== s.spanId && byId.has(s.parentSpanId)) {
       const list = children.get(s.parentSpanId) ?? [];
       list.push(s);
       children.set(s.parentSpanId, list);
@@ -43,16 +56,19 @@ function orderSpans(spans: TraceSpanRow[]): OrderedSpan[] {
       roots.push(s);
     }
   }
+
   const out: OrderedSpan[] = [];
-  const visited = new Set<string>();
+  const visited = new Set<TraceSpanRow>();
   function walk(span: TraceSpanRow, depth: number) {
-    if (visited.has(span.spanId)) return;
-    visited.add(span.spanId);
-    out.push({ span, depth });
-    for (const child of children.get(span.spanId) ?? []) walk(child, depth + 1);
+    if (visited.has(span)) return;
+    visited.add(span);
+    out.push({ span, depth, key: keyOf(span) });
+    if (span.spanId) {
+      for (const child of children.get(span.spanId) ?? []) walk(child, depth + 1);
+    }
   }
   for (const root of roots) walk(root, 0);
-  for (const s of spans) if (!visited.has(s.spanId)) out.push({ span: s, depth: 0 });
+  for (const s of spans) if (!visited.has(s)) out.push({ span: s, depth: 0, key: keyOf(s) });
   return out;
 }
 
@@ -116,22 +132,22 @@ export function TraceDetail({
     <div>
       {header}
       <ul className="space-y-0.5">
-        {ordered.map(({ span, depth }) => {
-          const isExpanded = expanded.has(span.spanId);
+        {ordered.map(({ span, depth, key }) => {
+          const isExpanded = expanded.has(key);
           const attrEntries = Object.entries(span.attrs ?? {}).sort(([a], [b]) =>
             a.localeCompare(b),
           );
           const widthPct =
             span.durationMs !== null ? Math.max(2, (span.durationMs / maxDuration) * 100) : 0;
           return (
-            <li key={span.spanId}>
+            <li key={key}>
               <div
                 className="flex items-center gap-2 rounded-[3px] py-1 hover:bg-bg-2"
                 style={{ paddingLeft: depth * 16 }}
               >
                 <button
                   type="button"
-                  onClick={() => toggle(span.spanId)}
+                  onClick={() => toggle(key)}
                   aria-expanded={isExpanded}
                   aria-label={isExpanded ? "Collapse span" : "Expand span"}
                   className="flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"

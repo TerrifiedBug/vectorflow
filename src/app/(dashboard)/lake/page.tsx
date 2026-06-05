@@ -277,7 +277,7 @@ export default function LakePage() {
   const tracesQuery = useQuery({
     ...trpc.lake.listTraces.queryOptions(
       applied && resultsView === "traces"
-        ? { pipelineId: applied.pipelineId, from: applied.from, to: applied.to }
+        ? { pipelineId: applied.pipelineId, from: applied.from, to: applied.to, query: applied.query }
         : { pipelineId: "", from: EPOCH, to: EPOCH },
     ),
     enabled: !!applied && resultsView === "traces",
@@ -286,8 +286,13 @@ export default function LakePage() {
   const traceDetailQuery = useQuery({
     ...trpc.lake.getTrace.queryOptions(
       applied && selectedTraceId
-        ? { pipelineId: applied.pipelineId, traceId: selectedTraceId }
-        : { pipelineId: "", traceId: "_" },
+        ? {
+            pipelineId: applied.pipelineId,
+            traceId: selectedTraceId,
+            from: applied.from,
+            to: applied.to,
+          }
+        : { pipelineId: "", traceId: "_", from: EPOCH, to: EPOCH },
     ),
     enabled: !!applied && !!selectedTraceId && resultsView === "traces",
   });

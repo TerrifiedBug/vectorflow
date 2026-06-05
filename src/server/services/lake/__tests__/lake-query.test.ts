@@ -482,6 +482,21 @@ describe("listTraces — trace grouping", () => {
       { traceId: "t2", spanCount: 1, startTime: "2026-06-01 00:01:00", endTime: "2026-06-01 00:01:00", durationMs: 0, status: "ok" },
     ]);
   });
+
+  it("filters to traces with a matching span (HAVING) when a free-text query is set", async () => {
+    await listTraces({ orgId: "o", pipelineId: "p", from: FROM, to: TO, query: "checkout" });
+    const [sql, params] = lakeQueryMock.mock.calls[0];
+    expect(sql).toContain("HAVING countIf(");
+    expect(sql).toContain("positionCaseInsensitive(message, {query:String})");
+    expect(sql).toContain("positionCaseInsensitive(raw, {query:String})");
+    expect(params?.query).toBe("checkout");
+    expect(sql).not.toContain("checkout"); // term bound, never interpolated
+  });
+
+  it("omits the HAVING filter when no query is given", async () => {
+    await listTraces({ orgId: "o", pipelineId: "p", from: FROM, to: TO });
+    expect(lakeQueryMock.mock.calls[0][0]).not.toContain("HAVING");
+  });
 });
 
 describe("getTrace — spans with schema-on-read attrs", () => {
@@ -502,13 +517,17 @@ describe("getTrace — spans with schema-on-read attrs", () => {
         attrs: { parent_span_id: "s1", duration: "40" },
       },
     ]);
-    const out = await getTrace({ orgId: "org-A", pipelineId: "p", traceId: "t1" });
+    const out = await getTrace({ orgId: "org-A", pipelineId: "p", traceId: "t1", from: FROM, to: TO });
 
     const [sql, params] = lakeQueryMock.mock.calls[0];
     expect(sql).toContain("traceId = {traceId:String}");
     expect(sql).toContain("eventType = 'trace'");
     expect(sql).not.toContain("t1'"); // traceId never interpolated
     expect(params).toMatchObject({ traceId: "t1", orgId: "org-A" });
+    // detail lookup is bounded to the list window (prunes scan; no reused-id bleed)
+    expect(sql).toContain("timestamp >= {from:DateTime64(3)}");
+    expect(sql).toContain("timestamp <= {to:DateTime64(3)}");
+    expect(params).toMatchObject({ from: FROM, to: TO });
 
     expect(out[0]).toMatchObject({ spanId: "s1", parentSpanId: "", name: "GET /", durationMs: 120 });
     // s2: name falls back to message, parent from attrs, duration from `duration`
@@ -516,7 +535,9 @@ describe("getTrace — spans with schema-on-read attrs", () => {
   });
 
   it("returns [] for an empty traceId without querying", async () => {
-    await expect(getTrace({ orgId: "o", pipelineId: "p", traceId: "" })).resolves.toEqual([]);
+    await expect(
+      getTrace({ orgId: "o", pipelineId: "p", traceId: "", from: FROM, to: TO }),
+    ).resolves.toEqual([]);
     expect(lakeQueryMock).not.toHaveBeenCalled();
   });
 });
