@@ -19,9 +19,16 @@ export interface ValidationResult {
 export async function validateConfig(
   yamlContent: string,
 ): Promise<ValidationResult> {
+  // Managed-sink credential placeholders (e.g. the VectorFlow Lake sink's
+  // LAKE[...] refs) are substituted with real values only at config delivery
+  // (resolveLakeSinkForDelivery), not here. `vector validate` parses fields
+  // such as the ClickHouse `endpoint` as a URI, so a literal `LAKE[endpoint]`
+  // panics ("invalid authority: IdnaError"). Stub them with syntactically-valid
+  // stand-ins so validation checks structure; delivery injects the real values.
+  const content = stubManagedSinkPlaceholders(yamlContent);
   const tmpDir = await mkdtemp(join(tmpdir(), "vectorflow-"));
   const tmpFile = join(tmpDir, "config.yaml");
-  await writeFile(tmpFile, yamlContent);
+  await writeFile(tmpFile, content);
 
   try {
     const { stderr } = await execFileAsync(
@@ -86,4 +93,17 @@ function parseVectorWarnings(
           line.toLowerCase().includes("deprecated")),
     )
     .map((line) => ({ message: line.trim() }));
+}
+
+/**
+ * Replace managed-sink credential placeholders (`LAKE[...]`) with
+ * syntactically-valid stand-ins so `vector validate` can parse the config.
+ * These refs are resolved with the real endpoint/credentials only at delivery
+ * (resolveLakeSinkForDelivery); validation only checks structure, so a valid
+ * URL for the endpoint and a non-empty token for the rest is sufficient.
+ */
+export function stubManagedSinkPlaceholders(yaml: string): string {
+  return yaml
+    .replace(/LAKE\[endpoint\]/g, "http://localhost:8123")
+    .replace(/LAKE\[[^\]]+\]/g, "vf_lake_validate");
 }
