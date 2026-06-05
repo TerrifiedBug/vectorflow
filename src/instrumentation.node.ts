@@ -245,6 +245,19 @@ export async function registerNodeInstrumentation() {
     } catch (error) {
       errorLog("instrumentation", "Failed to initialize anomaly detection service", error);
     }
+
+    try {
+      // Dynamic import (matches every sibling here): defer loading the rollup
+      // service and its prisma/admin-client deps until the elected leader
+      // actually starts singleton services — static import would pull them into
+      // the instrumentation hook's eager module graph.
+      const { initMetricsRollupScheduler } = await import(
+        "@/server/services/metrics-rollup"
+      );
+      initMetricsRollupScheduler();
+    } catch (error) {
+      errorLog("instrumentation", "Failed to initialize metrics rollup scheduler", error);
+    }
   }
 
   if (leaderIsLeader()) {

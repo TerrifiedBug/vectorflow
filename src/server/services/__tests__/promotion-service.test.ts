@@ -114,13 +114,13 @@ describe("promotion-service", () => {
     it("creates target pipeline and copies graph in a transaction", async () => {
       const request = {
         id: "req-1",
-        sourcePipelineId: "p-source",
+        pipelineId: "p-source",
         targetEnvironmentId: "env-target",
         targetPipelineName: "My Pipeline",
         globalConfigSnapshot: null,
-        promotedById: "user-1",
-        sourceEnvironmentId: "env-source",
-        sourcePipeline: {
+        requestedById: "user-1",
+        environmentId: "env-source",
+        pipeline: {
           name: "My Pipeline",
           description: "test",
           environmentId: "env-source",
@@ -129,10 +129,10 @@ describe("promotion-service", () => {
         targetEnvironment: { name: "Production", teamId: "team-1" },
       };
 
-      prismaMock.promotionRequest.findUnique.mockResolvedValue(request as never);
+      prismaMock.release.findFirst.mockResolvedValue(request as never);
       prismaMock.pipeline.findFirst.mockResolvedValue(null as never);
       prismaMock.pipeline.create.mockResolvedValue({ id: "p-target", name: "My Pipeline" } as never);
-      prismaMock.promotionRequest.update.mockResolvedValue({} as never);
+      prismaMock.release.update.mockResolvedValue({} as never);
       prismaMock.$transaction.mockImplementation(async (fn: unknown) =>
         (fn as (tx: unknown) => unknown)(prismaMock),
       );
@@ -154,7 +154,7 @@ describe("promotion-service", () => {
     });
 
     it("throws NOT_FOUND when promotion request does not exist", async () => {
-      prismaMock.promotionRequest.findUnique.mockResolvedValue(null);
+      prismaMock.release.findFirst.mockResolvedValue(null);
 
       await expect(
         executePromotion("nonexistent", "user-1"),

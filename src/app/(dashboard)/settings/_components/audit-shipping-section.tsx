@@ -50,7 +50,7 @@ export function AuditLogShippingSection() {
   );
 
   const undeployMutation = useMutation(
-    trpc.deploy.undeploy.mutationOptions({
+    trpc.release.direct.undeploy.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries({
           queryKey: trpc.pipeline.getSystemPipeline.queryKey(),
@@ -64,7 +64,7 @@ export function AuditLogShippingSection() {
   );
 
   const deployMutation = useMutation(
-    trpc.deploy.agent.mutationOptions({
+    trpc.release.direct.agent.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries({
           queryKey: trpc.pipeline.getSystemPipeline.queryKey(),

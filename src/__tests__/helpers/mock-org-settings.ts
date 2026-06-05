@@ -35,6 +35,7 @@ export function mockOrgSettings(
     fleetPollIntervalMs: number;
     fleetUnhealthyThreshold: number;
     metricsRetentionDays: number;
+    metricsRollupRetentionDays: number;
     logsRetentionDays: number;
     anomalyBaselineWindowDays: number;
     anomalySigmaThreshold: number;
@@ -84,6 +85,7 @@ export function mockOrgSettings(
     fleetPollIntervalMs: 15000,
     fleetUnhealthyThreshold: 3,
     metricsRetentionDays: 7,
+    metricsRollupRetentionDays: 90,
     logsRetentionDays: 3,
     anomalyBaselineWindowDays: 7,
     anomalySigmaThreshold: 3,

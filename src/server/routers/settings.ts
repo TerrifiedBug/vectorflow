@@ -106,6 +106,7 @@ export const settingsRouter = router({
         fleetUnhealthyThreshold: settings.fleetUnhealthyThreshold,
         metricsRetentionDays: settings.metricsRetentionDays,
         logsRetentionDays: settings.logsRetentionDays,
+        metricsRollupRetentionDays: settings.metricsRollupRetentionDays,
         backupEnabled: settings.backupEnabled,
         backupCron: settings.backupCron,
         backupRetentionCount: settings.backupRetentionCount,
@@ -323,6 +324,7 @@ export const settingsRouter = router({
         unhealthyThreshold: z.number().int().min(1).max(100),
         metricsRetentionDays: z.number().int().min(1).max(365).optional(),
         logsRetentionDays: z.number().int().min(1).max(30).optional(),
+        metricsRollupRetentionDays: z.number().int().min(1).max(3650).optional(),
       })
     )
     .use(withAudit("settings.fleet_updated", "SystemSettings"))
@@ -332,6 +334,7 @@ export const settingsRouter = router({
         fleetUnhealthyThreshold: input.unhealthyThreshold,
         ...(input.metricsRetentionDays !== undefined ? { metricsRetentionDays: input.metricsRetentionDays } : {}),
         ...(input.logsRetentionDays !== undefined ? { logsRetentionDays: input.logsRetentionDays } : {}),
+        ...(input.metricsRollupRetentionDays !== undefined ? { metricsRollupRetentionDays: input.metricsRollupRetentionDays } : {}),
       });
     }),
 
@@ -350,7 +353,13 @@ export const settingsRouter = router({
     .use(withAudit("settings.anomaly_config_updated", "SystemSettings"))
     .mutation(async ({ input, ctx }) => {
       // Validate enabled metrics
-      const validMetrics = new Set(["eventsIn", "errorsTotal", "latencyMeanMs"]);
+      const validMetrics = new Set([
+        "eventsIn",
+        "errorsTotal",
+        "latencyMeanMs",
+        "spansIn",
+        "tracesIn",
+      ]);
       const metrics = input.enabledMetrics.split(",").map((s) => s.trim());
       const invalid = metrics.filter((m) => !validMetrics.has(m));
       if (invalid.length > 0) {

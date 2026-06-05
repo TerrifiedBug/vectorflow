@@ -9,6 +9,7 @@ import {
   authElasticsearchSchema,
   authBasicBearerSchema,
 } from "../shared";
+import { LAKE_SINK_TYPE } from "../../lake-sink";
 
 export const searchDbSinks: VectorComponentDef[] = [
   {
@@ -287,6 +288,26 @@ export const searchDbSinks: VectorComponentDef[] = [
         ...requestSchema(),
       },
       required: ["endpoint", "table"],
+    },
+  },
+  {
+    type: LAKE_SINK_TYPE,
+    kind: "sink",
+    displayName: "VectorFlow Lake",
+    description:
+      "Managed full-fidelity store for the VectorFlow Lake. Accepts log events — including trace spans and metric_to_log output, which the lake classifies into log, metric and trace rows. Endpoint and credentials are injected automatically at config delivery.",
+    category: "Database",
+    inputTypes: ["log"],
+    outputTypes: ["log"],
+    icon: "Database",
+    // One-click managed destination: there are no connection fields. The
+    // endpoint/database/credentials are resolved from the server's lake config
+    // at delivery (see resolveLakeSinkForDelivery) — never entered by the user
+    // nor stored in the pipeline graph.
+    configSchema: {
+      type: "object",
+      properties: {},
+      required: [],
     },
   },
   {

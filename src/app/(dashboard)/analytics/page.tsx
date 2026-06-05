@@ -47,6 +47,9 @@ interface PipelineRow {
   bytesOut: number;
   eventsIn: number;
   eventsOut: number;
+  spansIn: number;
+  spansOut: number;
+  tracesIn: number;
   reduction: number;
   eventsReduced: number;
 }
@@ -474,6 +477,8 @@ export default function AnalyticsPage() {
                           Bytes Out{sortIndicator("bytesOut")}
                         </button>
                       </TableHead>
+                      <TableHead className="select-none text-right">Spans In</TableHead>
+                      <TableHead className="select-none text-right">Traces In</TableHead>
                       <TableHead className="select-none text-right">
                         <button
                           type="button"
@@ -505,6 +510,12 @@ export default function AnalyticsPage() {
                         </TableCell>
                         <TableCell className="text-right font-mono tabular-nums">
                           {formatBytes(p.bytesOut)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono tabular-nums">
+                          {p.spansIn.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right font-mono tabular-nums">
+                          {p.tracesIn.toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">

@@ -103,13 +103,14 @@ export async function resetQaSeed(prisma: PrismaClient) {
   })) ?? [];
   const qaNodeIds = qaNodes.map((node) => node.id);
 
-  const qaPromotionRequests = (await prisma.promotionRequest.findMany({
+  const qaPromotionRequests = (await prisma.release.findMany({
     where: {
+      strategy: "PROMOTION",
       OR: [
         { id: { in: QA_IDS.promotions } },
-        { sourceEnvironmentId: { in: QA_IDS.environments } },
+        { environmentId: { in: QA_IDS.environments } },
         { targetEnvironmentId: { in: QA_IDS.environments } },
-        { sourcePipelineId: { in: qaPipelineIds } },
+        { pipelineId: { in: qaPipelineIds } },
       ],
     },
     select: { id: true },
@@ -197,17 +198,6 @@ export async function resetQaSeed(prisma: PrismaClient) {
   })) ?? [];
   const qaAlertEventIds = qaAlertEvents.map((event) => event.id);
 
-  const qaDeployRequests = (await prisma.deployRequest.findMany({
-    where: {
-      OR: [
-        { environmentId: { in: QA_IDS.environments } },
-        { pipelineId: { in: qaPipelineIds } },
-      ],
-    },
-    select: { id: true },
-  })) ?? [];
-  const qaDeployRequestIds = qaDeployRequests.map((request) => request.id);
-
   const qaGitSyncJobs = (await prisma.gitSyncJob.findMany({
     where: {
       OR: [
@@ -272,18 +262,20 @@ export async function resetQaSeed(prisma: PrismaClient) {
       ],
     },
   });
-  await prisma.promotionRequest.deleteMany({
+  await prisma.release.deleteMany({
     where: {
+      strategy: "PROMOTION",
       OR: [
         { id: { in: qaPromotionIds } },
-        { sourceEnvironmentId: { in: QA_IDS.environments } },
+        { environmentId: { in: QA_IDS.environments } },
         { targetEnvironmentId: { in: QA_IDS.environments } },
-        { sourcePipelineId: { in: qaPipelineIds } },
+        { pipelineId: { in: qaPipelineIds } },
       ],
     },
   });
-  await prisma.deployRequest.deleteMany({
+  await prisma.release.deleteMany({
     where: {
+      strategy: "DIRECT",
       OR: [
         { environmentId: { in: QA_IDS.environments } },
         { pipelineId: { in: qaPipelineIds } },
@@ -363,8 +355,9 @@ export async function resetQaSeed(prisma: PrismaClient) {
   });
   await prisma.sharedComponent.deleteMany({ where: { environmentId: { in: QA_IDS.environments } } });
   await prisma.filterPreset.deleteMany({ where: { environmentId: { in: QA_IDS.environments } } });
-  await prisma.stagedRollout.deleteMany({
+  await prisma.release.deleteMany({
     where: {
+      strategy: "CANARY",
       OR: [
         { environmentId: { in: QA_IDS.environments } },
         { pipelineId: { in: qaPipelineIds } },

@@ -133,7 +133,7 @@ vi.mock("@tanstack/react-query", () => ({
       case "metrics.getLiveRates":
         return { data: { rates: { "pipe-1": { eventsPerSec: 42, bytesPerSec: 512 } } }, isLoading: false, isError: false, isSuccess: true, error: null, refetch: vi.fn() };
       case "filterPreset.list":
-      case "deploy.listPendingRequests":
+      case "release.direct.listPendingRequests":
       case "pipelineGroup.list":
         return { data: [], isLoading: false, isError: false, isSuccess: true, error: null, refetch: vi.fn() };
       case "pipeline.batchHealth":
@@ -167,8 +167,10 @@ vi.mock("@/trpc/client", () => ({
     filterPreset: {
       list: { queryOptions: () => ({ __name: "filterPreset.list" }) },
     },
-    deploy: {
-      listPendingRequests: { queryOptions: () => ({ __name: "deploy.listPendingRequests" }) },
+    release: {
+      direct: {
+        listPendingRequests: { queryOptions: () => ({ __name: "release.direct.listPendingRequests" }) },
+      },
     },
     anomaly: {
       countByPipeline: { queryOptions: () => ({ __name: "anomaly.countByPipeline" }) },

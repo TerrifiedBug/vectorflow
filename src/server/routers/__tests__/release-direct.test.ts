@@ -75,21 +75,22 @@ vi.mock("@/lib/deployment-strategy", () => ({
 // ─── Import SUT + mocks ─────────────────────────────────────────────────────
 
 import { prisma } from "@/lib/prisma";
-import { deployRouter } from "@/server/routers/deploy";
+import { directReleaseRouter } from "@/server/routers/release/direct";
 import * as deployAgentModule from "@/server/services/deploy-agent";
 import * as pipelineVersionModule from "@/server/services/pipeline-version";
 import * as pushBroadcast from "@/server/services/push-broadcast";
 import * as eventAlerts from "@/server/services/event-alerts";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
-const caller = t.createCallerFactory(deployRouter)({
+const appRouter = t.router({ release: t.router({ direct: directReleaseRouter }) });
+const caller = t.createCallerFactory(appRouter)({
   session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
   userRole: "ADMIN",
   teamId: "team-1",
   organizationId: "org-1",
 });
 
-const editorCaller = t.createCallerFactory(deployRouter)({
+const editorCaller = t.createCallerFactory(appRouter)({
   session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
   userRole: "EDITOR",
   teamId: "team-1",
@@ -127,7 +128,7 @@ function makePipeline(overrides: Record<string, unknown> = {}) {
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
-describe("deploy router", () => {
+describe("release.direct router", () => {
   beforeEach(() => {
     mockReset(prismaMock);
     vi.clearAllMocks();
@@ -140,7 +141,7 @@ describe("deploy router", () => {
       prismaMock.pipeline.findUnique.mockResolvedValue(makePipeline() as never);
       prismaMock.pipelineVersion.findFirst.mockResolvedValue(null);
 
-      const result = await caller.preview({ pipelineId: "pipeline-1" });
+      const result = await caller.release.direct.preview({ pipelineId: "pipeline-1" });
 
       expect(result.configYaml).toBeDefined();
       expect(result.validation).toEqual({ valid: true, errors: [] });
@@ -152,7 +153,7 @@ describe("deploy router", () => {
       prismaMock.pipeline.findUnique.mockResolvedValue(null);
 
       await expect(
-        caller.preview({ pipelineId: "nonexistent" }),
+        caller.release.direct.preview({ pipelineId: "nonexistent" }),
       ).rejects.toThrow("Pipeline not found");
     });
 
@@ -164,7 +165,7 @@ describe("deploy router", () => {
         logLevel: "debug",
       } as never);
 
-      const result = await caller.preview({ pipelineId: "pipeline-1" });
+      const result = await caller.release.direct.preview({ pipelineId: "pipeline-1" });
 
       expect(result.currentConfigYaml).toBe("old yaml");
       expect(result.currentVersion).toBe(3);
@@ -183,7 +184,7 @@ describe("deploy router", () => {
         pushedNodeIds: ["node-a"],
       } as never);
 
-      const result = await caller.agent({
+      const result = await caller.release.direct.agent({
         pipelineId: "pipeline-1",
         changelog: "initial deploy",
       });
@@ -202,8 +203,8 @@ describe("deploy router", () => {
           environment: { id: "env-1", name: "Production", requireDeployApproval: true },
         }) as never,
       );
-      prismaMock.deployRequest.findFirst.mockResolvedValue(null);
-      prismaMock.deployRequest.create.mockResolvedValue({
+      prismaMock.release.findFirst.mockResolvedValue(null);
+      prismaMock.release.create.mockResolvedValue({
         id: "req-1",
         pipelineId: "pipeline-1",
         status: "PENDING",
@@ -212,7 +213,7 @@ describe("deploy router", () => {
         (fn as (tx: unknown) => Promise<unknown>)(prismaMock),
       );
 
-      const result = await editorCaller.agent({
+      const result = await editorCaller.release.direct.agent({
         pipelineId: "pipeline-1",
         changelog: "needs approval",
       });
@@ -228,13 +229,13 @@ describe("deploy router", () => {
           environment: { id: "env-1", name: "Production", requireDeployApproval: true },
         }) as never,
       );
-      prismaMock.deployRequest.findFirst.mockResolvedValue({ id: "existing-req" } as never);
+      prismaMock.release.findFirst.mockResolvedValue({ id: "existing-req" } as never);
       prismaMock.$transaction.mockImplementation(async (fn) =>
         (fn as (tx: unknown) => Promise<unknown>)(prismaMock),
       );
 
       await expect(
-        editorCaller.agent({
+        editorCaller.release.direct.agent({
           pipelineId: "pipeline-1",
           changelog: "duplicate",
         }),
@@ -245,7 +246,7 @@ describe("deploy router", () => {
       prismaMock.pipeline.findUnique.mockResolvedValue(null);
 
       await expect(
-        caller.agent({ pipelineId: "nonexistent", changelog: "test" }),
+        caller.release.direct.agent({ pipelineId: "nonexistent", changelog: "test" }),
       ).rejects.toThrow("Pipeline not found");
     });
 
@@ -258,7 +259,7 @@ describe("deploy router", () => {
       } as never);
       prismaMock.pipeline.update.mockResolvedValue({} as never);
 
-      await caller.agent({
+      await caller.release.direct.agent({
         pipelineId: "pipeline-1",
         changelog: "with selector",
         nodeSelector: { region: "us-east" },
@@ -288,7 +289,7 @@ describe("deploy router", () => {
         { id: "agent-2" },
       ] as never);
 
-      const result = await caller.undeploy({ pipelineId: "pipeline-1" });
+      const result = await caller.release.direct.undeploy({ pipelineId: "pipeline-1" });
 
       expect(result.success).toBe(true);
       expect(pushBroadcast.relayPush).toHaveBeenCalledTimes(2);
@@ -298,7 +299,7 @@ describe("deploy router", () => {
       prismaMock.pipeline.findUnique.mockResolvedValue(null);
 
       await expect(
-        caller.undeploy({ pipelineId: "nonexistent" }),
+        caller.release.direct.undeploy({ pipelineId: "nonexistent" }),
       ).rejects.toThrow("Pipeline not found");
     });
   });
@@ -313,7 +314,7 @@ describe("deploy router", () => {
         pushedNodeIds: ["agent-1"],
       } as never);
 
-      const result = await caller.deployFromVersion({
+      const result = await caller.release.direct.deployFromVersion({
         pipelineId: "pipeline-1",
         sourceVersionId: "v1",
         changelog: "rollback",
@@ -327,7 +328,7 @@ describe("deploy router", () => {
       prismaMock.pipeline.findUnique.mockResolvedValue(null);
 
       await expect(
-        caller.deployFromVersion({
+        caller.release.direct.deployFromVersion({
           pipelineId: "nonexistent",
           sourceVersionId: "v1",
         }),
@@ -342,7 +343,7 @@ describe("deploy router", () => {
       );
 
       await expect(
-        editorCaller.deployFromVersion({
+        editorCaller.release.direct.deployFromVersion({
           pipelineId: "pipeline-1",
           sourceVersionId: "v1",
         }),
@@ -364,7 +365,7 @@ describe("deploy router", () => {
         },
       } as never);
 
-      const result = await caller.environmentInfo({ pipelineId: "pipeline-1" });
+      const result = await caller.release.direct.environmentInfo({ pipelineId: "pipeline-1" });
 
       expect(result.environmentId).toBe("env-1");
       expect(result.environmentName).toBe("Development");
@@ -375,7 +376,7 @@ describe("deploy router", () => {
       prismaMock.pipeline.findUnique.mockResolvedValue(null);
 
       await expect(
-        caller.environmentInfo({ pipelineId: "nonexistent" }),
+        caller.release.direct.environmentInfo({ pipelineId: "nonexistent" }),
       ).rejects.toThrow("Pipeline not found");
     });
   });
@@ -384,35 +385,35 @@ describe("deploy router", () => {
 
   describe("approveDeployRequest", () => {
     it("approves a pending deploy request", async () => {
-      prismaMock.deployRequest.findUnique.mockResolvedValue({
+      prismaMock.release.findFirst.mockResolvedValue({
         id: "req-1",
         status: "PENDING",
         requestedById: "user-2",
       } as never);
-      prismaMock.deployRequest.updateMany.mockResolvedValue({ count: 1 } as never);
+      prismaMock.release.updateMany.mockResolvedValue({ count: 1 } as never);
 
-      const result = await caller.approveDeployRequest({ requestId: "req-1" });
+      const result = await caller.release.direct.approveDeployRequest({ requestId: "req-1" });
 
       expect(result.success).toBe(true);
     });
 
     it("prevents self-approval", async () => {
-      prismaMock.deployRequest.findUnique.mockResolvedValue({
+      prismaMock.release.findFirst.mockResolvedValue({
         id: "req-1",
         status: "PENDING",
         requestedById: "user-1",
       } as never);
 
       await expect(
-        caller.approveDeployRequest({ requestId: "req-1" }),
+        caller.release.direct.approveDeployRequest({ requestId: "req-1" }),
       ).rejects.toThrow("Cannot approve your own deploy request");
     });
 
     it("throws NOT_FOUND when request is not pending", async () => {
-      prismaMock.deployRequest.findUnique.mockResolvedValue(null);
+      prismaMock.release.findFirst.mockResolvedValue(null);
 
       await expect(
-        caller.approveDeployRequest({ requestId: "nonexistent" }),
+        caller.release.direct.approveDeployRequest({ requestId: "nonexistent" }),
       ).rejects.toThrow("not found or not pending");
     });
 
@@ -428,10 +429,10 @@ describe("deploy router", () => {
         nodeSelector: { region: "us-east" },
       };
 
-      prismaMock.deployRequest.updateMany
+      prismaMock.release.updateMany
         .mockResolvedValueOnce({ count: 1 } as never)
         .mockResolvedValueOnce({ count: 0 } as never);
-      prismaMock.deployRequest.findUnique.mockResolvedValueOnce(approvedRequest as never);
+      prismaMock.release.findFirst.mockResolvedValueOnce(approvedRequest as never);
       vi.mocked(deployAgentModule.deployAgent).mockResolvedValueOnce({
         success: true,
         versionId: "v2",
@@ -447,7 +448,7 @@ describe("deploy router", () => {
         pushedNodeIds: ["agent-1"],
       } as never);
 
-      const executed = await caller.executeApprovedRequest({ requestId: "req-1" });
+      const executed = await caller.release.direct.executeApprovedRequest({ requestId: "req-1" });
 
       expect(executed.success).toBe(true);
       expect(deployAgentModule.deployAgent).toHaveBeenCalledWith(
@@ -464,10 +465,10 @@ describe("deploy router", () => {
       );
 
       await expect(
-        caller.executeApprovedRequest({ requestId: "req-1" }),
+        caller.release.direct.executeApprovedRequest({ requestId: "req-1" }),
       ).rejects.toThrow("Request is not in APPROVED state");
 
-      const rollback = await caller.deployFromVersion({
+      const rollback = await caller.release.direct.deployFromVersion({
         pipelineId: "pipeline-1",
         sourceVersionId: "v1",
         changelog: "Rollback to version 1",
@@ -491,15 +492,15 @@ describe("deploy router", () => {
 
   describe("rejectDeployRequest", () => {
     it("rejects a pending deploy request", async () => {
-      prismaMock.deployRequest.findUnique.mockResolvedValue({
+      prismaMock.release.findFirst.mockResolvedValue({
         id: "req-1",
         status: "PENDING",
         environmentId: "env-1",
         pipelineId: "pipeline-1",
       } as never);
-      prismaMock.deployRequest.updateMany.mockResolvedValue({ count: 1 } as never);
+      prismaMock.release.updateMany.mockResolvedValue({ count: 1 } as never);
 
-      const result = await caller.rejectDeployRequest({
+      const result = await caller.release.direct.rejectDeployRequest({
         requestId: "req-1",
         note: "Not ready for production",
       });
@@ -513,10 +514,10 @@ describe("deploy router", () => {
     });
 
     it("throws NOT_FOUND when request is not pending", async () => {
-      prismaMock.deployRequest.findUnique.mockResolvedValue(null);
+      prismaMock.release.findFirst.mockResolvedValue(null);
 
       await expect(
-        caller.rejectDeployRequest({ requestId: "nonexistent" }),
+        caller.release.direct.rejectDeployRequest({ requestId: "nonexistent" }),
       ).rejects.toThrow("not found or not pending");
     });
   });
@@ -525,35 +526,35 @@ describe("deploy router", () => {
 
   describe("cancelDeployRequest", () => {
     it("requester can cancel their own pending request", async () => {
-      prismaMock.deployRequest.findUnique
+      prismaMock.release.findFirst
         .mockResolvedValueOnce({ status: "PENDING", requestedById: "user-1" } as never)
         .mockResolvedValueOnce({ environmentId: "env-1", pipelineId: "pipeline-1" } as never);
-      prismaMock.deployRequest.updateMany.mockResolvedValue({ count: 1 } as never);
+      prismaMock.release.updateMany.mockResolvedValue({ count: 1 } as never);
 
-      const result = await caller.cancelDeployRequest({ requestId: "req-1" });
+      const result = await caller.release.direct.cancelDeployRequest({ requestId: "req-1" });
 
       expect(result.cancelled).toBe(true);
     });
 
     it("throws FORBIDDEN when non-requester tries to cancel a pending request", async () => {
-      prismaMock.deployRequest.findUnique.mockResolvedValue({
+      prismaMock.release.findFirst.mockResolvedValue({
         status: "PENDING",
         requestedById: "user-2",
       } as never);
 
       await expect(
-        caller.cancelDeployRequest({ requestId: "req-1" }),
+        caller.release.direct.cancelDeployRequest({ requestId: "req-1" }),
       ).rejects.toThrow("Only the requester can cancel a pending request");
     });
 
     it("throws BAD_REQUEST when request is not in a cancellable state", async () => {
-      prismaMock.deployRequest.findUnique.mockResolvedValue({
+      prismaMock.release.findFirst.mockResolvedValue({
         status: "DEPLOYED",
         requestedById: "user-1",
       } as never);
 
       await expect(
-        caller.cancelDeployRequest({ requestId: "req-1" }),
+        caller.release.direct.cancelDeployRequest({ requestId: "req-1" }),
       ).rejects.toThrow("not pending or approved");
     });
   });

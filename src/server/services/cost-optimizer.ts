@@ -3,9 +3,16 @@ import type {
   AnalysisResult,
   PipelineAggregates,
   AnalysisThresholds,
+  FieldCardinality,
 } from "@/server/services/cost-optimizer-types";
 import { DEFAULT_THRESHOLDS } from "@/server/services/cost-optimizer-types";
 import { debugLog } from "@/lib/logger";
+import { simulateTailSample } from "@/server/services/trace-sampling";
+import {
+  DEFAULT_TAIL_SAMPLE_KEY,
+  DEFAULT_TAIL_SAMPLE_WINDOW_MS,
+  DEFAULT_TAIL_SAMPLE_BASELINE_PERCENT,
+} from "@/lib/vector/tail-sample";
 
 const TAG = "cost-optimizer";
 
@@ -30,6 +37,9 @@ export async function aggregatePipelineMetrics(
       eventsOut: true,
       errorsTotal: true,
       eventsDiscarded: true,
+      spansIn: true,
+      spansOut: true,
+      tracesIn: true,
     },
     _count: { id: true },
   });
@@ -65,6 +75,9 @@ export async function aggregatePipelineMetrics(
         totalEventsOut: r._sum.eventsOut ?? BigInt(0),
         totalErrors: r._sum.errorsTotal ?? BigInt(0),
         totalDiscarded: r._sum.eventsDiscarded ?? BigInt(0),
+        totalSpansIn: r._sum.spansIn ?? BigInt(0),
+        totalSpansOut: r._sum.spansOut ?? BigInt(0),
+        totalTracesIn: r._sum.tracesIn ?? BigInt(0),
         metricCount: r._count.id,
       };
     })
@@ -244,6 +257,324 @@ export async function detectStalePipelines(
 }
 
 /**
+ * Fetch the most recent sampled events for a pipeline, preferring a persisted
+ * `TapCapture` (named, retained) and falling back to the latest successful
+ * `EventSample`. Returns `[]` when neither exists — callers MUST skip cleanly
+ * rather than fabricate events.
+ */
+export async function fetchRecentPipelineEvents(
+  pipelineId: string,
+): Promise<unknown[]> {
+  const capture = await prisma.tapCapture.findFirst({
+    where: { pipelineId },
+    orderBy: { createdAt: "desc" },
+    select: { events: true },
+  });
+  if (capture && Array.isArray(capture.events) && capture.events.length > 0) {
+    return capture.events as unknown[];
+  }
+
+  const sample = await prisma.eventSample.findFirst({
+    where: { pipelineId, error: null },
+    orderBy: { sampledAt: "desc" },
+    select: { events: true },
+  });
+  if (sample && Array.isArray(sample.events) && sample.events.length > 0) {
+    return sample.events as unknown[];
+  }
+
+  return [];
+}
+
+/** Stable string key for distinct-value counting (objects/arrays included). */
+function cardinalityKey(value: unknown): string {
+  if (value === undefined) return "\u0000undefined";
+  try {
+    return JSON.stringify(value) ?? "\u0000null";
+  } catch {
+    return String(value);
+  }
+}
+
+/** Cap distinct-value tracking per field so a pathological sample can't OOM. */
+const MAX_DISTINCT_TRACKED = 50_000;
+
+/**
+ * Compute per-top-level-field distinct-value cardinality over a sample of
+ * events and return only the fields that clear the high-cardinality thresholds
+ * (near-unique values across enough occurrences), sorted by ratio then count.
+ * Pure — no I/O.
+ */
+export function analyzeCardinality(
+  events: readonly unknown[],
+  thresholds: AnalysisThresholds = DEFAULT_THRESHOLDS,
+): FieldCardinality[] {
+  const present = new Map<string, number>();
+  const distinct = new Map<string, Set<string>>();
+
+  for (const ev of events) {
+    if (!ev || typeof ev !== "object" || Array.isArray(ev)) continue;
+    for (const [field, value] of Object.entries(ev as Record<string, unknown>)) {
+      present.set(field, (present.get(field) ?? 0) + 1);
+      let set = distinct.get(field);
+      if (!set) {
+        set = new Set<string>();
+        distinct.set(field, set);
+      }
+      if (set.size < MAX_DISTINCT_TRACKED) set.add(cardinalityKey(value));
+    }
+  }
+
+  const results: FieldCardinality[] = [];
+  for (const [field, presentCount] of present) {
+    if (presentCount < thresholds.minCardinalitySamples) continue;
+    const distinctCount = distinct.get(field)?.size ?? 0;
+    if (distinctCount < thresholds.minCardinalityDistinct) continue;
+    const ratio = presentCount > 0 ? distinctCount / presentCount : 0;
+    if (ratio >= thresholds.minCardinalityRatio) {
+      results.push({
+        field,
+        distinctCount,
+        presentCount,
+        ratio: Math.round(ratio * 10000) / 10000,
+      });
+    }
+  }
+
+  return results.sort(
+    (a, b) => b.ratio - a.ratio || b.distinctCount - a.distinctCount,
+  );
+}
+
+/**
+ * Estimate the fraction of total serialized bytes attributable to `fields`
+ * across the sample (key + value JSON size / whole-event JSON size). Used to
+ * project byte savings from dropping the offending fields.
+ */
+function estimateFieldByteFraction(
+  events: readonly unknown[],
+  fields: readonly string[],
+): number {
+  const fieldSet = new Set(fields);
+  let total = 0;
+  let dropped = 0;
+  for (const ev of events) {
+    const serialized = (() => {
+      try {
+        return JSON.stringify(ev) ?? "";
+      } catch {
+        return "";
+      }
+    })();
+    total += serialized.length;
+    if (ev && typeof ev === "object" && !Array.isArray(ev)) {
+      for (const [field, value] of Object.entries(ev as Record<string, unknown>)) {
+        if (!fieldSet.has(field)) continue;
+        const valueLen = (() => {
+          try {
+            return (JSON.stringify(value ?? null) ?? "null").length;
+          } catch {
+            return 0;
+          }
+        })();
+        // value + "key": + surrounding quotes/comma (~4 bytes)
+        dropped += valueLen + field.length + 4;
+      }
+    }
+  }
+  return total > 0 ? Math.min(1, dropped / total) : 0;
+}
+
+/**
+ * Detect high-cardinality fields on high-volume pipelines. For each high-volume
+ * pipeline with a recent event sample, flag near-unique fields and propose
+ * dropping them. Pipelines without an event sample are skipped cleanly (no
+ * fabricated analysis).
+ */
+export async function detectHighCardinality(
+  aggregates: readonly PipelineAggregates[],
+  thresholds: AnalysisThresholds = DEFAULT_THRESHOLDS,
+  sinkKeyMap: Map<string, string> = new Map(),
+): Promise<AnalysisResult[]> {
+  const results: AnalysisResult[] = [];
+
+  for (const agg of aggregates) {
+    // Only assess high-volume pipelines — a near-unique field on a trickle of
+    // data is not worth a recommendation.
+    if (agg.totalBytesIn < thresholds.minBytesIn) continue;
+
+    const events = await fetchRecentPipelineEvents(agg.pipelineId);
+    if (events.length < thresholds.minCardinalitySamples) continue;
+
+    const offenders = analyzeCardinality(events, thresholds);
+    if (offenders.length === 0) continue;
+
+    const fields = offenders.map((o) => o.field);
+    const fraction = estimateFieldByteFraction(events, fields);
+    const estimatedSavings = BigInt(
+      Math.round(Number(agg.totalBytesIn) * fraction),
+    );
+
+    results.push({
+      pipelineId: agg.pipelineId,
+      pipelineName: agg.pipelineName,
+      environmentId: agg.environmentId,
+      teamId: agg.teamId,
+      type: "HIGH_CARDINALITY",
+      title: `Pipeline "${agg.pipelineName}" has high-cardinality field(s)`,
+      description:
+        `Sampled ${events.length} events and found ${offenders.length} near-unique ` +
+        `high-cardinality field(s): ${fields.map((f) => `"${f}"`).join(", ")}. ` +
+        `High-cardinality fields bloat index size and storage cost downstream. ` +
+        `Consider dropping or aggregating them before the sink.`,
+      analysisData: {
+        sampleSize: events.length,
+        fields: offenders.map((o) => ({
+          field: o.field,
+          distinctCount: o.distinctCount,
+          presentCount: o.presentCount,
+          ratio: o.ratio,
+        })),
+        estimatedByteFraction: fraction,
+        bytesIn: agg.totalBytesIn.toString(),
+        targetSinkKey: sinkKeyMap.get(agg.pipelineId) ?? "",
+      },
+      estimatedSavingsBytes: estimatedSavings,
+      suggestedAction: {
+        type: "drop_field",
+        config: {
+          fields,
+          componentKey: `drop_hicard_${agg.pipelineId.slice(0, 8)}`,
+        },
+      },
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Detect high-volume, low-error trace pipelines that are strong tail-sampling
+ * candidates. Projects the keep/drop ratio with the A6 simulator over the
+ * pipeline's most recent REAL trace events (TapCapture/EventSample); when no
+ * sample exists, falls back to a conservative estimate from the keep policy.
+ * Emits a TRACE_TAIL_SAMPLE recommendation whose suggestedAction is a
+ * `tail_sample` transform config (key=trace_id; keep error + slow + a small
+ * probabilistic baseline). Skips pipelines with no trace volume, a high error
+ * rate, or a sub-threshold projected reduction. Storage dedup/expiry are handled
+ * downstream by storeRecommendations.
+ */
+export async function detectTraceTailSample(
+  aggregates: readonly PipelineAggregates[],
+  thresholds: AnalysisThresholds = DEFAULT_THRESHOLDS,
+  sinkKeyMap: Map<string, string> = new Map(),
+): Promise<AnalysisResult[]> {
+  const results: AnalysisResult[] = [];
+
+  for (const agg of aggregates) {
+    const totalSpansIn = agg.totalSpansIn ?? BigInt(0);
+    const totalTracesIn = agg.totalTracesIn ?? BigInt(0);
+
+    // Skip pipelines with no trace volume (log/metric-only never qualify).
+    if (totalSpansIn === BigInt(0) && totalTracesIn === BigInt(0)) continue;
+    // Require genuinely high span volume to justify a stateful windowed sampler.
+    if (totalSpansIn < thresholds.minSpansForTailSample) continue;
+
+    // Error rate as errors-per-span. Tail sampling always keeps error traces, so
+    // a high-error pipeline would keep most data and save little — skip it.
+    const errorRate =
+      totalSpansIn > BigInt(0) ? Number(agg.totalErrors) / Number(totalSpansIn) : 0;
+    if (errorRate > thresholds.maxTraceErrorRate) continue;
+
+    const tailConfig = {
+      key: DEFAULT_TAIL_SAMPLE_KEY,
+      windowMs: DEFAULT_TAIL_SAMPLE_WINDOW_MS,
+      keepPolicies: {
+        onError: true,
+        slowThresholdMs: 1000,
+        baselinePercent: DEFAULT_TAIL_SAMPLE_BASELINE_PERCENT,
+      },
+    };
+
+    // Prefer the A6 simulator over the pipeline's real recent trace events;
+    // fall back to a conservative keep-policy estimate when none are captured.
+    const events = await fetchRecentPipelineEvents(agg.pipelineId);
+    let reductionPercent: number;
+    let projectionBasis: "simulated" | "estimated";
+    let simulation: ReturnType<typeof simulateTailSample> | null = null;
+
+    if (events.length > 0) {
+      simulation = simulateTailSample(events, tailConfig);
+      reductionPercent = simulation.spanReductionPercent;
+      projectionBasis = "simulated";
+    } else {
+      // Keep error traces + the baseline % of the rest; everything else drops.
+      reductionPercent =
+        Math.round(
+          (1 - errorRate) *
+            (1 - tailConfig.keepPolicies.baselinePercent / 100) *
+            100 *
+            100,
+        ) / 100;
+      projectionBasis = "estimated";
+    }
+
+    // Only recommend when the projected drop is worth a config change.
+    if (reductionPercent < thresholds.minTailSampleReductionPercent) continue;
+
+    const estimatedSavings = BigInt(
+      Math.round((Number(agg.totalBytesIn) * reductionPercent) / 100),
+    );
+
+    results.push({
+      pipelineId: agg.pipelineId,
+      pipelineName: agg.pipelineName,
+      environmentId: agg.environmentId,
+      teamId: agg.teamId,
+      type: "TRACE_TAIL_SAMPLE",
+      title: `Pipeline "${agg.pipelineName}" is a strong tail-sampling candidate`,
+      description:
+        `This pipeline processed ${totalSpansIn.toString()} spans across ` +
+        `${totalTracesIn.toString()} traces in the last 24 hours at a low error ` +
+        `rate (${(errorRate * 100).toFixed(2)}%). Tail-based sampling (keep every ` +
+        `error/slow trace plus a ${tailConfig.keepPolicies.baselinePercent}% baseline) ` +
+        `would drop a projected ${reductionPercent.toFixed(1)}% of trace volume ` +
+        `(${projectionBasis}) while preserving the traces that matter.`,
+      analysisData: {
+        spansIn: totalSpansIn.toString(),
+        spansOut: (agg.totalSpansOut ?? BigInt(0)).toString(),
+        tracesIn: totalTracesIn.toString(),
+        errorRate,
+        projectedReductionPercent: reductionPercent,
+        projectionBasis,
+        ...(simulation
+          ? {
+              totalTraces: simulation.totalTraces,
+              keptTraces: simulation.keptTraces,
+              droppedTraces: simulation.droppedTraces,
+              keepRatio: simulation.keepRatio,
+              keptByPolicy: simulation.keptByPolicy,
+            }
+          : {}),
+        targetSinkKey: sinkKeyMap.get(agg.pipelineId) ?? "",
+      },
+      estimatedSavingsBytes: estimatedSavings,
+      suggestedAction: {
+        type: "tail_sample",
+        config: {
+          componentKey: `tail_sample_${agg.pipelineId.slice(0, 8)}`,
+          key: tailConfig.key,
+          windowMs: tailConfig.windowMs,
+          keepPolicies: tailConfig.keepPolicies,
+        },
+      },
+    });
+  }
+
+  return results;
+}
+
+/**
  * Run the complete cost analysis pipeline.
  * Returns all recommendations found across all four dimensions.
  */
@@ -273,17 +604,21 @@ export async function runCostAnalysis(
     }
   }
 
-  const [lowReduction, highError, stale] = await Promise.all([
+  const [lowReduction, highError, stale, cardinality, traceTailSample] = await Promise.all([
     Promise.resolve(detectLowReduction(aggregates, thresholds, sinkKeyMap)),
     Promise.resolve(detectHighErrorRate(aggregates, thresholds, sinkKeyMap)),
     detectStalePipelines(aggregates, thresholds),
+    detectHighCardinality(aggregates, thresholds, sinkKeyMap),
+    detectTraceTailSample(aggregates, thresholds, sinkKeyMap),
   ]);
 
-  const allResults = [...lowReduction, ...highError, ...stale];
+  const allResults = [...lowReduction, ...highError, ...stale, ...cardinality, ...traceTailSample];
   debugLog(TAG, `Analysis complete: ${allResults.length} recommendations`, {
     lowReduction: lowReduction.length,
     highError: highError.length,
     stale: stale.length,
+    cardinality: cardinality.length,
+    traceTailSample: traceTailSample.length,
   });
 
   return allResults;

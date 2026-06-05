@@ -1,9 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Clipboard, Pause, Play, Radio, Square, Trash2, WrapText } from "lucide-react";
+import { ChevronDown, ChevronUp, Clipboard, Pause, Play, Radio, Save, Square, Trash2, WrapText } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { useLiveTap } from "@/hooks/use-live-tap";
+import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 interface LiveTailPanelProps {
   pipelineId: string;
@@ -18,9 +22,39 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
   const [buffer, setBuffer] = useState<Array<{ id: string; data: unknown }>>([]);
   const [wrapLines, setWrapLines] = useState(true);
 
+  const trpc = useTRPC();
+  const [showSave, setShowSave] = useState(false);
+  const [captureName, setCaptureName] = useState("");
+
+  const saveCapture = useMutation(
+    trpc.tapCapture.create.mutationOptions({
+      onSuccess: (data) => {
+        toast.success(`Saved capture "${data.name}" (${data.eventCount} events)`);
+        setShowSave(false);
+        setCaptureName("");
+      },
+      onError: (err) => {
+        toast.error(err.message || "Failed to save capture");
+      },
+    }),
+  );
+
+  const handleSaveCapture = () => {
+    const name = captureName.trim();
+    if (!componentKey || name.length === 0 || buffer.length === 0) return;
+    saveCapture.mutate({
+      pipelineId,
+      name,
+      componentKey,
+      events: buffer.map((e) => e.data),
+    });
+  };
+
   useEffect(() => {
     setBuffer([]);
     setPaused(false);
+    setShowSave(false);
+    setCaptureName("");
     if (liveTap.isActive) liveTap.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [componentKey]);
@@ -78,6 +112,15 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
             <Button
               size="icon-xs"
               variant="ghost"
+              disabled={lines.length === 0 || saveCapture.isPending}
+              onClick={() => setShowSave((value) => !value)}
+              aria-label="Save capture"
+            >
+              <Save className="h-3 w-3" />
+            </Button>
+            <Button
+              size="icon-xs"
+              variant="ghost"
               disabled={lines.length === 0}
               onClick={() => {
                 setBuffer([]);
@@ -106,6 +149,30 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
             </Button>
           </div>
         </div>
+
+        {showSave && (
+          <div className="flex items-center gap-1 border-b border-line px-2 py-1">
+            <Input
+              value={captureName}
+              onChange={(e) => setCaptureName(e.target.value)}
+              placeholder="Capture name"
+              maxLength={100}
+              aria-label="Capture name"
+              className="h-6 flex-1 text-[11px]"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveCapture();
+              }}
+            />
+            <Button
+              size="xs"
+              variant="primary"
+              disabled={captureName.trim().length === 0 || buffer.length === 0 || saveCapture.isPending}
+              onClick={handleSaveCapture}
+            >
+              {saveCapture.isPending ? "Saving…" : "Save"}
+            </Button>
+          </div>
+        )}
 
         <div
           className={`flex-1 overflow-y-auto p-2 font-mono text-[10px] leading-4 text-fg-1 ${wrapLines ? "" : "overflow-x-auto whitespace-pre"}`}

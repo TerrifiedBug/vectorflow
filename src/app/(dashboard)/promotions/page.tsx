@@ -20,9 +20,9 @@ import { toast } from "sonner";
  * Source: docs/internal/VectorFlow 2.0/screens/value-surfaces.jsx (ScreenPromotions).
  *
  * Wires to:
- *   - trpc.promotion.recentForTeam → list rows (team-scoped)
- *   - trpc.promotion.summaryForTeam → aggregate KPI/tab counts
- *   - trpc.promotion.diffPreview → detail diff panel
+ *   - trpc.release.promotion.recentForTeam → list rows (team-scoped)
+ *   - trpc.release.promotion.summaryForTeam → aggregate KPI/tab counts
+ *   - trpc.release.promotion.diffPreview → detail diff panel
  */
 
 type TabId = "pending" | "approved" | "in-flight" | "history";
@@ -88,20 +88,20 @@ type ServerItem = {
   id: string;
   status: string;
   createdAt: string | Date;
-  sourcePipeline: { id: string; name: string } | null;
-  promotedBy: { name: string | null; email: string | null } | null;
-  sourceEnvironment: { name: string } | null;
+  pipeline: { id: string; name: string } | null;
+  requestedBy: { name: string | null; email: string | null } | null;
+  environment: { name: string } | null;
   targetEnvironment: { name: string } | null;
 };
 
 function toPromotionRow(r: ServerItem): PromotionRow {
   return {
     id: r.id,
-    sourcePipelineId: r.sourcePipeline?.id ?? "",
-    pipelineName: r.sourcePipeline?.name ?? "—",
-    fromEnv: r.sourceEnvironment?.name ?? "—",
+    sourcePipelineId: r.pipeline?.id ?? "",
+    pipelineName: r.pipeline?.name ?? "—",
+    fromEnv: r.environment?.name ?? "—",
     toEnv: r.targetEnvironment?.name ?? "—",
-    requestedBy: r.promotedBy?.name ?? r.promotedBy?.email ?? "—",
+    requestedBy: r.requestedBy?.name ?? r.requestedBy?.email ?? "—",
     requestedAt:
       typeof r.createdAt === "string" ? r.createdAt : r.createdAt.toISOString(),
     status: r.status as StatusKey,
@@ -117,7 +117,7 @@ export default function PromotionsPage() {
   const serverStatuses = TAB_SERVER_STATUSES[tab];
 
   const recentQ = useInfiniteQuery(
-    trpc.promotion.recentForTeam.infiniteQueryOptions(
+    trpc.release.promotion.recentForTeam.infiniteQueryOptions(
       {
         teamId: teamId ?? "",
         limit: 50,
@@ -133,7 +133,7 @@ export default function PromotionsPage() {
   );
 
   const summaryQ = useQuery(
-    trpc.promotion.summaryForTeam.queryOptions(
+    trpc.release.promotion.summaryForTeam.queryOptions(
       { teamId: teamId ?? "" },
       { enabled: Boolean(teamId) },
     ),
@@ -446,7 +446,7 @@ function PromotionDetail({ row }: { row: PromotionRow }) {
   const queryClient = useQueryClient();
   const teamId = useTeamStore((s) => s.selectedTeamId);
   const diffQ = useQuery({
-    ...trpc.promotion.diffPreview.queryOptions(
+    ...trpc.release.promotion.diffPreview.queryOptions(
       { pipelineId: row.sourcePipelineId },
       { enabled: Boolean(row.sourcePipelineId) },
     ),
@@ -454,15 +454,15 @@ function PromotionDetail({ row }: { row: PromotionRow }) {
 
   const invalidatePromotions = React.useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: trpc.promotion.recentForTeam.queryKey(),
+      queryKey: trpc.release.promotion.recentForTeam.queryKey(),
     });
     queryClient.invalidateQueries({
-      queryKey: trpc.promotion.summaryForTeam.queryKey({ teamId: teamId ?? "" }),
+      queryKey: trpc.release.promotion.summaryForTeam.queryKey({ teamId: teamId ?? "" }),
     });
-  }, [queryClient, teamId, trpc.promotion.recentForTeam, trpc.promotion.summaryForTeam]);
+  }, [queryClient, teamId, trpc.release.promotion.recentForTeam, trpc.release.promotion.summaryForTeam]);
 
   const rejectMutation = useMutation(
-    trpc.promotion.reject.mutationOptions({
+    trpc.release.promotion.reject.mutationOptions({
       onSuccess: () => {
         toast.success("Promotion rejected");
         invalidatePromotions();
@@ -474,7 +474,7 @@ function PromotionDetail({ row }: { row: PromotionRow }) {
   );
 
   const approveMutation = useMutation(
-    trpc.promotion.approve.mutationOptions({
+    trpc.release.promotion.approve.mutationOptions({
       onSuccess: () => {
         toast.success("Promotion approved");
         invalidatePromotions();
@@ -561,7 +561,7 @@ function PromotionDetail({ row }: { row: PromotionRow }) {
           <span className="text-fg">Secret resolution + collision check passed</span>
         </div>
         <div className="mt-1.5 px-2.5 py-2 bg-bg-2 border border-line rounded-[3px] font-mono text-[10.5px] text-fg-2">
-          Wire diff via <span className="text-fg-1">trpc.promotion.diffPreview</span>
+          Wire diff via <span className="text-fg-1">trpc.release.promotion.diffPreview</span>
         </div>
 
         <div className="mt-4 font-mono text-[10px] text-fg-2 tracking-[0.04em] uppercase mb-2">

@@ -42,7 +42,7 @@ vi.mock("@/server/services/audit", () => ({
 }));
 
 import { prisma } from "@/lib/prisma";
-import { stagedRolloutRouter } from "@/server/routers/staged-rollout";
+import { canaryReleaseRouter } from "@/server/routers/release/canary";
 import { stagedRolloutService } from "@/server/services/staged-rollout";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
@@ -54,7 +54,9 @@ const stagedRolloutServiceMock = stagedRolloutService as unknown as {
 
 const NOW = new Date("2026-03-01T12:00:00Z");
 
-describe("stagedRolloutRouter", () => {
+const appRouter = t.router({ release: t.router({ canary: canaryReleaseRouter }) });
+
+describe("release.canary router", () => {
   beforeEach(() => {
     mockReset(prismaMock);
     vi.clearAllMocks();
@@ -62,7 +64,7 @@ describe("stagedRolloutRouter", () => {
 
   describe("create", () => {
     it("creates a staged rollout", async () => {
-      const caller = t.createCallerFactory(stagedRolloutRouter)({
+      const caller = t.createCallerFactory(appRouter)({
         session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
         userRole: "ADMIN",
         teamId: "team-1",
@@ -74,7 +76,7 @@ describe("stagedRolloutRouter", () => {
         environmentId: "env-1",
       } as never);
 
-      const result = await caller.create({
+      const result = await caller.release.canary.create({
         pipelineId: "pipe-1",
         canarySelector: { region: "us-east-1" },
         healthCheckWindowMinutes: 5,
@@ -92,14 +94,14 @@ describe("stagedRolloutRouter", () => {
     });
 
     it("throws UNAUTHORIZED when session has no userId", async () => {
-      const callerNoUser = t.createCallerFactory(stagedRolloutRouter)({
+      const callerNoUser = t.createCallerFactory(appRouter)({
         session: { user: { id: undefined, email: null, name: null } },
         userRole: "ADMIN",
         teamId: "team-1",
       });
 
       await expect(
-        callerNoUser.create({
+        callerNoUser.release.canary.create({
           pipelineId: "pipe-1",
           canarySelector: { region: "us-east-1" },
           healthCheckWindowMinutes: 5,
@@ -111,20 +113,20 @@ describe("stagedRolloutRouter", () => {
 
   describe("broaden", () => {
     it("broadens an active rollout", async () => {
-      const caller = t.createCallerFactory(stagedRolloutRouter)({
+      const caller = t.createCallerFactory(appRouter)({
         session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
         userRole: "ADMIN",
         teamId: "team-1",
       });
 
-      prismaMock.stagedRollout.findUnique.mockResolvedValueOnce({
+      prismaMock.release.findFirst.mockResolvedValueOnce({
         id: "rollout-1",
         pipelineId: "pipe-1",
         pipeline: { environmentId: "env-1" },
       } as never);
       stagedRolloutServiceMock.broadenRollout.mockResolvedValueOnce(undefined);
 
-      const result = await caller.broaden({ rolloutId: "rollout-1" });
+      const result = await caller.release.canary.broaden({ rolloutId: "rollout-1" });
 
       expect(result).toEqual({ success: true });
       expect(stagedRolloutServiceMock.broadenRollout).toHaveBeenCalledWith("rollout-1");
@@ -133,20 +135,20 @@ describe("stagedRolloutRouter", () => {
 
   describe("rollback", () => {
     it("rolls back an active rollout", async () => {
-      const caller = t.createCallerFactory(stagedRolloutRouter)({
+      const caller = t.createCallerFactory(appRouter)({
         session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
         userRole: "ADMIN",
         teamId: "team-1",
       });
 
-      prismaMock.stagedRollout.findUnique.mockResolvedValueOnce({
+      prismaMock.release.findFirst.mockResolvedValueOnce({
         id: "rollout-1",
         pipelineId: "pipe-1",
         pipeline: { environmentId: "env-1" },
       } as never);
       stagedRolloutServiceMock.rollbackRollout.mockResolvedValueOnce(undefined);
 
-      const result = await caller.rollback({ rolloutId: "rollout-1" });
+      const result = await caller.release.canary.rollback({ rolloutId: "rollout-1" });
 
       expect(result).toEqual({ success: true });
       expect(stagedRolloutServiceMock.rollbackRollout).toHaveBeenCalledWith("rollout-1");
@@ -155,7 +157,7 @@ describe("stagedRolloutRouter", () => {
 
   describe("getActive", () => {
     it("returns the active rollout for a pipeline", async () => {
-      const caller = t.createCallerFactory(stagedRolloutRouter)({
+      const caller = t.createCallerFactory(appRouter)({
         session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
         userRole: "ADMIN",
         teamId: "team-1",
@@ -167,17 +169,18 @@ describe("stagedRolloutRouter", () => {
         status: "CANARY_DEPLOYED",
         canaryVersion: { id: "v-2", version: 2, changelog: "new deploy" },
         previousVersion: { id: "v-1", version: 1 },
-        createdBy: { name: "Test User", email: "test@test.com" },
+        requestedBy: { name: "Test User", email: "test@test.com" },
         createdAt: NOW,
       };
-      prismaMock.stagedRollout.findFirst.mockResolvedValueOnce(rollout as never);
+      prismaMock.release.findFirst.mockResolvedValueOnce(rollout as never);
 
-      const result = await caller.getActive({ pipelineId: "pipe-1" });
+      const result = await caller.release.canary.getActive({ pipelineId: "pipe-1" });
 
       expect(result).toEqual(rollout);
-      expect(prismaMock.stagedRollout.findFirst).toHaveBeenCalledWith(
+      expect(prismaMock.release.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
+            strategy: "CANARY",
             pipelineId: "pipe-1",
             status: { in: ["CANARY_DEPLOYED", "HEALTH_CHECK"] },
           },
@@ -186,15 +189,15 @@ describe("stagedRolloutRouter", () => {
     });
 
     it("returns null when no active rollout exists", async () => {
-      const caller = t.createCallerFactory(stagedRolloutRouter)({
+      const caller = t.createCallerFactory(appRouter)({
         session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
         userRole: "ADMIN",
         teamId: "team-1",
       });
 
-      prismaMock.stagedRollout.findFirst.mockResolvedValueOnce(null);
+      prismaMock.release.findFirst.mockResolvedValueOnce(null);
 
-      const result = await caller.getActive({ pipelineId: "pipe-1" });
+      const result = await caller.release.canary.getActive({ pipelineId: "pipe-1" });
 
       expect(result).toBeNull();
     });
@@ -202,7 +205,7 @@ describe("stagedRolloutRouter", () => {
 
   describe("list", () => {
     it("returns rollouts ordered desc with take 10", async () => {
-      const caller = t.createCallerFactory(stagedRolloutRouter)({
+      const caller = t.createCallerFactory(appRouter)({
         session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
         userRole: "ADMIN",
         teamId: "team-1",
@@ -215,18 +218,18 @@ describe("stagedRolloutRouter", () => {
           status: "COMPLETED",
           canaryVersion: { id: "v-2", version: 2, changelog: "deploy" },
           previousVersion: { id: "v-1", version: 1 },
-          createdBy: { name: "Test User", email: "test@test.com" },
+          requestedBy: { name: "Test User", email: "test@test.com" },
           createdAt: NOW,
         },
       ];
-      prismaMock.stagedRollout.findMany.mockResolvedValueOnce(rollouts as never);
+      prismaMock.release.findMany.mockResolvedValueOnce(rollouts as never);
 
-      const result = await caller.list({ pipelineId: "pipe-1" });
+      const result = await caller.release.canary.list({ pipelineId: "pipe-1" });
 
       expect(result).toEqual(rollouts);
-      expect(prismaMock.stagedRollout.findMany).toHaveBeenCalledWith(
+      expect(prismaMock.release.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { pipelineId: "pipe-1" },
+          where: { pipelineId: "pipe-1", strategy: "CANARY" },
           orderBy: { createdAt: "desc" },
           take: 10,
         }),

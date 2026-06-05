@@ -382,6 +382,32 @@ describe("heartbeat async decomposition", () => {
     expect(ingestMetricsMock).toHaveBeenCalled();
   });
 
+  it("ingests trace-only pipelines that report no eventsIn counter", async () => {
+    evaluateAlertsMock.mockResolvedValue([]);
+    prismaMock.eventSampleRequest.findUnique.mockResolvedValue(null as never);
+    prismaMock.$transaction.mockResolvedValue([]);
+    ingestMetricsMock.mockResolvedValue(undefined);
+
+    const response = await POST(
+      makeRequest({
+        pipelines: [
+          { pipelineId: "pipe-1", version: 1, status: "RUNNING", tracesIn: 7, spansIn: 20, spansOut: 18 },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(ingestMetricsMock).toHaveBeenCalled();
+    const metricsData = ingestMetricsMock.mock.calls.at(-1)![0] as Array<Record<string, unknown>>;
+    expect(metricsData).toHaveLength(1);
+    expect(metricsData[0]).toMatchObject({
+      pipelineId: "pipe-1",
+      tracesIn: BigInt(7),
+      spansIn: BigInt(20),
+      eventsIn: BigInt(0),
+    });
+  });
+
   it("returns 200 while nodeMetric.create is still pending (fire-and-forget)", async () => {
     // All fire-and-forget ops resolve immediately except nodeMetric.create
     evaluateAlertsMock.mockResolvedValue([]);

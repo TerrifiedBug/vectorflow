@@ -5,7 +5,7 @@ import { fleetRouter } from "@/server/routers/fleet";
 import { pipelineRouter } from "@/server/routers/pipeline";
 import { validatorRouter } from "@/server/routers/validator";
 import { auditRouter } from "@/server/routers/audit";
-import { deployRouter } from "@/server/routers/deploy";
+import { releaseRouter } from "@/server/routers/release";
 import { vrlRouter } from "@/server/routers/vrl";
 import { templateRouter } from "@/server/routers/template";
 import { settingsRouter } from "@/server/routers/settings";
@@ -24,20 +24,23 @@ import { sharedComponentRouter } from "@/server/routers/shared-component";
 import { aiRouter } from "@/server/routers/ai";
 import { pipelineGroupRouter } from "@/server/routers/pipeline-group";
 import { nodeGroupRouter } from "@/server/routers/node-group";
-import { stagedRolloutRouter } from "@/server/routers/staged-rollout";
 import { pipelineDependencyRouter } from "@/server/routers/pipeline-dependency";
 import { webhookEndpointRouter } from "@/server/routers/webhook-endpoint";
-import { promotionRouter } from "@/server/routers/promotion";
 import { filterPresetRouter } from "@/server/routers/filter-preset";
 import { gitSyncRouter } from "@/server/routers/git-sync";
 import { migrationRouter } from "@/server/routers/migration";
 import { analyticsRouter } from "@/server/routers/analytics";
 import { costRecommendationRouter } from "@/server/routers/cost-recommendation";
+import { costModelRouter } from "@/server/routers/cost-model";
 import { anomalyRouter } from "@/server/routers/anomaly";
 import { telemetryRouter } from "@/server/routers/telemetry";
 import { governanceRouter } from "@/server/routers/governance";
 import { orgAccessGrantRouter } from "@/server/routers/org-access-grant";
 import { orgRouter } from "@/server/routers/org";
+import { tapCaptureRouter } from "@/server/routers/tap-capture";
+import { proposedChangeRouter } from "@/server/routers/proposed-change";
+import { lakeRouter } from "@/server/routers/lake";
+import { replayRouter } from "@/server/routers/replay";
 
 export const appRouter = router({
   team: teamRouter,
@@ -46,7 +49,7 @@ export const appRouter = router({
   pipeline: pipelineRouter,
   validator: validatorRouter,
   audit: auditRouter,
-  deploy: deployRouter,
+  release: releaseRouter,
   vrl: vrlRouter,
   template: templateRouter,
   settings: settingsRouter,
@@ -65,20 +68,23 @@ export const appRouter = router({
   ai: aiRouter,
   pipelineGroup: pipelineGroupRouter,
   nodeGroup: nodeGroupRouter,
-  stagedRollout: stagedRolloutRouter,
   pipelineDependency: pipelineDependencyRouter,
   webhookEndpoint: webhookEndpointRouter,
-  promotion: promotionRouter,
   filterPreset: filterPresetRouter,
   gitSync: gitSyncRouter,
   migration: migrationRouter,
   analytics: analyticsRouter,
   costRecommendation: costRecommendationRouter,
+  costModel: costModelRouter,
   anomaly: anomalyRouter,
   telemetry: telemetryRouter,
   governance: governanceRouter,
   orgAccessGrant: orgAccessGrantRouter,
   org: orgRouter,
+  tapCapture: tapCaptureRouter,
+  proposedChange: proposedChangeRouter,
+  lake: lakeRouter,
+  replay: replayRouter,
 });
 
 export type AppRouter = typeof appRouter;

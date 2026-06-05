@@ -8,6 +8,8 @@ import { authenticateAgentInOrg } from "@/server/services/agent-auth";
 import { resolveAgentOrg } from "@/server/services/agent-org-binding";
 import { checkOrgNodeHealth } from "@/server/services/fleet-health";
 import { ingestMetrics } from "@/server/services/metrics-ingest";
+import { updateLakeCatalogFromHeartbeat } from "@/server/services/lake/lake-catalog";
+import { isLakeEnabled } from "@/server/services/lake/clickhouse";
 import { ingestLogs } from "@/server/services/log-ingest";
 import { cleanupOldMetrics } from "@/server/services/metrics-cleanup";
 import { metricStore } from "@/server/services/metric-store";
@@ -367,7 +369,13 @@ export async function POST(request: Request) {
 
     // Ingest metrics from pipelines that report counter data
     const metricsData = pipelines
-      .filter((p) => p.eventsIn !== undefined)
+      .filter(
+        (p) =>
+          p.eventsIn !== undefined ||
+          p.spansIn !== undefined ||
+          p.spansOut !== undefined ||
+          p.tracesIn !== undefined,
+      )
       .map((p) => ({
         nodeId: agent.nodeId,
         pipelineId: p.pipelineId,
@@ -379,12 +387,29 @@ export async function POST(request: Request) {
         bytesOut: BigInt(p.bytesOut ?? 0),
         utilization: p.utilization ?? 0,
         latencyMeanMs: computeWeightedLatency(p.componentMetrics),
+        // Per-interval trace volume (default 0 keeps log/metric pipelines intact).
+        spansIn: BigInt(p.spansIn ?? 0),
+        spansOut: BigInt(p.spansOut ?? 0),
+        tracesIn: BigInt(p.tracesIn ?? 0),
       }));
 
     if (metricsData.length > 0) {
       ingestMetrics(metricsData, orgResult.orgId, prevSnapshots).catch((err) =>
         errorLog("agent-heartbeat", "Metrics ingestion error", err),
       );
+
+      // Refresh the lake catalog for pipelines routing to the managed lake sink.
+      // Fire-and-forget; no-op unless the lake is enabled (hook double-guards).
+      if (isLakeEnabled()) {
+        updateLakeCatalogFromHeartbeat({
+          orgId: orgResult.orgId,
+          environmentId: agent.environmentId,
+          dataPoints: metricsData,
+          previousSnapshots: prevSnapshots,
+        }).catch((err) =>
+          errorLog("agent-heartbeat", "Lake catalog update error", err),
+        );
+      }
     }
 
     // Write per-component latency rows (direct create, bypasses delta-tracking)

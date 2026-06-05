@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { isTimescaleDbAvailable } from "@/server/services/timescaledb";
+import type { RollupGranularity } from "@/server/services/metrics-rollup";
 
 type MetricsSource = "raw" | "1m" | "1h";
 
@@ -27,6 +28,27 @@ export function resolveMetricsSource(minutes: number): MetricsSource {
   }
 
   return "1h";
+}
+
+/**
+ * Ranges longer than the default raw-retention window (`metricsRetentionDays`,
+ * 7d) cannot be served from raw rows or the TimescaleDB continuous aggregates
+ * (both purged with the raw chunks). Those ranges read the long-retention
+ * downsampled rollup tables instead. Kept as fixed constants so the hot query
+ * path needs no per-request settings read; matches the default raw retention.
+ */
+const ROLLUP_MIN_RANGE_MINUTES = 7 * 24 * 60; // 7 days
+const ROLLUP_DAY_RANGE_MINUTES = 14 * 24 * 60; // 14 days
+
+/**
+ * Pick the rollup granularity for a requested range, or `null` when the range is
+ * short/recent enough to serve from raw or continuous-aggregate sources.
+ */
+export function resolveRollupGranularity(
+  minutes: number,
+): RollupGranularity | null {
+  if (minutes <= ROLLUP_MIN_RANGE_MINUTES) return null;
+  return minutes > ROLLUP_DAY_RANGE_MINUTES ? "DAY" : "HOUR";
 }
 
 // ─── Pipeline Metrics ────────────────────────────────────────────────────────
@@ -78,6 +100,44 @@ export async function queryPipelineMetricsAggregated(input: {
 }): Promise<{ rows: PipelineMetricRow[] }> {
   const source = resolveMetricsSource(input.minutes);
   const since = new Date(Date.now() - input.minutes * 60 * 1000);
+
+  const rollupGranularity = resolveRollupGranularity(input.minutes);
+  if (rollupGranularity) {
+    const rollupRows = await prisma.pipelineMetricRollup.findMany({
+      where: {
+        pipelineId: input.pipelineId,
+        componentId: "", // "" = pipeline aggregate (mirrors nodeId/componentId null)
+        granularity: rollupGranularity,
+        bucketStart: { gte: since },
+      },
+      orderBy: { bucketStart: "asc" },
+      select: {
+        bucketStart: true,
+        eventsIn: true,
+        eventsOut: true,
+        eventsDiscarded: true,
+        errorsTotal: true,
+        bytesIn: true,
+        bytesOut: true,
+        utilization: true,
+        latencyMeanMs: true,
+      },
+    });
+
+    return {
+      rows: rollupRows.map((r) => ({
+        timestamp: r.bucketStart,
+        eventsIn: r.eventsIn,
+        eventsOut: r.eventsOut,
+        eventsDiscarded: r.eventsDiscarded,
+        errorsTotal: r.errorsTotal,
+        bytesIn: r.bytesIn,
+        bytesOut: r.bytesOut,
+        utilization: r.utilization,
+        latencyMeanMs: r.latencyMeanMs,
+      })),
+    };
+  }
 
   if (source === "raw") {
     const rows = await prisma.pipelineMetric.findMany({
@@ -153,6 +213,47 @@ export async function queryEnvironmentPipelineMetricsAggregated(input: {
 }): Promise<{ rows: PipelineMetricRow[] }> {
   const source = resolveMetricsSource(input.minutes);
   const since = new Date(Date.now() - input.minutes * 60 * 1000);
+
+  const rollupGranularity = resolveRollupGranularity(input.minutes);
+  if (rollupGranularity) {
+    const aggRows = await prisma.$queryRawUnsafe<EnvironmentAggregateRow[]>(
+      `SELECT
+         r."bucketStart" AS bucket,
+         SUM(r."eventsIn")::bigint AS events_in,
+         SUM(r."eventsOut")::bigint AS events_out,
+         SUM(r."eventsDiscarded")::bigint AS events_discarded,
+         SUM(r."errorsTotal")::bigint AS errors_total,
+         SUM(r."bytesIn")::bigint AS bytes_in,
+         SUM(r."bytesOut")::bigint AS bytes_out,
+         AVG(r.utilization) AS avg_utilization,
+         AVG(r."latencyMeanMs") AS avg_latency_ms
+       FROM "PipelineMetricRollup" r
+       JOIN "Pipeline" p ON p.id = r."pipelineId"
+       WHERE p."environmentId" = $1
+         AND r."componentId" = ''
+         AND r.granularity = $2
+         AND r."bucketStart" >= $3
+       GROUP BY r."bucketStart"
+       ORDER BY r."bucketStart" ASC`,
+      input.environmentId,
+      rollupGranularity,
+      since,
+    );
+
+    return {
+      rows: aggRows.map((r) => ({
+        timestamp: r.bucket,
+        eventsIn: r.events_in,
+        eventsOut: r.events_out,
+        eventsDiscarded: r.events_discarded,
+        errorsTotal: r.errors_total,
+        bytesIn: r.bytes_in,
+        bytesOut: r.bytes_out,
+        utilization: r.avg_utilization ?? 0,
+        latencyMeanMs: r.avg_latency_ms,
+      })),
+    };
+  }
 
   if (source === "raw") {
     const rows = await prisma.$queryRawUnsafe<EnvironmentAggregateRow[]>(
@@ -274,6 +375,48 @@ export async function queryNodeMetricsAggregated(input: {
     return { rows: [] };
   }
 
+  const rollupGranularity = resolveRollupGranularity(input.minutes);
+  if (rollupGranularity) {
+    const rollupRows = await prisma.nodeMetricRollup.findMany({
+      where: {
+        nodeId: { in: input.nodeIds },
+        granularity: rollupGranularity,
+        bucketStart: { gte: since },
+      },
+      orderBy: { bucketStart: "asc" },
+      select: {
+        bucketStart: true,
+        nodeId: true,
+        cpuSecondsTotal: true,
+        cpuSecondsIdle: true,
+        memoryUsedBytes: true,
+        memoryTotalBytes: true,
+        maxMemoryUsedBytes: true,
+        diskReadBytes: true,
+        diskWrittenBytes: true,
+        netRxBytes: true,
+        netTxBytes: true,
+      },
+    });
+
+    return {
+      rows: rollupRows.map((r) => ({
+        timestamp: r.bucketStart,
+        nodeId: r.nodeId,
+        cpuSecondsTotal: r.cpuSecondsTotal,
+        cpuSecondsIdle: r.cpuSecondsIdle,
+        // Peak (not average) memory mirrors the continuous-aggregate path's
+        // max_memory_used mapping so long-range charts stay consistent.
+        memoryUsedBytes: r.maxMemoryUsedBytes,
+        memoryTotalBytes: r.memoryTotalBytes,
+        diskReadBytes: r.diskReadBytes,
+        diskWrittenBytes: r.diskWrittenBytes,
+        netRxBytes: r.netRxBytes,
+        netTxBytes: r.netTxBytes,
+      })),
+    };
+  }
+
   if (source === "raw") {
     const rows = await prisma.nodeMetric.findMany({
       where: {
@@ -349,6 +492,8 @@ export interface VolumeAggregateRow {
   bytesOut: bigint;
   eventsIn: bigint;
   eventsOut: bigint;
+  spansIn: bigint;
+  tracesIn: bigint;
 }
 
 /**
@@ -361,6 +506,56 @@ export async function queryVolumeTimeSeries(input: {
   since: Date;
 }): Promise<VolumeAggregateRow[]> {
   const source = resolveMetricsSource(input.minutes);
+
+  const rollupGranularity = resolveRollupGranularity(input.minutes);
+  if (rollupGranularity && input.environmentPipelineIds.length > 0) {
+    const placeholders = input.environmentPipelineIds
+      .map((_, i) => `$${i + 3}`)
+      .join(", ");
+
+    const rows = await prisma.$queryRawUnsafe<
+      Array<{
+        bucket: Date;
+        pipelineId: string;
+        bytes_in: bigint;
+        bytes_out: bigint;
+        events_in: bigint;
+        events_out: bigint;
+        spans_in: bigint;
+        traces_in: bigint;
+      }>
+    >(
+      `SELECT
+         "bucketStart" AS bucket,
+         "pipelineId",
+         "bytesIn" AS bytes_in,
+         "bytesOut" AS bytes_out,
+         "eventsIn" AS events_in,
+         "eventsOut" AS events_out,
+         "spansIn" AS spans_in,
+         "tracesIn" AS traces_in
+       FROM "PipelineMetricRollup"
+       WHERE "pipelineId" IN (${placeholders})
+         AND "componentId" = ''
+         AND granularity = $2
+         AND "bucketStart" >= $1
+       ORDER BY "bucketStart" ASC`,
+      input.since,
+      rollupGranularity,
+      ...input.environmentPipelineIds,
+    );
+
+    return rows.map((r) => ({
+      bucket: r.bucket,
+      pipelineId: r.pipelineId,
+      bytesIn: r.bytes_in,
+      bytesOut: r.bytes_out,
+      eventsIn: r.events_in,
+      eventsOut: r.events_out,
+      spansIn: r.spans_in,
+      tracesIn: r.traces_in,
+    }));
+  }
 
   if (source === "raw" || input.environmentPipelineIds.length === 0) {
     // Caller should use the existing Prisma findMany path
@@ -406,5 +601,9 @@ export async function queryVolumeTimeSeries(input: {
     bytesOut: r.bytes_out,
     eventsIn: r.events_in,
     eventsOut: r.events_out,
+    // Continuous-aggregate views predate the trace columns; report 0 (the raw
+    // and rollup paths carry real span/trace volume).
+    spansIn: BigInt(0),
+    tracesIn: BigInt(0),
   }));
 }

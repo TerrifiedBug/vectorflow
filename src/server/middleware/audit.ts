@@ -102,7 +102,7 @@ async function resolveTeamId(
 
   // Resolve requestId → DeployRequest → pipeline → environment.teamId
   if (inputData.requestId && entityType === "DeployRequest") {
-    const deployReq = await prisma.deployRequest.findFirst({
+    const deployReq = await prisma.release.findFirst({
       where: { id: inputData.requestId as string, ...orgFilter },
       select: { pipeline: { select: { environment: { select: { teamId: true } } } } },
     });
@@ -248,7 +248,7 @@ async function resolveEnvironmentId(
 
   // Resolve requestId → DeployRequest → environmentId
   if (inputData.requestId && entityType === "DeployRequest") {
-    const deployReq = await prisma.deployRequest.findFirst({
+    const deployReq = await prisma.release.findFirst({
       where: { id: inputData.requestId as string, ...orgFilter },
       select: { environmentId: true },
     });
@@ -322,7 +322,11 @@ const ENTITY_LOADERS: Record<string, (id: string) => Promise<Record<string, unkn
       },
     }) as Promise<Record<string, unknown> | null>,
   DeployRequest: (id) =>
-    prisma.deployRequest.findUnique({ where: { id } }) as Promise<Record<string, unknown> | null>,
+    prisma.release.findFirst({ where: { id } }) as Promise<Record<string, unknown> | null>,
+  PromotionRequest: (id) =>
+    prisma.release.findFirst({ where: { id } }) as Promise<Record<string, unknown> | null>,
+  StagedRollout: (id) =>
+    prisma.release.findFirst({ where: { id } }) as Promise<Record<string, unknown> | null>,
 };
 
 async function loadEntity(

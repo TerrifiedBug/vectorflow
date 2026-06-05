@@ -84,23 +84,23 @@ model Organization {
   webhookConfirmations WebhookConfirmation[]
   billingProviderRefs  BillingProviderRef[]
   operatorApprovals    OperatorApprovalRequest[]
-  domainClaims OrganizationDomainClaim[]
-  scimGroups   ScimGroup[]
+  domainClaims         OrganizationDomainClaim[]
+  scimGroups           ScimGroup[]
 }
 
 model OrgMember {
-  id             String        @id @default(cuid())
+  id             String              @id @default(cuid())
   userId         String
   organizationId String
-  role           OrgMemberRole @default(MEMBER)
+  role           OrgMemberRole       @default(MEMBER)
   /// Identity provenance for SCIM/local coexistence guards (see
   /// OrgMemberProvenance). Defaults to LOCAL so existing rows and every
   /// non-SCIM creator (signup, invite, first-run setup) are treated as local
   /// and protected from SCIM deprovisioning. scimCreateUser sets SCIM.
   provisionedVia OrgMemberProvenance @default(LOCAL)
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt      DateTime      @default(now())
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime            @default(now())
 
   @@unique([userId, organizationId])
   @@index([userId])
@@ -128,10 +128,11 @@ model OrganizationSettings {
   oidcDefaultTeamId           String?
 
   // Fleet tuning (moved from SystemSettings)
-  fleetPollIntervalMs     Int @default(15000)
-  fleetUnhealthyThreshold Int @default(3)
-  metricsRetentionDays    Int @default(7)
-  logsRetentionDays       Int @default(3)
+  fleetPollIntervalMs        Int @default(15000)
+  fleetUnhealthyThreshold    Int @default(3)
+  metricsRetentionDays       Int @default(7)
+  metricsRollupRetentionDays Int @default(90)
+  logsRetentionDays          Int @default(3)
 
   // Anomaly detection tuning (moved from SystemSettings)
   anomalyBaselineWindowDays    Int    @default(7)
@@ -404,16 +405,17 @@ model User {
   vrlSnippets              VrlSnippet[]
   dashboardViews           DashboardView[]
   serviceAccounts          ServiceAccount[]
-  deployRequestsMade       DeployRequest[]      @relation("deployRequester")
-  deployRequestsReviewed   DeployRequest[]      @relation("deployReviewer")
-  deployRequestsExecuted   DeployRequest[]      @relation("deployExecutor")
-  promotionRequests        PromotionRequest[]   @relation("PromotionRequester")
-  promotionApprovals       PromotionRequest[]   @relation("PromotionApprover")
+  releasesRequested        Release[]            @relation("ReleaseRequestedBy")
+  releasesReviewed         Release[]            @relation("ReleaseReviewedBy")
+  releasesDeployed         Release[]            @relation("ReleaseDeployedBy")
+  tapCaptures              TapCapture[]         @relation("TapCaptureCreatedBy")
+  proposedChangesCreated   ProposedChange[]     @relation("ProposedChangeCreatedBy")
+  proposedChangesReviewed  ProposedChange[]     @relation("ProposedChangeReviewedBy")
+  replaysCreated           ReplayJob[]          @relation("ReplayCreatedBy")
   preferences              UserPreference[]
   aiConversationsCreated   AiConversation[]     @relation("AiConversationCreatedBy")
   aiMessagesCreated        AiMessage[]          @relation("AiMessageCreatedBy")
   pipelineVersionsCreated  PipelineVersion[]    @relation("PipelineVersionCreatedBy")
-  stagedRolloutsCreated    StagedRollout[]      @relation("StagedRolloutCreatedBy")
   filterPresets            FilterPreset[]
   migrationProjectsCreated MigrationProject[]   @relation("MigrationProjectCreatedBy")
   dismissedRecommendations CostRecommendation[] @relation("CostRecommendationDismissedBy")
@@ -463,22 +465,22 @@ model WebAuthnCredential {
 /// Rows MUST be expired aggressively — default 5 minutes is more than
 /// enough for the platform/authenticator round trip.
 model WebAuthnChallenge {
-  id        String   @id @default(cuid())
+  id             String   @id @default(cuid())
   /// Tenant scope. The challenge bytes are themselves a
   /// 256-bit secret so cross-org enumeration is not feasible without
   /// guessing, but having the column lets the cleanup job filter by
   /// tenant and lets RLS fence direct reads end-to-end.
-  organizationId String  @default("default")
+  organizationId String   @default("default")
   /// One of "register" or "authenticate".
-  kind      String
+  kind           String
   /// The challenge bytes, base64url-encoded.
-  challenge String   @unique
+  challenge      String   @unique
   /// Userid the challenge was minted for. Nullable because the
   /// authentication flow may begin without a known user (usernameless
   /// passkey UX).
-  userId    String?
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  userId         String?
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
 
   @@index([expiresAt])
   @@index([userId])
@@ -678,14 +680,14 @@ model Environment {
   alertRules            AlertRule[]
   notificationChannels  NotificationChannel[]
   serviceAccounts       ServiceAccount[]
-  deployRequests        DeployRequest[]
+  releases              Release[]               @relation("ReleaseEnvironment")
   teamDefaults          Team[]                  @relation("teamDefault")
   sharedComponents      SharedComponent[]
   pipelineGroups        PipelineGroup[]
   nodeGroups            NodeGroup[]
-  stagedRollouts        StagedRollout[]
-  promotionSources      PromotionRequest[]      @relation("PromotionSourceEnv")
-  promotionTargets      PromotionRequest[]      @relation("PromotionTargetEnv")
+  releasesAsTarget      Release[]               @relation("ReleaseTargetEnvironment")
+  lakeDatasets          LakeDataset[]           @relation("LakeDatasetEnvironment")
+  lakeBucket            EnvironmentLakeBucket?
   filterPresets         FilterPreset[]
   gitSyncJobs           GitSyncJob[]
   costPerGbCents        Int                     @default(0) // cents per GB processed (0 = volume-only)
@@ -741,6 +743,7 @@ model VectorNode {
   labels            Json?                @default("{}")
   pipelineStatuses  NodePipelineStatus[]
   nodeMetrics       NodeMetric[]
+  nodeMetricRollups NodeMetricRollup[]
   pipelineLogs      PipelineLog[]
   alertEvents       AlertEvent[]
   statusEvents      NodeStatusEvent[]
@@ -875,27 +878,27 @@ model NodeGroup {
 }
 
 model Pipeline {
-  id                        String               @id @default(cuid())
-  organizationId            String               @default("default")
+  id                        String                 @id @default(cuid())
+  organizationId            String                 @default("default")
   name                      String
   description               String?
   environmentId             String
-  environment               Environment          @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  environment               Environment            @relation(fields: [environmentId], references: [id], onDelete: Cascade)
   groupId                   String?
-  group                     PipelineGroup?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  group                     PipelineGroup?         @relation(fields: [groupId], references: [id], onDelete: SetNull)
   nodes                     PipelineNode[]
   edges                     PipelineEdge[]
   versions                  PipelineVersion[]
   globalConfig              Json?
   nodeSelector              Json?
   gitPath                   String? // Stable git file path, e.g. "production/my-pipeline.yaml"
-  isDraft                   Boolean              @default(true)
-  isSystem                  Boolean              @default(false)
+  isDraft                   Boolean                @default(true)
+  isSystem                  Boolean                @default(false)
   deployedAt                DateTime?
   createdById               String?
-  createdBy                 User?                @relation("PipelineCreatedBy", fields: [createdById], references: [id])
+  createdBy                 User?                  @relation("PipelineCreatedBy", fields: [createdById], references: [id])
   updatedById               String?
-  updatedBy                 User?                @relation("PipelineUpdatedBy", fields: [updatedById], references: [id])
+  updatedBy                 User?                  @relation("PipelineUpdatedBy", fields: [updatedById], references: [id])
   nodeStatuses              NodePipelineStatus[]
   metrics                   PipelineMetric[]
   pipelineLogs              PipelineLog[]
@@ -903,28 +906,32 @@ model Pipeline {
   sampleRequests            EventSampleRequest[]
   eventSamples              EventSample[]
   slis                      PipelineSli[]
-  enrichMetadata            Boolean              @default(false)
-  tags                      Json?                @default("[]") // string[] of compliance tags like ["PII", "PCI-DSS"]
-  autoRollbackEnabled       Boolean              @default(false)
-  autoRollbackThreshold     Float                @default(5.0)
-  autoRollbackWindowMinutes Int                  @default(5)
+  enrichMetadata            Boolean                @default(false)
+  tags                      Json?                  @default("[]") // string[] of compliance tags like ["PII", "PCI-DSS"]
+  autoRollbackEnabled       Boolean                @default(false)
+  autoRollbackThreshold     Float                  @default(5.0)
+  autoRollbackWindowMinutes Int                    @default(5)
   deploymentStrategy        Json? // DeploymentStrategy | null (null = direct deploy)
   variables                 Json? // Record<string, string> — pipeline-scoped variable key-value pairs
   aiConversations           AiConversation[]
-  deployRequests            DeployRequest[]
-  stagedRollouts            StagedRollout[]
-  upstreamDeps              PipelineDependency[] @relation("PipelineDownstream")
-  downstreamDeps            PipelineDependency[] @relation("PipelineUpstream")
-  promotionSources          PromotionRequest[]   @relation("PromotionSource")
-  promotionTargets          PromotionRequest[]   @relation("PromotionTarget")
+  releases                  Release[]              @relation("ReleasePipeline")
+  upstreamDeps              PipelineDependency[]   @relation("PipelineDownstream")
+  downstreamDeps            PipelineDependency[]   @relation("PipelineUpstream")
+  releasesAsTarget          Release[]              @relation("ReleaseTargetPipeline")
+  pipelineMetricRollups     PipelineMetricRollup[]
+  tapCaptures               TapCapture[]
+  proposedChanges           ProposedChange[]       @relation("ProposedChangePipeline")
+  lakeDatasets              LakeDataset[]          @relation("LakeDatasetPipeline")
+  replaysAsSource           ReplayJob[]            @relation("ReplaySourcePipeline")
+  replaysAsTarget           ReplayJob[]            @relation("ReplayTargetPipeline")
   gitSyncJobs               GitSyncJob[]
   migrationProject          MigrationProject?
   costRecommendations       CostRecommendation[]
   anomalyEvents             AnomalyEvent[]
   pausedAt                  DateTime?
-  pausedBy                  String?              // userId or "VectorFlow Support" when paused by operator
-  createdAt                 DateTime             @default(now())
-  updatedAt                 DateTime             @updatedAt
+  pausedBy                  String? // userId or "VectorFlow Support" when paused by operator
+  createdAt                 DateTime               @default(now())
+  updatedAt                 DateTime               @updatedAt
 
   @@index([organizationId])
 }
@@ -983,6 +990,9 @@ model PipelineMetric {
   bytesOut        BigInt   @default(0)
   utilization     Float    @default(0)
   latencyMeanMs   Float? // pipeline-level weighted mean latency (ms)
+  spansIn         BigInt   @default(0)
+  spansOut        BigInt   @default(0)
+  tracesIn        BigInt   @default(0)
 
   @@index([pipelineId, timestamp])
   @@index([pipelineId, componentId, timestamp])
@@ -1009,6 +1019,8 @@ enum RecommendationType {
   LOW_REDUCTION
   HIGH_ERROR_RATE
   STALE_PIPELINE
+  HIGH_CARDINALITY
+  TRACE_TAIL_SAMPLE
 }
 
 enum RecommendationStatus {
@@ -1070,16 +1082,16 @@ model EventSampleRequest {
 /// Live tap authorization state. Persisted (rather than in-memory) so authorization
 /// survives across server instances in HA deployments.
 model ActiveTap {
-  requestId   String   @id
+  requestId      String   @id
   /// Tenant scope. `pipeline.stopTap` runs inline
   /// authorisation on top of this row; the column adds RLS coverage
   /// for any future direct query that bypasses the handler.
   organizationId String   @default("default")
-  nodeId      String
-  pipelineId  String
-  componentId String
-  startedAt   DateTime @default(now())
-  expiresAt   DateTime
+  nodeId         String
+  pipelineId     String
+  componentId    String
+  startedAt      DateTime @default(now())
+  expiresAt      DateTime
 
   @@index([expiresAt])
   @@index([nodeId])
@@ -1225,40 +1237,10 @@ model PipelineVersion {
   changelog         String?
   createdAt         DateTime @default(now())
 
-  stagedRolloutsAsCanary   StagedRollout[] @relation("StagedRolloutCanaryVersion")
-  stagedRolloutsAsPrevious StagedRollout[] @relation("StagedRolloutPreviousVersion")
+  releasesAsCanary   Release[] @relation("ReleaseCanaryVersion")
+  releasesAsPrevious Release[] @relation("ReleasePreviousVersion")
 
   @@index([pipelineId, version])
-  @@index([organizationId])
-}
-
-model StagedRollout {
-  id                       String           @id @default(cuid())
-  organizationId           String           @default("default")
-  pipelineId               String
-  pipeline                 Pipeline         @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  environmentId            String
-  environment              Environment      @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  canaryVersionId          String
-  canaryVersion            PipelineVersion  @relation("StagedRolloutCanaryVersion", fields: [canaryVersionId], references: [id], onDelete: Cascade)
-  previousVersionId        String?
-  previousVersion          PipelineVersion? @relation("StagedRolloutPreviousVersion", fields: [previousVersionId], references: [id])
-  canarySelector           Json
-  originalSelector         Json?
-  canaryNodeIds            Json
-  remainingNodeIds         Json?
-  status                   String           @default("CANARY_DEPLOYED")
-  healthCheckWindowMinutes Int              @default(5)
-  healthCheckExpiresAt     DateTime?
-  broadenedAt              DateTime?
-  rolledBackAt             DateTime?
-  createdById              String
-  createdBy                User             @relation("StagedRolloutCreatedBy", fields: [createdById], references: [id])
-  createdAt                DateTime         @default(now())
-  updatedAt                DateTime         @updatedAt
-
-  @@index([pipelineId, status])
-  @@index([status, healthCheckExpiresAt])
   @@index([organizationId])
 }
 
@@ -1281,19 +1263,19 @@ model Secret {
 }
 
 model Certificate {
-  id            String              @id @default(cuid())
+  id             String              @id @default(cuid())
   /// Tenant scope — see Secret.organizationId.
   organizationId String              @default("default")
-  name          String
-  filename      String
-  fileType      String
-  encryptedData String
-  environmentId String
-  environment   Environment         @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  bundlesAsCa   CertificateBundle[] @relation("bundleCa")
-  bundlesAsCert CertificateBundle[] @relation("bundleCert")
-  bundlesAsKey  CertificateBundle[] @relation("bundleKey")
-  createdAt     DateTime            @default(now())
+  name           String
+  filename       String
+  fileType       String
+  encryptedData  String
+  environmentId  String
+  environment    Environment         @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  bundlesAsCa    CertificateBundle[] @relation("bundleCa")
+  bundlesAsCert  CertificateBundle[] @relation("bundleCert")
+  bundlesAsKey   CertificateBundle[] @relation("bundleKey")
+  createdAt      DateTime            @default(now())
 
   @@unique([environmentId, name])
   @@index([organizationId])
@@ -1301,20 +1283,20 @@ model Certificate {
 }
 
 model CertificateBundle {
-  id            String       @id @default(cuid())
+  id             String       @id @default(cuid())
   /// Tenant scope — see Secret.organizationId.
   organizationId String       @default("default")
-  name          String
-  environmentId String
-  environment   Environment  @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  caId          String?
-  ca            Certificate? @relation("bundleCa", fields: [caId], references: [id], onDelete: SetNull)
-  certId        String?
-  cert          Certificate? @relation("bundleCert", fields: [certId], references: [id], onDelete: SetNull)
-  keyId         String?
-  key           Certificate? @relation("bundleKey", fields: [keyId], references: [id], onDelete: SetNull)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  name           String
+  environmentId  String
+  environment    Environment  @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  caId           String?
+  ca             Certificate? @relation("bundleCa", fields: [caId], references: [id], onDelete: SetNull)
+  certId         String?
+  cert           Certificate? @relation("bundleCert", fields: [certId], references: [id], onDelete: SetNull)
+  keyId          String?
+  key            Certificate? @relation("bundleKey", fields: [keyId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@unique([environmentId, name])
   @@index([organizationId])
@@ -1712,64 +1694,82 @@ model VrlSnippet {
   @@index([organizationId])
 }
 
-model DeployRequest {
-  id             String      @id @default(cuid())
-  organizationId String      @default("default")
-  pipelineId     String
-  pipeline       Pipeline    @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  environmentId  String
-  environment    Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  requestedById  String?
-  requestedBy    User?       @relation("deployRequester", fields: [requestedById], references: [id], onDelete: SetNull)
-  configYaml     String
-  changelog      String
-  nodeSelector   Json?
-  status         String      @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED | DEPLOYED
-  reviewedById   String?
-  reviewedBy     User?       @relation("deployReviewer", fields: [reviewedById], references: [id])
-  reviewNote     String?
-  createdAt      DateTime    @default(now())
-  reviewedAt     DateTime?
-  deployedById   String?
-  deployedBy     User?       @relation("deployExecutor", fields: [deployedById], references: [id], onDelete: SetNull)
-  deployedAt     DateTime?
-
-  @@index([pipelineId, status])
-  @@index([environmentId, status])
-  @@index([organizationId])
+enum ReleaseStrategy {
+  DIRECT
+  PROMOTION
+  CANARY
 }
 
-model PromotionRequest {
-  id                   String      @id @default(cuid())
-  organizationId       String      @default("default")
-  sourcePipelineId     String
-  sourcePipeline       Pipeline    @relation("PromotionSource", fields: [sourcePipelineId], references: [id], onDelete: Cascade)
+/// Unified release record. Subsumes the former DeployRequest (DIRECT),
+/// PromotionRequest (PROMOTION) and StagedRollout (CANARY) models. The
+/// `strategy` discriminator selects which facet fields are populated; `status`
+/// holds the per-strategy state-machine value:
+///   DIRECT:    PENDING | APPROVED | REJECTED | CANCELLED | DEPLOYED
+///   PROMOTION: PENDING | APPROVED | DEPLOYED | REJECTED | CANCELLED | AWAITING_PR_MERGE | DEPLOYING
+///   CANARY:    CANARY_DEPLOYED | HEALTH_CHECK | BROADENED | ROLLED_BACK
+model Release {
+  id             String          @id @default(cuid())
+  organizationId String          @default("default")
+  strategy       ReleaseStrategy
+  status         String
+
+  // Primary pipeline + environment. For PROMOTION this is the SOURCE side.
+  pipelineId    String
+  pipeline      Pipeline    @relation("ReleasePipeline", fields: [pipelineId], references: [id], onDelete: Cascade)
+  environmentId String
+  environment   Environment @relation("ReleaseEnvironment", fields: [environmentId], references: [id], onDelete: Cascade)
+
+  changelog  String  @default("")
+  reviewNote String?
+
+  // Actors (unified across strategies).
+  requestedById String?
+  requestedBy   User?   @relation("ReleaseRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  reviewedById  String?
+  reviewedBy    User?   @relation("ReleaseReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  deployedById  String?
+  deployedBy    User?   @relation("ReleaseDeployedBy", fields: [deployedById], references: [id], onDelete: SetNull)
+
+  // ── DIRECT facet (was DeployRequest) ──
+  configYaml   String?
+  nodeSelector Json?
+
+  // ── PROMOTION facet (was PromotionRequest) ──
   targetPipelineId     String?
-  targetPipeline       Pipeline?   @relation("PromotionTarget", fields: [targetPipelineId], references: [id], onDelete: SetNull)
-  sourceEnvironmentId  String
-  sourceEnvironment    Environment @relation("PromotionSourceEnv", fields: [sourceEnvironmentId], references: [id], onDelete: Cascade)
-  targetEnvironmentId  String
-  targetEnvironment    Environment @relation("PromotionTargetEnv", fields: [targetEnvironmentId], references: [id], onDelete: Cascade)
-  status               String      @default("PENDING") // PENDING | APPROVED | DEPLOYED | REJECTED | CANCELLED | AWAITING_PR_MERGE | DEPLOYING
-  promotedById         String?
-  promotedBy           User?       @relation("PromotionRequester", fields: [promotedById], references: [id], onDelete: SetNull)
-  approvedById         String?
-  approvedBy           User?       @relation("PromotionApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  targetPipeline       Pipeline?    @relation("ReleaseTargetPipeline", fields: [targetPipelineId], references: [id], onDelete: SetNull)
+  targetEnvironmentId  String?
+  targetEnvironment    Environment? @relation("ReleaseTargetEnvironment", fields: [targetEnvironmentId], references: [id], onDelete: Cascade)
+  targetPipelineName   String?
   nodesSnapshot        Json?
   edgesSnapshot        Json?
   globalConfigSnapshot Json?
-  targetPipelineName   String?
-  reviewNote           String?
-  prUrl                String? // GitHub PR HTML URL (GitOps promotion only)
-  prNumber             Int? // GitHub PR number (GitOps promotion only)
-  createdAt            DateTime    @default(now())
-  reviewedAt           DateTime?
-  deployedAt           DateTime?
+  prUrl                String?
+  prNumber             Int?
 
-  @@index([sourcePipelineId, status])
-  @@index([sourceEnvironmentId])
+  // ── CANARY facet (was StagedRollout) ──
+  canaryVersionId          String?
+  canaryVersion            PipelineVersion? @relation("ReleaseCanaryVersion", fields: [canaryVersionId], references: [id], onDelete: Cascade)
+  previousVersionId        String?
+  previousVersion          PipelineVersion? @relation("ReleasePreviousVersion", fields: [previousVersionId], references: [id])
+  canarySelector           Json?
+  originalSelector         Json?
+  canaryNodeIds            Json?
+  remainingNodeIds         Json?
+  healthCheckWindowMinutes Int?
+  healthCheckExpiresAt     DateTime?
+  broadenedAt              DateTime?
+  rolledBackAt             DateTime?
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  reviewedAt DateTime?
+  deployedAt DateTime?
+
+  @@index([organizationId, strategy, status])
+  @@index([pipelineId, strategy, status])
+  @@index([environmentId, status])
   @@index([targetEnvironmentId])
-  @@index([organizationId])
+  @@index([status, healthCheckExpiresAt])
 }
 
 model GitSyncJob {
@@ -2182,4 +2182,256 @@ model AnomalyEvent {
   @@index([detectedAt])
   @@index([correlationGroupId])
   @@index([organizationId])
+}
+
+/// Per-organisation price model for a destination (Vector sink type), used to
+/// turn byte-volume estimates into projected dollar cost in analytics and cost
+/// recommendations (B3).
+model DestinationCostModel {
+  id              String   @id @default(cuid())
+  organizationId  String   @default("default")
+  /// Vector sink component type, e.g. "datadog_logs", "splunk_hec",
+  /// "elasticsearch", "aws_s3".
+  sinkType        String
+  /// Human label shown in the UI (defaults to the sink type).
+  label           String?
+  /// Destination price in cents per GB.
+  pricePerGbCents Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([organizationId, sinkType])
+  @@index([organizationId])
+}
+
+/// Downsampled NodeMetric rollup (hourly/daily) retained far longer than raw
+/// metrics (B5). Gauge columns hold the bucket AVERAGE; max* columns hold the
+/// bucket peak for the alerting-relevant gauges.
+model NodeMetricRollup {
+  id                 String     @id @default(cuid())
+  organizationId     String     @default("default")
+  nodeId             String
+  node               VectorNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  bucketStart        DateTime
+  granularity        String
+  sampleCount        Int        @default(0)
+  memoryUsedBytes    BigInt     @default(0)
+  memoryTotalBytes   BigInt     @default(0)
+  cpuSecondsTotal    Float      @default(0)
+  cpuSecondsIdle     Float      @default(0)
+  loadAvg1           Float      @default(0)
+  loadAvg5           Float      @default(0)
+  loadAvg15          Float      @default(0)
+  fsUsedBytes        BigInt     @default(0)
+  fsTotalBytes       BigInt     @default(0)
+  diskReadBytes      BigInt     @default(0)
+  diskWrittenBytes   BigInt     @default(0)
+  netRxBytes         BigInt     @default(0)
+  netTxBytes         BigInt     @default(0)
+  maxMemoryUsedBytes BigInt     @default(0)
+  maxLoadAvg1        Float      @default(0)
+
+  @@unique([nodeId, granularity, bucketStart])
+  @@index([nodeId, granularity, bucketStart])
+  @@index([organizationId, bucketStart])
+}
+
+/// Downsampled PipelineMetric rollup (B5). Counter columns hold the bucket SUM;
+/// utilization/latency hold the bucket AVERAGE. componentId "" = pipeline
+/// aggregate row (mirrors PipelineMetric's null-aggregate, but non-null so the
+/// unique key dedupes aggregate rows on upsert).
+model PipelineMetricRollup {
+  id              String   @id @default(cuid())
+  organizationId  String   @default("default")
+  pipelineId      String
+  pipeline        Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  componentId     String   @default("")
+  bucketStart     DateTime
+  granularity     String
+  sampleCount     Int      @default(0)
+  eventsIn        BigInt   @default(0)
+  eventsOut       BigInt   @default(0)
+  eventsDiscarded BigInt   @default(0)
+  errorsTotal     BigInt   @default(0)
+  bytesIn         BigInt   @default(0)
+  bytesOut        BigInt   @default(0)
+  utilization     Float    @default(0)
+  latencyMeanMs   Float?
+  maxLatencyMs    Float?
+  spansIn         BigInt   @default(0)
+  spansOut        BigInt   @default(0)
+  tracesIn        BigInt   @default(0)
+
+  @@unique([pipelineId, componentId, granularity, bucketStart])
+  @@index([pipelineId, granularity, bucketStart])
+  @@index([organizationId, bucketStart])
+}
+
+/// A persisted live-tap capture (B4): a named snapshot of real events captured
+/// from a pipeline component, retained beyond the ephemeral EventSample TTL so
+/// it can be replayed through the transform-eval harness for iteration.
+model TapCapture {
+  id             String   @id @default(cuid())
+  organizationId String   @default("default")
+  pipelineId     String
+  pipeline       Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  name           String
+  componentKey   String
+  events         Json
+  schema         Json
+  eventCount     Int      @default(0)
+  createdById    String?
+  createdBy      User?    @relation("TapCaptureCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, pipelineId])
+  @@index([pipelineId])
+}
+
+enum ProposedChangeKind {
+  PIPELINE_GRAPH
+  VRL
+}
+
+enum ProposedChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  APPLIED
+}
+
+/// A human-approval-gated change proposed by the agentic AI (B2). The AI
+/// generates a pipeline-graph or VRL edit; the server validates it (vector
+/// validate + VRL eval, with an auto-fix loop) and stages it here. An EDITOR
+/// must approve before it is applied — autonomy is capped at human-approved apply.
+model ProposedChange {
+  id                   String               @id @default(cuid())
+  organizationId       String               @default("default")
+  pipelineId           String
+  pipeline             Pipeline             @relation("ProposedChangePipeline", fields: [pipelineId], references: [id], onDelete: Cascade)
+  kind                 ProposedChangeKind
+  status               ProposedChangeStatus @default(PENDING)
+  summary              String               @db.Text
+  prompt               String?              @db.Text
+  proposedNodes        Json?
+  proposedEdges        Json?
+  proposedGlobalConfig Json?
+  vrlSource            String?              @db.Text
+  targetComponentKey   String?
+  validationResult     Json?
+  validated            Boolean              @default(false)
+  createdById          String?
+  createdBy            User?                @relation("ProposedChangeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  reviewedById         String?
+  reviewedBy           User?                @relation("ProposedChangeReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewNote           String?
+  createdAt            DateTime             @default(now())
+  reviewedAt           DateTime?
+  appliedAt            DateTime?
+
+  @@index([organizationId, status])
+  @@index([pipelineId, status])
+}
+
+/// Retention/tiering policy for lake datasets (A1). hotDays = days kept in the
+/// ClickHouse MergeTree hot tier before TTL-move to the S3-backed cold disk;
+/// coldDays = total retention before TTL-delete.
+model LakeRetentionPolicy {
+  id             String        @id @default(cuid())
+  organizationId String        @default("default")
+  name           String
+  hotDays        Int           @default(7)
+  coldDays       Int           @default(90)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  datasets       LakeDataset[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+/// Catalog metadata for a pipeline/environment's events stored in the lake
+/// (ClickHouse). The events live in ClickHouse `lake_events`; this Postgres row
+/// tracks the discovered schema, row/byte counts, time range and tiering so the
+/// search UI and ops can reason about a dataset without querying ClickHouse.
+model LakeDataset {
+  id                String               @id @default(cuid())
+  organizationId    String               @default("default")
+  pipelineId        String
+  pipeline          Pipeline             @relation("LakeDatasetPipeline", fields: [pipelineId], references: [id], onDelete: Cascade)
+  environmentId     String
+  environment       Environment          @relation("LakeDatasetEnvironment", fields: [environmentId], references: [id], onDelete: Cascade)
+  schemaJson        Json?
+  rowCount          BigInt               @default(0)
+  byteCount         BigInt               @default(0)
+  firstEventAt      DateTime?
+  lastEventAt       DateTime?
+  /// hot | cold | external (BYO bucket, cold-only — no in-place search).
+  tiering           String               @default("hot")
+  retentionPolicyId String?
+  retentionPolicy   LakeRetentionPolicy? @relation(fields: [retentionPolicyId], references: [id], onDelete: SetNull)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@unique([organizationId, pipelineId])
+  @@index([organizationId])
+  @@index([pipelineId])
+}
+
+/// A lake replay/rehydration job (A4): SELECTs stored events from the lake over
+/// a time window and re-injects them into a target pipeline. Driven by the
+/// control plane; the agent pulls bounded replay batches from /api/agent/replay.
+model ReplayJob {
+  id               String    @id @default(cuid())
+  organizationId   String    @default("default")
+  sourcePipelineId String
+  sourcePipeline   Pipeline  @relation("ReplaySourcePipeline", fields: [sourcePipelineId], references: [id], onDelete: Cascade)
+  targetPipelineId String
+  targetPipeline   Pipeline  @relation("ReplayTargetPipeline", fields: [targetPipelineId], references: [id], onDelete: Cascade)
+  fromTime         DateTime
+  toTime           DateTime
+  /// Optional event filter (eventType, free-text query) applied to the lake read.
+  filter           Json?
+  /// PENDING | RUNNING | COMPLETED | FAILED | CANCELLED
+  status           String    @default("PENDING")
+  totalEvents      BigInt    @default(0)
+  replayedEvents   BigInt    @default(0)
+  /// Idempotency / dedupe key stamped onto replayed events so re-injection is
+  /// distinguishable and a re-run does not double-inject.
+  dedupeKey        String
+  error            String?
+  createdById      String?
+  createdBy        User?     @relation("ReplayCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  startedAt        DateTime?
+  completedAt      DateTime?
+
+  @@index([organizationId, status])
+  @@index([targetPipelineId, status])
+  @@index([status])
+}
+
+/// Per-environment "bring your own" object-storage bucket for the lake cold tier
+/// (A5). When set, cold-tier writes target the customer's bucket; credentials are
+/// encrypted at rest (crypto-v3). A dataset backed only by an external bucket is
+/// marked LakeDataset.tiering = 'external' (no in-place ClickHouse search).
+model EnvironmentLakeBucket {
+  id                       String      @id @default(cuid())
+  organizationId           String      @default("default")
+  environmentId            String      @unique
+  environment              Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  /// "s3" | "gcs" | "azure"
+  provider                 String
+  bucket                   String
+  region                   String?
+  endpoint                 String?
+  prefix                   String?
+  /// crypto-v3 encrypted credentials (null when using instance/workload identity).
+  encryptedAccessKeyId     String?
+  encryptedSecretAccessKey String?
+  createdAt                DateTime    @default(now())
+  updatedAt                DateTime    @updatedAt
+
+  @@index([organizationId, environmentId])
 }

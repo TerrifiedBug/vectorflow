@@ -498,7 +498,7 @@ describe("audit middleware org-scope hardening", () => {
     mockPrisma.notificationChannel.findFirst.mockReset();
     mockPrisma.vrlSnippet.findFirst.mockReset();
     mockPrisma.serviceAccount.findFirst.mockReset();
-    mockPrisma.deployRequest.findFirst.mockReset();
+    mockPrisma.release.findFirst.mockReset();
   });
 
   it("resolveTeamId: cross-org environmentId returns null", async () => {
@@ -623,7 +623,7 @@ describe("audit middleware org-scope hardening", () => {
 
   it("resolveEnvironmentId: cross-org id/DeployRequest returns null", async () => {
     const { resolveEnvironmentId } = await import("@/server/middleware/audit");
-    mockPrisma.deployRequest.findFirst.mockResolvedValueOnce(null);
+    mockPrisma.release.findFirst.mockResolvedValueOnce(null);
 
     const result = await resolveEnvironmentId(
       { requestId: "req-cross-org" },
@@ -632,7 +632,7 @@ describe("audit middleware org-scope hardening", () => {
     );
 
     expect(result).toBeNull();
-    expect(mockPrisma.deployRequest.findFirst).toHaveBeenCalledWith(
+    expect(mockPrisma.release.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ organizationId: "org-A" }),
       }),

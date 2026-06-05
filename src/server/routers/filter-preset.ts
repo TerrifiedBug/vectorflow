@@ -8,7 +8,7 @@ import type { Prisma } from "@/generated/prisma";
 
 const MAX_PRESETS_PER_SCOPE = 20;
 
-const scopeSchema = z.enum(["pipeline_list", "fleet_matrix"]);
+const scopeSchema = z.enum(["pipeline_list", "fleet_matrix", "lake_search"]);
 
 export const filterPresetRouter = router({
   list: protectedProcedure

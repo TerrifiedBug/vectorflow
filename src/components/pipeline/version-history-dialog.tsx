@@ -119,7 +119,7 @@ export function VersionHistoryDialog({
   );
 
   const deployFromVersionMutation = useMutation(
-    trpc.deploy.deployFromVersion.mutationOptions({
+    trpc.release.direct.deployFromVersion.mutationOptions({
       onSuccess: (result) => {
         toast.success(`Deployed version ${result.version.version}`);
         setDeployTarget(null);

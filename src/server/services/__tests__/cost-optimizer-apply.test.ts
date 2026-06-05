@@ -50,6 +50,19 @@ describe("applyRecommendationToYaml", () => {
     expect(result).toMatch(/opensearch_prod:[\s\S]*inputs:[\s\S]*- error_filter/);
   });
 
+  it("applies drop_field — inserts a remap transform that dels the fields and rewires sink", () => {
+    const action: SuggestedAction = {
+      type: "drop_field",
+      config: { fields: ["req_id", "trace_id"], componentKey: "drop_hicard" },
+    };
+    const result = applyRecommendationToYaml(baseYaml, action, "opensearch_prod");
+    expect(result).toContain("drop_hicard:");
+    expect(result).toContain("type: remap");
+    expect(result).toContain('del(."req_id")');
+    expect(result).toContain('del(."trace_id")');
+    expect(result).toMatch(/opensearch_prod:[\s\S]*inputs:[\s\S]*- drop_hicard/);
+  });
+
   it("returns null for disable_pipeline (no YAML change)", () => {
     const action: SuggestedAction = {
       type: "disable_pipeline",

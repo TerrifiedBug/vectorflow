@@ -163,10 +163,10 @@ export async function executePromotion(
   executorId: string,
 ): Promise<ExecutePromotionResult> {
   // Load the request and source pipeline info
-  const request = await prisma.promotionRequest.findUnique({
-    where: { id: requestId },
+  const request = await prisma.release.findFirst({
+    where: { id: requestId, strategy: "PROMOTION" },
     include: {
-      sourcePipeline: {
+      pipeline: {
         select: {
           name: true,
           description: true,
@@ -182,15 +182,23 @@ export async function executePromotion(
     throw new TRPCError({ code: "NOT_FOUND", message: "Promotion request not found" });
   }
 
-  const targetPipelineName = request.targetPipelineName ?? request.sourcePipeline.name;
-  const teamId = request.sourcePipeline.environment.teamId;
+  if (!request.targetEnvironmentId) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Promotion request is missing a target environment",
+    });
+  }
+  const targetEnvironmentId = request.targetEnvironmentId;
+
+  const targetPipelineName = request.targetPipelineName ?? request.pipeline.name;
+  const teamId = request.pipeline.environment.teamId;
 
   // Execute in a transaction: create target pipeline + copy graph + update request
   const { targetPipelineId } = await withOrgTxFromContext(async (tx) => {
     // Check for name collision in target environment
     const existing = await tx.pipeline.findFirst({
       where: {
-        environmentId: request.targetEnvironmentId,
+        environmentId: targetEnvironmentId,
         name: targetPipelineName,
       },
     });
@@ -205,8 +213,8 @@ export async function executePromotion(
     const targetPipeline = await tx.pipeline.create({
       data: {
         name: targetPipelineName,
-        description: request.sourcePipeline.description ?? undefined,
-        environmentId: request.targetEnvironmentId,
+        description: request.pipeline.description ?? undefined,
+        environmentId: targetEnvironmentId,
         globalConfig: request.globalConfigSnapshot ?? undefined,
         isDraft: true,
         createdById: executorId,
@@ -217,19 +225,19 @@ export async function executePromotion(
     // Copy nodes and edges from source pipeline WITHOUT stripping SECRET[name] refs.
     // SECRET resolution happens at deploy time via secret-resolver.ts.
     await copyPipelineGraph(tx, {
-      sourcePipelineId: request.sourcePipelineId,
+      sourcePipelineId: request.pipelineId,
       targetPipelineId: targetPipeline.id,
       stripSharedComponentLinks: true,
       // No transformConfig — preserves SECRET[name] refs intact
     });
 
     // Mark request as DEPLOYED
-    await tx.promotionRequest.update({
-      where: { id: requestId },
+    await tx.release.update({
+      where: { id: requestId, strategy: "PROMOTION" },
       data: {
         targetPipelineId: targetPipeline.id,
         status: "DEPLOYED",
-        approvedById: executorId,
+        reviewedById: executorId,
         reviewedAt: new Date(),
         deployedAt: new Date(),
       },
@@ -244,11 +252,11 @@ export async function executePromotion(
     timestamp: new Date().toISOString(),
     data: {
       promotionRequestId: requestId,
-      sourcePipelineId: request.sourcePipelineId,
+      sourcePipelineId: request.pipelineId,
       targetPipelineId,
-      sourceEnvironmentId: request.sourceEnvironmentId,
+      sourceEnvironmentId: request.environmentId,
       targetEnvironmentId: request.targetEnvironmentId,
-      promotedBy: request.promotedById,
+      promotedBy: request.requestedById,
     },
   });
 

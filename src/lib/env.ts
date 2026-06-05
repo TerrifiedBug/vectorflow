@@ -88,6 +88,27 @@ const runtimeEnvSchema = z
     ANALYZE: z.string().optional(),
     NEXT_RUNTIME: z.string().optional(),
     LOG_LEVEL: z.string().optional(),
+
+    // ── VectorFlow Lake (ClickHouse) ──────────────────────────────────────
+    // Optional long-retention event store (A1). All vars are OPTIONAL: when
+    // VF_LAKE_CLICKHOUSE_URL is unset the lake is fully inert — `isLakeEnabled()`
+    // is false and nothing ever connects (see
+    // src/server/services/lake/clickhouse.ts). Non-lake deployments (the
+    // default) are completely unaffected.
+    VF_LAKE_CLICKHOUSE_URL: z.string().optional(),
+    VF_LAKE_CLICKHOUSE_USER: z.string().optional(),
+    VF_LAKE_CLICKHOUSE_PASSWORD: z.string().optional(),
+    // Default DB mirrors DEFAULT_LAKE_DATABASE in the lake wrapper.
+    VF_LAKE_CLICKHOUSE_DATABASE: z.string().default("vectorflow_lake"),
+    // Cold tier (S3-backed). When VF_LAKE_S3_BUCKET is set the lake migration
+    // runner (scripts/lake-migrate.ts) applies a TTL move-to-cold +
+    // `storage_policy='vf_hot_cold'`; otherwise lake_events is a plain MergeTree
+    // with a TTL-delete only, so it runs on a vanilla ClickHouse.
+    VF_LAKE_S3_ENDPOINT: z.string().optional(),
+    VF_LAKE_S3_BUCKET: z.string().optional(),
+    VF_LAKE_S3_REGION: z.string().optional(),
+    VF_LAKE_S3_ACCESS_KEY_ID: z.string().optional(),
+    VF_LAKE_S3_SECRET_ACCESS_KEY: z.string().optional(),
   })
   .superRefine((value, ctx) => {
     if (isBuildPhase || value.NEXTAUTH_URL || value.AUTH_TRUST_HOST === "true") {

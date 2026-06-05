@@ -12,6 +12,7 @@ import {
   getCostTimeSeries,
   getPipelineCostSnapshot,
   formatCostCsv,
+  getCostBySink,
 } from "@/server/services/cost-attribution";
 
 const rangeSchema = z.enum(["1h", "6h", "1d", "7d", "30d"]);
@@ -64,6 +65,27 @@ export const analyticsRouter = router({
         environmentId: input.environmentId,
         range: input.range,
         costPerGbCents: env.costPerGbCents,
+      });
+    }),
+
+  /**
+   * Cost broken down by destination sink type. Projects $ from the org's
+   * DestinationCostModel rows (B3): each sink's `costCents` is null when no
+   * price model is configured (byte-only fallback).
+   */
+  costBySink: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        range: rangeSchema,
+      })
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ ctx, input }) => {
+      return getCostBySink({
+        environmentId: input.environmentId,
+        range: input.range,
+        organizationId: ctx.organizationId,
       });
     }),
 

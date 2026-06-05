@@ -67,12 +67,12 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   });
 
   const previewQuery = useQuery({
-    ...trpc.deploy.preview.queryOptions({ pipelineId }),
+    ...trpc.release.direct.preview.queryOptions({ pipelineId }),
     enabled: open,
   });
 
   const envQuery = useQuery({
-    ...trpc.deploy.environmentInfo.queryOptions({ pipelineId }),
+    ...trpc.release.direct.environmentInfo.queryOptions({ pipelineId }),
     enabled: open,
   });
 
@@ -163,11 +163,11 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
 
   // Fetch pending deploy requests for this pipeline
   const pendingRequestsQuery = useQuery({
-    ...trpc.deploy.listPendingRequests.queryOptions({ pipelineId }),
+    ...trpc.release.direct.listPendingRequests.queryOptions({ pipelineId }),
     enabled: open,
   });
   const agentMutation = useMutation(
-    trpc.deploy.agent.mutationOptions({
+    trpc.release.direct.agent.mutationOptions({
       onSuccess: (result) => {
         setDeploying(false);
         queryClient.invalidateQueries();
@@ -210,7 +210,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   );
 
   const approveMutation = useMutation(
-    trpc.deploy.approveDeployRequest.mutationOptions({
+    trpc.release.direct.approveDeployRequest.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries();
         toast.success("Deploy request approved", {
@@ -225,7 +225,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   );
 
   const rejectMutation = useMutation(
-    trpc.deploy.rejectDeployRequest.mutationOptions({
+    trpc.release.direct.rejectDeployRequest.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries();
         toast.success("Deploy request rejected");
@@ -239,7 +239,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   );
 
   const executeMutation = useMutation(
-    trpc.deploy.executeApprovedRequest.mutationOptions({
+    trpc.release.direct.executeApprovedRequest.mutationOptions({
       onSuccess: (result) => {
         queryClient.invalidateQueries();
         if (!result.success) {
@@ -261,7 +261,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   );
 
   const cancelMutation = useMutation(
-    trpc.deploy.cancelDeployRequest.mutationOptions({
+    trpc.release.direct.cancelDeployRequest.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries();
         toast.success("Deploy request cancelled");
@@ -274,7 +274,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   );
 
   const stagedDeployMutation = useMutation(
-    trpc.stagedRollout.create.mutationOptions({
+    trpc.release.canary.create.mutationOptions({
       onSuccess: () => {
         setDeploying(false);
         queryClient.invalidateQueries();

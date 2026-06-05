@@ -9,6 +9,7 @@ export const GET = apiRoute(
     const pipelineId = req.nextUrl.searchParams.get("pipelineId");
 
     const where: Record<string, unknown> = {
+      strategy: "DIRECT",
       environmentId: ctx.environmentId,
     };
 
@@ -23,7 +24,7 @@ export const GET = apiRoute(
       where.pipelineId = pipelineId;
     }
 
-    const requests = await prisma.deployRequest.findMany({
+    const requests = await prisma.release.findMany({
       where,
       select: {
         id: true,

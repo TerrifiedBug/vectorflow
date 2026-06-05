@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -403,6 +403,10 @@ export default function EnvironmentDetailPage({
           <TabsTrigger value="variables" className="gap-1.5">
             <Variable className="h-4 w-4" />
             Variables
+          </TabsTrigger>
+          <TabsTrigger value="lake" className="gap-1.5">
+            <Database className="h-4 w-4" />
+            Lake Storage
           </TabsTrigger>
         </TabsList>
 
@@ -938,6 +942,11 @@ export default function EnvironmentDetailPage({
         <TabsContent value="variables" className="space-y-4">
           <EnvironmentVariablesTab environmentId={id} />
         </TabsContent>
+
+        {/* -- Lake Storage Tab -- */}
+        <TabsContent value="lake" className="space-y-4">
+          <EnvironmentLakeBucketTab environmentId={id} isAdmin={isAdmin} />
+        </TabsContent>
       </Tabs>
 
       {/* Created info */}
@@ -1151,6 +1160,248 @@ function EnvironmentVariablesTab({ environmentId }: { environmentId: string }) {
               ))}
             </TableBody>
           </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+type LakeBucketProvider = "s3" | "gcs" | "azure";
+
+function EnvironmentLakeBucketTab({
+  environmentId,
+  isAdmin,
+}: {
+  environmentId: string;
+  isAdmin: boolean;
+}) {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  const bucketQuery = useQuery(trpc.environment.getLakeBucket.queryOptions({ environmentId }));
+  const config = bucketQuery.data;
+  const queryKey = trpc.environment.getLakeBucket.queryKey({ environmentId });
+
+  const [provider, setProvider] = useState<LakeBucketProvider>("s3");
+  const [bucket, setBucket] = useState("");
+  const [region, setRegion] = useState("");
+  const [endpoint, setEndpoint] = useState("");
+  const [prefix, setPrefix] = useState("");
+  const [accessKeyId, setAccessKeyId] = useState("");
+  const [secretAccessKey, setSecretAccessKey] = useState("");
+  const hydratedRef = useRef(false);
+
+  // Seed the non-secret fields from the saved config once it loads. Credentials
+  // are write-only — they are never returned by the API, so they stay blank.
+  useEffect(() => {
+    if (config && !hydratedRef.current) {
+      setProvider(config.provider);
+      setBucket(config.bucket);
+      setRegion(config.region ?? "");
+      setEndpoint(config.endpoint ?? "");
+      setPrefix(config.prefix ?? "");
+      hydratedRef.current = true;
+    }
+  }, [config]);
+
+  function resetForm() {
+    hydratedRef.current = false;
+    setProvider("s3");
+    setBucket("");
+    setRegion("");
+    setEndpoint("");
+    setPrefix("");
+    setAccessKeyId("");
+    setSecretAccessKey("");
+  }
+
+  const setMutation = useMutation(
+    trpc.environment.setLakeBucket.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey });
+        setAccessKeyId("");
+        setSecretAccessKey("");
+        toast.success("Lake cold-tier bucket saved");
+      },
+      onError: (error) => toast.error(error.message, { duration: 6000 }),
+    }),
+  );
+
+  const clearMutation = useMutation(
+    trpc.environment.clearLakeBucket.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey });
+        resetForm();
+        toast.success("Lake cold-tier bucket cleared — reverted to VectorFlow-managed storage");
+      },
+      onError: (error) => toast.error(error.message, { duration: 6000 }),
+    }),
+  );
+
+  // Mirrors `coldTierIsSearchable` on the server: only S3 buckets can be read
+  // in place by ClickHouse, so gcs/azure disable in-place lake search.
+  const externalOnly = provider !== "s3";
+
+  function handleSave() {
+    setMutation.mutate({
+      environmentId,
+      provider,
+      bucket: bucket.trim(),
+      region: region.trim() || null,
+      endpoint: endpoint.trim() || null,
+      prefix: prefix.trim() || null,
+      // Blank → omit so the stored credential is kept; a typed value replaces it.
+      accessKeyId: accessKeyId ? accessKeyId : undefined,
+      secretAccessKey: secretAccessKey ? secretAccessKey : undefined,
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between">
+        <div>
+          <CardTitle className="text-base">Lake cold-tier bucket</CardTitle>
+          <CardDescription>
+            Bring your own object-storage bucket for this environment&rsquo;s VectorFlow Lake
+            cold tier. Leave unset to use VectorFlow-managed storage. Cloud provisioning of
+            bucket access (IAM / policy) is handled separately.
+          </CardDescription>
+        </div>
+        {config && (
+          <Badge variant="secondary" className="shrink-0">
+            {config.provider.toUpperCase()}
+          </Badge>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {bucketQuery.isLoading ? (
+          <Skeleton className="h-48 w-full" />
+        ) : (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label>Provider</Label>
+                <Select
+                  value={provider}
+                  onValueChange={(val) => setProvider(val as LakeBucketProvider)}
+                  disabled={!isAdmin}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="s3">Amazon S3 (or S3-compatible)</SelectItem>
+                    <SelectItem value="gcs">Google Cloud Storage</SelectItem>
+                    <SelectItem value="azure">Azure Blob Storage</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Bucket</Label>
+                <Input
+                  placeholder="e.g. acme-vectorflow-lake"
+                  value={bucket}
+                  onChange={(e) => setBucket(e.target.value)}
+                  disabled={!isAdmin}
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Region (optional)</Label>
+                <Input
+                  placeholder="e.g. us-east-1"
+                  value={region}
+                  onChange={(e) => setRegion(e.target.value)}
+                  disabled={!isAdmin}
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Endpoint (optional)</Label>
+                <Input
+                  placeholder="e.g. https://minio.internal:9000"
+                  value={endpoint}
+                  onChange={(e) => setEndpoint(e.target.value)}
+                  disabled={!isAdmin}
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <Label>Prefix (optional)</Label>
+                <Input
+                  placeholder="e.g. lake/cold"
+                  value={prefix}
+                  onChange={(e) => setPrefix(e.target.value)}
+                  disabled={!isAdmin}
+                  className="text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label>Access key ID</Label>
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  placeholder={config?.hasAccessKeyId ? "•••••••• (stored — leave blank to keep)" : "Optional — uses workload identity if blank"}
+                  value={accessKeyId}
+                  onChange={(e) => setAccessKeyId(e.target.value)}
+                  disabled={!isAdmin}
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Secret access key</Label>
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  placeholder={config?.hasSecretAccessKey ? "•••••••• (stored — leave blank to keep)" : "Optional — uses workload identity if blank"}
+                  value={secretAccessKey}
+                  onChange={(e) => setSecretAccessKey(e.target.value)}
+                  disabled={!isAdmin}
+                  className="text-sm"
+                />
+              </div>
+            </div>
+
+            {externalOnly && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+                <strong>External-only cold tier.</strong> ClickHouse cannot read{" "}
+                {provider === "gcs" ? "Google Cloud Storage" : "Azure Blob Storage"} as an
+                in-place disk, so datasets stored here are marked{" "}
+                <code>external</code> and <strong>in-place lake search is disabled</strong> for
+                them — the data is retained for archival/replay only. Choose S3 (or an
+                S3-compatible endpoint) to keep search-in-place.
+              </div>
+            )}
+
+            {!isAdmin && (
+              <p className="text-xs text-muted-foreground">
+                Only admins can change the lake cold-tier bucket.
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={!isAdmin || !bucket.trim() || setMutation.isPending}
+              >
+                {setMutation.isPending ? "Saving..." : "Save bucket"}
+              </Button>
+              {config && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => clearMutation.mutate({ environmentId })}
+                  disabled={!isAdmin || clearMutation.isPending}
+                >
+                  {clearMutation.isPending ? "Clearing..." : "Clear bucket"}
+                </Button>
+              )}
+            </div>
+          </>
         )}
       </CardContent>
     </Card>

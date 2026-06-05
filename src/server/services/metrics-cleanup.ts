@@ -29,12 +29,35 @@ export async function cleanupOldMetrics(): Promise<CleanupResult> {
 
   const metricsRetentionDays = settings.metricsRetentionDays ?? 7;
   const logsRetentionDays = settings.logsRetentionDays ?? 3;
+  const metricsRollupRetentionDays = settings.metricsRollupRetentionDays ?? 90;
+
+  // Purge downsampled rollups on their own (longer) retention window. Rollup
+  // tables are plain Postgres tables — not TimescaleDB hypertables — so they are
+  // always purged with deleteMany regardless of the raw-metric strategy below.
+  // Raw and rollup retentions are independent (raw stays short; rollups persist
+  // for long-range dashboards and chargeback history).
+  await cleanupOldRollups(metricsRollupRetentionDays);
 
   if (isTimescaleDbAvailable()) {
     return cleanupWithDropChunks(metricsRetentionDays, logsRetentionDays);
   }
 
   return cleanupWithDeleteMany(metricsRetentionDays, logsRetentionDays);
+}
+
+/**
+ * Delete rollup rows whose bucket starts before the rollup retention window.
+ * Independent of raw-metric retention so long-range history outlives raw data.
+ */
+async function cleanupOldRollups(metricsRollupRetentionDays: number): Promise<void> {
+  // Coerce defensively (mirrors the raw-cleanup guard) and bind a Date cutoff.
+  const safeDays = Math.max(1, Math.trunc(Number(metricsRollupRetentionDays)));
+  const cutoff = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
+
+  await Promise.all([
+    prisma.nodeMetricRollup.deleteMany({ where: { bucketStart: { lt: cutoff } } }),
+    prisma.pipelineMetricRollup.deleteMany({ where: { bucketStart: { lt: cutoff } } }),
+  ]);
 }
 
 /**

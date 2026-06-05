@@ -166,6 +166,7 @@ import {
   deleteActiveTap,
   expireStaleTaps,
   getActiveTap,
+  saveTapCapture,
   TAP_TTL_MS,
 } from "@/server/services/active-taps";
 
@@ -833,5 +834,36 @@ export const pipelineObservabilityRouter = router({
       }
       await stopTapHandler(input.requestId);
       return { ok: true };
+    }),
+
+  /**
+   * Persist the current/just-finished tap's buffered events as a named
+   * `TapCapture` (Plan B4). Tap events stream over SSE and are buffered
+   * client-side (they are not stored server-side like `EventSample`), so the
+   * editor passes the buffered events here to retain them beyond the tap TTL.
+   * Shares the `saveTapCapture` service with `tapCapture.create`.
+   */
+  saveTapCapture: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        componentId: z.string().min(1),
+        name: z.string().min(1).max(100),
+        events: z.array(z.unknown()).min(1).max(1000),
+        schema: z.record(z.string(), z.unknown()).optional(),
+      }),
+    )
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("pipeline.tap_captured", "Pipeline"))
+    .mutation(async ({ input, ctx }) => {
+      return saveTapCapture({
+        organizationId: ctx.organizationId,
+        pipelineId: input.pipelineId,
+        name: input.name,
+        componentKey: input.componentId,
+        events: input.events,
+        schema: input.schema,
+        createdById: ctx.session.user?.id ?? null,
+      });
     }),
 });

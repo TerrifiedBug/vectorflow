@@ -295,7 +295,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
 
   // Undeploy mutation
   const undeployMutation = useMutation(
-    trpc.deploy.undeploy.mutationOptions({
+    trpc.release.direct.undeploy.mutationOptions({
       onSuccess: (result) => {
         if (result.success) {
           toast.success("Pipeline undeployed");

@@ -162,7 +162,7 @@ describe("Git webhook — PR merge handler", () => {
 
   it("includes both promotion and bidirectional environments in HMAC lookup", async () => {
     prismaMock.environment.findMany.mockResolvedValue([] as never);
-    prismaMock.promotionRequest.updateMany.mockResolvedValue({ count: 0 } as never);
+    prismaMock.release.updateMany.mockResolvedValue({ count: 0 } as never);
 
     const payload = makePrPayload();
     const body = JSON.stringify(payload);
@@ -190,10 +190,10 @@ describe("Git webhook — PR merge handler", () => {
 
   it("triggers executePromotion for merged PR with VF promotion ID", async () => {
     prismaMock.environment.findMany.mockResolvedValue([makeEnvironment()] as never);
-    prismaMock.promotionRequest.updateMany.mockResolvedValue({ count: 1 } as never);
-    prismaMock.promotionRequest.findUnique.mockResolvedValue({
+    prismaMock.release.updateMany.mockResolvedValue({ count: 1 } as never);
+    prismaMock.release.findFirst.mockResolvedValue({
       id: "req123abc456",
-      promotedById: "user-1",
+      requestedById: "user-1",
     } as never);
 
     const req = makeRequest(makePrPayload(), "pull_request");
@@ -206,12 +206,12 @@ describe("Git webhook — PR merge handler", () => {
     expect(executePromotion).toHaveBeenCalledWith("req123abc456", "user-1");
   });
 
-  it("uses system as executor when promotedById is null", async () => {
+  it("uses system as executor when requestedById is null", async () => {
     prismaMock.environment.findMany.mockResolvedValue([makeEnvironment()] as never);
-    prismaMock.promotionRequest.updateMany.mockResolvedValue({ count: 1 } as never);
-    prismaMock.promotionRequest.findUnique.mockResolvedValue({
+    prismaMock.release.updateMany.mockResolvedValue({ count: 1 } as never);
+    prismaMock.release.findFirst.mockResolvedValue({
       id: "req123abc456",
-      promotedById: null,
+      requestedById: null,
     } as never);
 
     const req = makeRequest(makePrPayload(), "pull_request");
@@ -261,7 +261,7 @@ describe("Git webhook — PR merge handler", () => {
 
   it("idempotency guard: ignores already-deployed promotion (updateMany count = 0)", async () => {
     prismaMock.environment.findMany.mockResolvedValue([makeEnvironment()] as never);
-    prismaMock.promotionRequest.updateMany.mockResolvedValue({ count: 0 } as never);
+    prismaMock.release.updateMany.mockResolvedValue({ count: 0 } as never);
 
     const req = makeRequest(makePrPayload(), "pull_request");
     const res = await POST(req as never);
@@ -274,17 +274,17 @@ describe("Git webhook — PR merge handler", () => {
 
   it("atomic updateMany checks status = AWAITING_PR_MERGE", async () => {
     prismaMock.environment.findMany.mockResolvedValue([makeEnvironment()] as never);
-    prismaMock.promotionRequest.updateMany.mockResolvedValue({ count: 1 } as never);
-    prismaMock.promotionRequest.findUnique.mockResolvedValue({
+    prismaMock.release.updateMany.mockResolvedValue({ count: 1 } as never);
+    prismaMock.release.findFirst.mockResolvedValue({
       id: "req123abc456",
-      promotedById: "user-1",
+      requestedById: "user-1",
     } as never);
 
     const req = makeRequest(makePrPayload(), "pull_request");
     await POST(req as never);
 
-    expect(prismaMock.promotionRequest.updateMany).toHaveBeenCalledWith({
-      where: { id: "req123abc456", status: "AWAITING_PR_MERGE" },
+    expect(prismaMock.release.updateMany).toHaveBeenCalledWith({
+      where: { id: "req123abc456", status: "AWAITING_PR_MERGE", strategy: "PROMOTION" },
       data: { status: "DEPLOYING" },
     });
   });

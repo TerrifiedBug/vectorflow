@@ -54,14 +54,14 @@ export function StagedRolloutPanel({ pipelineId }: StagedRolloutPanelProps) {
   const queryClient = useQueryClient();
 
   const activeQuery = useQuery({
-    ...trpc.stagedRollout.getActive.queryOptions({ pipelineId }),
+    ...trpc.release.canary.getActive.queryOptions({ pipelineId }),
     refetchInterval: 10_000, // Poll for status changes
   });
 
   const rollout = activeQuery.data;
 
   const broadenMutation = useMutation(
-    trpc.stagedRollout.broaden.mutationOptions({
+    trpc.release.canary.broaden.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries();
         toast.success("Canary broadened to all nodes");
@@ -73,7 +73,7 @@ export function StagedRolloutPanel({ pipelineId }: StagedRolloutPanelProps) {
   );
 
   const rollbackMutation = useMutation(
-    trpc.stagedRollout.rollback.mutationOptions({
+    trpc.release.canary.rollback.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries();
         toast.success("Canary deploy rolled back");

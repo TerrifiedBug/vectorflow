@@ -88,6 +88,12 @@ vi.mock("@/trpc/client", () => ({
       generateEnrollmentToken: { mutationOptions: (options: unknown) => options },
       revokeEnrollmentToken: { mutationOptions: (options: unknown) => options },
       testVaultConnection: { mutationOptions: (options: unknown) => options },
+      getLakeBucket: {
+        queryOptions: (input: { environmentId: string }) => ({ __name: "environment.getLakeBucket", input }),
+        queryKey: (input?: unknown) => ["environment.getLakeBucket", input],
+      },
+      setLakeBucket: { mutationOptions: (options: unknown) => options },
+      clearLakeBucket: { mutationOptions: (options: unknown) => options },
     },
     team: {
       teamRole: { queryOptions: (input: { teamId: string }) => ({ __name: "team.teamRole", input }) },

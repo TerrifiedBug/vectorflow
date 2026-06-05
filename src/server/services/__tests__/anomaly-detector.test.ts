@@ -156,6 +156,28 @@ describe("detectAnomalies", () => {
     expect(results[0].anomalyType).toBe("latency_spike");
   });
 
+  it("detects throughput_spike for the spansIn trace metric", () => {
+    const baseline = makeStableMetrics(1000, 168); // 1000 spans/interval average
+    const currentValue = 5000; // 5x spike
+
+    const results = detectAnomalies("pipe-1", "spansIn", currentValue, baseline);
+
+    expect(results).toHaveLength(1);
+    expect(results[0].anomalyType).toBe("throughput_spike");
+    expect(results[0].metricName).toBe("spansIn");
+  });
+
+  it("detects throughput_drop for the tracesIn trace metric", () => {
+    const baseline = makeStableMetrics(500, 168); // 500 traces/interval average
+    const currentValue = 50; // sharp drop
+
+    const results = detectAnomalies("pipe-1", "tracesIn", currentValue, baseline);
+
+    expect(results).toHaveLength(1);
+    expect(results[0].anomalyType).toBe("throughput_drop");
+    expect(results[0].metricName).toBe("tracesIn");
+  });
+
   it("does NOT flag normal values within 3-sigma", () => {
     const baseline = makeStableMetrics(1000, 168);
     const currentValue = 1005; // well within range
@@ -610,5 +632,59 @@ describe("fetchAllCurrentMetrics (via evaluateAllPipelines)", () => {
     // With insufficient baseline data, no anomalies should be detected
     const results = await evaluateAllPipelines();
     expect(results).toEqual([]);
+  });
+});
+
+describe("trace-metric anomalies (extraction + baseline path)", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    invalidateBaselineCache();
+  });
+
+  it("evaluatePipeline detects a spansIn anomaly end-to-end when enabled", async () => {
+    const config = {
+      baselineWindowDays: ANOMALY_CONFIG.BASELINE_WINDOW_DAYS,
+      sigmaThreshold: ANOMALY_CONFIG.SIGMA_THRESHOLD,
+      minBaselinePoints: ANOMALY_CONFIG.MIN_BASELINE_POINTS,
+      minStddevFloorPercent: ANOMALY_CONFIG.MIN_STDDEV_FLOOR_PERCENT,
+      pollIntervalMs: ANOMALY_CONFIG.POLL_INTERVAL_MS,
+      dedupWindowHours: ANOMALY_CONFIG.DEDUP_WINDOW_HOURS,
+      enabledMetrics: ["spansIn"],
+    };
+
+    // Baseline SQL row carries the spansIn aggregate (mirrors the new columns).
+    prismaMock.$queryRawUnsafe.mockResolvedValueOnce([
+      {
+        eventsInMean: null,
+        eventsInStddev: null,
+        errorsTotalMean: null,
+        errorsTotalStddev: null,
+        latencyMeanMsMean: null,
+        latencyMeanMsStddev: null,
+        spansInMean: 1000,
+        spansInStddev: 20,
+        tracesInMean: null,
+        tracesInStddev: null,
+        sampleCount: 168,
+      },
+    ] as never);
+    prismaMock.anomalyEvent.findFirst.mockResolvedValue(null);
+    prismaMock.anomalyEvent.create.mockResolvedValue({ id: "anom-spans" } as never);
+
+    // Current-metrics extraction includes spansIn/tracesIn (a 5x spike here).
+    const currentMetricsMap = new Map<string, Record<string, number>>([
+      ["pipe-1", { eventsIn: 0, errorsTotal: 0, latencyMeanMs: 0, spansIn: 5000, tracesIn: 0 }],
+    ]);
+
+    const results = await evaluatePipeline(
+      { id: "pipe-1", environmentId: "env-1", environment: { teamId: "team-1" } },
+      config,
+      currentMetricsMap,
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].metricName).toBe("spansIn");
+    expect(results[0].anomalyType).toBe("throughput_spike");
+    expect(prismaMock.anomalyEvent.create).toHaveBeenCalledTimes(1);
   });
 });

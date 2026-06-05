@@ -11,8 +11,8 @@ export const POST = apiRoute(
       return NextResponse.json({ error: "Missing request id" }, { status: 400 });
     }
 
-    const request = await prisma.deployRequest.findUnique({
-      where: { id: requestId },
+    const request = await prisma.release.findFirst({
+      where: { id: requestId, strategy: "DIRECT" },
     });
 
     if (!request || request.environmentId !== ctx.environmentId) {
@@ -30,8 +30,8 @@ export const POST = apiRoute(
     }
 
     // Atomically claim the request
-    const updated = await prisma.deployRequest.updateMany({
-      where: { id: requestId, status: "PENDING" },
+    const updated = await prisma.release.updateMany({
+      where: { id: requestId, status: "PENDING", strategy: "DIRECT" },
       data: {
         status: "APPROVED",
         reviewedById: null,

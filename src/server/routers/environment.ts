@@ -15,6 +15,12 @@ import {
 } from "@/server/services/crypto-v3-callsite";
 import { testVaultConnection as testVaultClientConnection, listVaultFields, type VaultBackendConfig } from "@/server/services/vault-client";
 import { enforceQuota } from "@/server/services/quotas-trpc";
+import {
+  LAKE_BUCKET_PROVIDERS,
+  coldTierIsSearchable,
+  encryptBucketCredential,
+  syncDatasetTieringForEnvironment,
+} from "@/server/services/lake/byo-bucket";
 
 
 const VAULT_AUTH_METHODS = ["token", "approle", "kubernetes"] as const;
@@ -591,5 +597,172 @@ export const environmentRouter = router({
       });
 
       return { success: true };
+    }),
+
+  /**
+   * Read an environment's BYO lake cold-tier bucket config. Returns the
+   * non-secret descriptor plus credential presence only — never the encrypted
+   * or decrypted credentials. `null` when the environment uses the VF-managed
+   * cold tier.
+   */
+  getLakeBucket: protectedProcedure
+    .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const bucket = await prisma.environmentLakeBucket.findUnique({
+        where: { environmentId: input.environmentId },
+        select: {
+          provider: true,
+          bucket: true,
+          region: true,
+          endpoint: true,
+          prefix: true,
+          encryptedAccessKeyId: true,
+          encryptedSecretAccessKey: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+      if (!bucket) return null;
+
+      const provider = bucket.provider as (typeof LAKE_BUCKET_PROVIDERS)[number];
+      // Strip the ciphertext columns; expose only presence so the form can show
+      // "configured" without ever shipping a credential to the client.
+      const { encryptedAccessKeyId, encryptedSecretAccessKey, ...safe } = bucket;
+      return {
+        ...safe,
+        provider,
+        hasAccessKeyId: !!encryptedAccessKeyId,
+        hasSecretAccessKey: !!encryptedSecretAccessKey,
+        // false → cold-only (no in-place lake search); drives the degraded
+        // -search notice in the search UI.
+        searchable: coldTierIsSearchable(provider),
+      };
+    }),
+
+  /**
+   * Configure (upsert) the environment's BYO lake cold-tier bucket. Credentials
+   * are encrypted at rest (crypto-v3 with v2 fallback) before persisting. An
+   * external-only provider (gcs/azure) demotes the env's datasets to
+   * `tiering = 'external'` so in-place search is disabled for them.
+   */
+  setLakeBucket: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        provider: z.enum(LAKE_BUCKET_PROVIDERS),
+        bucket: z.string().trim().min(1).max(255),
+        region: z.string().trim().max(64).nullish(),
+        endpoint: z.string().trim().max(255).nullish(),
+        prefix: z.string().trim().max(255).nullish(),
+        // Write-only credentials. `undefined` keeps the stored value; `null` or
+        // "" clears it; a non-empty string is encrypted and replaces it.
+        accessKeyId: z.string().max(512).nullish(),
+        secretAccessKey: z.string().max(4096).nullish(),
+      }),
+    )
+    .use(denyInDemo())
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("environment.lake_bucket_set", "Environment"))
+    .mutation(async ({ input }) => {
+      const env = await prisma.environment.findUnique({
+        where: { id: input.environmentId },
+        select: { organizationId: true, isSystem: true },
+      });
+      if (!env) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Environment not found" });
+      }
+      if (env.isSystem) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "The system environment cannot have a lake bucket",
+        });
+      }
+      const orgId = env.organizationId;
+      const scope = { orgId, environmentId: input.environmentId };
+
+      // Resolve each credential to: undefined (keep), null (clear), or an
+      // encrypted ciphertext. Encryption happens before any DB write.
+      let encAccessKeyId: string | null | undefined;
+      if (input.accessKeyId === undefined) {
+        encAccessKeyId = undefined;
+      } else if (input.accessKeyId === null || input.accessKeyId.trim() === "") {
+        encAccessKeyId = null;
+      } else {
+        encAccessKeyId = await encryptBucketCredential(input.accessKeyId.trim(), scope);
+      }
+
+      let encSecretAccessKey: string | null | undefined;
+      if (input.secretAccessKey === undefined) {
+        encSecretAccessKey = undefined;
+      } else if (input.secretAccessKey === null || input.secretAccessKey.trim() === "") {
+        encSecretAccessKey = null;
+      } else {
+        encSecretAccessKey = await encryptBucketCredential(input.secretAccessKey.trim(), scope);
+      }
+
+      const config = {
+        provider: input.provider,
+        bucket: input.bucket,
+        region: input.region ?? null,
+        endpoint: input.endpoint ?? null,
+        prefix: input.prefix ?? null,
+      };
+
+      return withOrgTx(orgId, async (tx) => {
+        await tx.environmentLakeBucket.upsert({
+          where: { environmentId: input.environmentId },
+          create: {
+            organizationId: orgId,
+            environmentId: input.environmentId,
+            ...config,
+            encryptedAccessKeyId: encAccessKeyId ?? null,
+            encryptedSecretAccessKey: encSecretAccessKey ?? null,
+          },
+          update: {
+            ...config,
+            ...(encAccessKeyId !== undefined ? { encryptedAccessKeyId: encAccessKeyId } : {}),
+            ...(encSecretAccessKey !== undefined ? { encryptedSecretAccessKey: encSecretAccessKey } : {}),
+          },
+        });
+        const { searchable } = await syncDatasetTieringForEnvironment(tx, {
+          orgId,
+          environmentId: input.environmentId,
+        });
+        return { success: true, provider: input.provider, searchable };
+      });
+    }),
+
+  /**
+   * Remove the environment's BYO lake cold-tier bucket, reverting it to the
+   * VF-managed (searchable) cold tier. Any datasets previously demoted to
+   * `external` are restored to `cold`.
+   */
+  clearLakeBucket: protectedProcedure
+    .input(z.object({ environmentId: z.string() }))
+    .use(denyInDemo())
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("environment.lake_bucket_cleared", "Environment"))
+    .mutation(async ({ input }) => {
+      const env = await prisma.environment.findUnique({
+        where: { id: input.environmentId },
+        select: { organizationId: true },
+      });
+      if (!env) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Environment not found" });
+      }
+      const orgId = env.organizationId;
+
+      return withOrgTx(orgId, async (tx) => {
+        // deleteMany (not delete) so clearing an absent bucket is idempotent.
+        await tx.environmentLakeBucket.deleteMany({
+          where: { environmentId: input.environmentId },
+        });
+        const { searchable } = await syncDatasetTieringForEnvironment(tx, {
+          orgId,
+          environmentId: input.environmentId,
+        });
+        return { success: true, searchable };
+      });
     }),
 });

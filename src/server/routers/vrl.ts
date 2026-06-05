@@ -4,7 +4,11 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { join } from "path";
 import { tmpdir } from "os";
-import { router, protectedProcedure } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
+import { TRPCError } from "@trpc/server";
+import { prisma } from "@/lib/prisma";
+import { evaluateVrl } from "@/server/services/transform-eval";
+import { simulateTailSample as runTailSampleSimulation } from "@/server/services/trace-sampling";
 
 const execFileAsync = promisify(execFile);
 
@@ -179,5 +183,86 @@ export const vrlRouter = router({
         await unlink(programPath).catch(() => {});
         await unlink(inputPath).catch(() => {});
       }
+    }),
+
+  /**
+   * Run a VRL program against a persisted tap capture's real events — the
+   * multi-event generalisation of `vrl.test` (which runs against a single
+   * pasted JSON input). Loads the capture org-scoped (`withTeamAccess` resolves
+   * the team via `pipelineId`) and returns the full `evaluateVrl` result
+   * (outputs + reduction stats) so the editor can show a before/after diff.
+   */
+  testAgainstCapture: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        captureId: z.string(),
+        source: z.string().min(1),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .mutation(async ({ input, ctx }) => {
+      const capture = await prisma.tapCapture.findUnique({
+        where: { id: input.captureId },
+        select: { pipelineId: true, organizationId: true, events: true },
+      });
+      if (
+        !capture ||
+        capture.pipelineId !== input.pipelineId ||
+        capture.organizationId !== ctx.organizationId
+      ) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Capture not found" });
+      }
+      const events = Array.isArray(capture.events)
+        ? (capture.events as unknown[])
+        : [];
+      return evaluateVrl(input.source, events);
+    }),
+
+  /**
+   * Preview trace tail-sampling on real sampled traces before deploying (A6).
+   * Groups sample spans by trace key and runs the same keep decision the
+   * deployed `tail_sample` transform compiles to (see
+   * `@/server/services/trace-sampling`), returning kept/dropped traces + spans,
+   * the keep ratio, and the projected reduction. Read-only preview (VIEWER, no
+   * audit). Events come from a pasted set or a saved tap capture; `pipelineId`
+   * lets `withTeamAccess` resolve the owning team/org. Tail-sampling is opt-in —
+   * this never deploys or drops anything.
+   */
+  simulateTailSample: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        policy: z.object({
+          key: z.string().min(1),
+          windowMs: z.number().int().positive(),
+          keepPolicies: z.object({
+            onError: z.boolean(),
+            slowThresholdMs: z.number().positive().nullable(),
+            baselinePercent: z.number().min(0).max(100),
+          }),
+        }),
+        events: z.array(z.unknown()).max(50_000).optional(),
+        captureId: z.string().optional(),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .mutation(async ({ input, ctx }) => {
+      let events: unknown[] = input.events ?? [];
+      if (input.captureId) {
+        const capture = await prisma.tapCapture.findUnique({
+          where: { id: input.captureId },
+          select: { pipelineId: true, organizationId: true, events: true },
+        });
+        if (
+          !capture ||
+          capture.pipelineId !== input.pipelineId ||
+          capture.organizationId !== ctx.organizationId
+        ) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Capture not found" });
+        }
+        events = Array.isArray(capture.events) ? (capture.events as unknown[]) : [];
+      }
+      return runTailSampleSimulation(events, input.policy);
     }),
 });

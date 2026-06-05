@@ -15,8 +15,9 @@ import { parseDeploymentStrategy } from "@/lib/deployment-strategy";
 import { fireEventAlert } from "@/server/services/event-alerts";
 import { relayPush } from "@/server/services/push-broadcast";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
+import { stagedRolloutService } from "@/server/services/staged-rollout";
 
-export const deployRouter = router({
+export const directReleaseRouter = router({
   preview: protectedProcedure
     .input(z.object({ pipelineId: z.string() }))
     .use(withTeamAccess("VIEWER"))
@@ -169,8 +170,8 @@ export const deployRouter = router({
 
         // Atomic check-and-create to prevent duplicate pending requests
         const request = await withOrgTx(ctx.organizationId, async (tx) => {
-          const existingPending = await tx.deployRequest.findFirst({
-            where: { pipelineId: input.pipelineId, status: "PENDING" },
+          const existingPending = await tx.release.findFirst({
+            where: { pipelineId: input.pipelineId, status: "PENDING", strategy: "DIRECT" },
           });
           if (existingPending) {
             throw new TRPCError({
@@ -179,8 +180,11 @@ export const deployRouter = router({
             });
           }
 
-          return tx.deployRequest.create({
+          return tx.release.create({
             data: {
+              organizationId: ctx.organizationId,
+              strategy: "DIRECT",
+              status: "PENDING",
               pipelineId: input.pipelineId,
               environmentId: pipeline.environment.id,
               requestedById: userId,
@@ -227,7 +231,6 @@ export const deployRouter = router({
         input.nodeSelector &&
         Object.keys(input.nodeSelector).length > 0
       ) {
-        const { stagedRolloutService } = await import("@/server/services/staged-rollout");
         const result = await stagedRolloutService.createRollout(
           input.pipelineId,
           userId,
@@ -481,6 +484,7 @@ export const deployRouter = router({
     .query(async ({ input, ctx }) => {
       const teamId = (ctx as Record<string, unknown>).teamId as string | null ?? null;
       const where: Record<string, unknown> = {
+        strategy: "DIRECT",
         status: { in: input.statuses },
         ...(input.environmentId && { environmentId: input.environmentId }),
         ...(input.pipelineId && { pipelineId: input.pipelineId }),
@@ -490,7 +494,7 @@ export const deployRouter = router({
       const userRole = (ctx as Record<string, unknown>).userRole as string;
       const canReview = userRole === "ADMIN" || userRole === "EDITOR";
 
-      return prisma.deployRequest.findMany({
+      return prisma.release.findMany({
         where,
         select: {
           id: true,
@@ -519,8 +523,8 @@ export const deployRouter = router({
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("deployRequest.approved", "DeployRequest"))
     .mutation(async ({ input, ctx }) => {
-      const request = await prisma.deployRequest.findUnique({
-        where: { id: input.requestId },
+      const request = await prisma.release.findFirst({
+        where: { id: input.requestId, strategy: "DIRECT" },
       });
       if (!request || request.status !== "PENDING") {
         throw new TRPCError({ code: "NOT_FOUND", message: "Deploy request not found or not pending" });
@@ -530,8 +534,8 @@ export const deployRouter = router({
       }
 
       // Atomically claim the request — prevents double-approval race condition
-      const updated = await prisma.deployRequest.updateMany({
-        where: { id: input.requestId, status: "PENDING" },
+      const updated = await prisma.release.updateMany({
+        where: { id: input.requestId, status: "PENDING", strategy: "DIRECT" },
         data: { status: "APPROVED", reviewedById: ctx.session.user.id, reviewedAt: new Date() },
       });
       if (updated.count === 0) {
@@ -547,8 +551,8 @@ export const deployRouter = router({
     .use(withAudit("deployRequest.deployed", "DeployRequest"))
     .mutation(async ({ input, ctx }) => {
       // Atomically claim the APPROVED request — prevents double-deploy race condition
-      const updated = await prisma.deployRequest.updateMany({
-        where: { id: input.requestId, status: "APPROVED" },
+      const updated = await prisma.release.updateMany({
+        where: { id: input.requestId, status: "APPROVED", strategy: "DIRECT" },
         data: { status: "DEPLOYED", deployedById: ctx.session.user.id, deployedAt: new Date() },
       });
       if (updated.count === 0) {
@@ -556,8 +560,8 @@ export const deployRouter = router({
       }
 
       // Fetch the full request to get configYaml, pipelineId, changelog
-      const request = await prisma.deployRequest.findUnique({
-        where: { id: input.requestId },
+      const request = await prisma.release.findFirst({
+        where: { id: input.requestId, strategy: "DIRECT" },
       });
       if (!request) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Deploy request not found" });
@@ -570,13 +574,13 @@ export const deployRouter = router({
           request.pipelineId,
           request.requestedById ?? ctx.session.user.id,
           request.changelog,
-          request.configYaml,
+          request.configYaml ?? undefined,
         );
 
         // Non-throwing failure (e.g. validation errors) — revert to APPROVED
         if (!result.success) {
-          await prisma.deployRequest.updateMany({
-            where: { id: input.requestId, status: "DEPLOYED" },
+          await prisma.release.updateMany({
+            where: { id: input.requestId, status: "DEPLOYED", strategy: "DIRECT" },
             data: { status: "APPROVED", deployedById: null, deployedAt: null },
           });
           return result;
@@ -618,8 +622,8 @@ export const deployRouter = router({
         return result;
       } catch (err) {
         // Revert status back to APPROVED so it can be retried
-        await prisma.deployRequest.updateMany({
-          where: { id: input.requestId, status: "DEPLOYED" },
+        await prisma.release.updateMany({
+          where: { id: input.requestId, status: "DEPLOYED", strategy: "DIRECT" },
           data: { status: "APPROVED", deployedById: null, deployedAt: null },
         });
         throw new TRPCError({
@@ -635,14 +639,14 @@ export const deployRouter = router({
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("deployRequest.rejected", "DeployRequest"))
     .mutation(async ({ input, ctx }) => {
-      const request = await prisma.deployRequest.findUnique({ where: { id: input.requestId } });
+      const request = await prisma.release.findFirst({ where: { id: input.requestId, strategy: "DIRECT" } });
       if (!request || request.status !== "PENDING") {
         throw new TRPCError({ code: "NOT_FOUND", message: "Deploy request not found or not pending" });
       }
 
       // Atomically reject — prevents race with concurrent approve
-      const updated = await prisma.deployRequest.updateMany({
-        where: { id: input.requestId, status: "PENDING" },
+      const updated = await prisma.release.updateMany({
+        where: { id: input.requestId, status: "PENDING", strategy: "DIRECT" },
         data: {
           status: "REJECTED",
           reviewedById: ctx.session.user.id,
@@ -669,8 +673,8 @@ export const deployRouter = router({
     .mutation(async ({ input, ctx }) => {
       // PENDING requests can only be cancelled by the requester.
       // APPROVED requests can be cancelled by anyone with deploy access.
-      const request = await prisma.deployRequest.findUnique({
-        where: { id: input.requestId },
+      const request = await prisma.release.findFirst({
+        where: { id: input.requestId, strategy: "DIRECT" },
         select: { status: true, requestedById: true },
       });
       if (!request || !["PENDING", "APPROVED"].includes(request.status)) {
@@ -680,16 +684,16 @@ export const deployRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Only the requester can cancel a pending request" });
       }
 
-      const updated = await prisma.deployRequest.updateMany({
-        where: { id: input.requestId, status: { in: ["PENDING", "APPROVED"] } },
+      const updated = await prisma.release.updateMany({
+        where: { id: input.requestId, status: { in: ["PENDING", "APPROVED"] }, strategy: "DIRECT" },
         data: { status: "CANCELLED" },
       });
       if (updated.count === 0) {
         throw new TRPCError({ code: "CONFLICT", message: "Request status changed — try again" });
       }
 
-      const cancelledRequest = await prisma.deployRequest.findUnique({
-        where: { id: input.requestId },
+      const cancelledRequest = await prisma.release.findFirst({
+        where: { id: input.requestId, strategy: "DIRECT" },
         select: { environmentId: true, pipelineId: true },
       });
       if (cancelledRequest) {

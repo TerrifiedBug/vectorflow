@@ -79,15 +79,17 @@ vi.mock("@/hooks/use-canvas-search", () => ({
 
 vi.mock("@/trpc/client", () => ({
   useTRPC: () => ({
-    deploy: {
-      listPendingRequests: {
-        queryOptions: vi.fn(() => ({
-          queryKey: ["deploy", "listPendingRequests"],
-          queryFn: () => Promise.resolve([]),
-        })),
-      },
-      cancelDeployRequest: {
-        mutationOptions: vi.fn((opts) => opts),
+    release: {
+      direct: {
+        listPendingRequests: {
+          queryOptions: vi.fn(() => ({
+            queryKey: ["release", "direct", "listPendingRequests"],
+            queryFn: () => Promise.resolve([]),
+          })),
+        },
+        cancelDeployRequest: {
+          mutationOptions: vi.fn((opts) => opts),
+        },
       },
     },
     validator: {

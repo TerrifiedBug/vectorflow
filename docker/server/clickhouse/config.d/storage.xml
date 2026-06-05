@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<!--
+  VectorFlow Lake — hot/cold storage policy (A1).
+
+  Defines the `vf_hot_cold` storage policy used by `lake_events` when the S3 cold
+  tier is configured. The lake migration runner (scripts/lake-migrate.ts) only
+  attaches `SETTINGS storage_policy='vf_hot_cold'` to the table when
+  VF_LAKE_S3_BUCKET is set; otherwise lake_events is a plain MergeTree that never
+  references this policy.
+
+  The S3 `cold` disk is parametrised by env vars supplied by docker-compose from
+  the VF_LAKE_S3_* settings. The disk is registered at startup but connects
+  LAZILY on first read/write, so a not-yet-created or unreachable bucket does NOT
+  block ClickHouse boot — it stays inert until a table opts into the policy.
+-->
+<clickhouse>
+  <storage_configuration>
+    <disks>
+      <!--
+        Hot tier = the implicit `default` disk (local MergeTree data path under
+        /var/lib/clickhouse). ClickHouse provides it automatically; it is
+        referenced as the first volume of the policy below.
+
+        Cold tier = S3-backed object storage. `VF_LAKE_S3_DISK_ENDPOINT` is the
+        full bucket+prefix URL (e.g. http://minio:9000/vf-lake/lake-cold/),
+        composed by docker-compose from VF_LAKE_S3_ENDPOINT + VF_LAKE_S3_BUCKET.
+        Credentials/region come straight from the VF_LAKE_S3_* env.
+      -->
+      <cold>
+        <type>s3</type>
+        <endpoint from_env="VF_LAKE_S3_DISK_ENDPOINT"></endpoint>
+        <access_key_id from_env="VF_LAKE_S3_ACCESS_KEY_ID"></access_key_id>
+        <secret_access_key from_env="VF_LAKE_S3_SECRET_ACCESS_KEY"></secret_access_key>
+        <region from_env="VF_LAKE_S3_REGION"></region>
+      </cold>
+    </disks>
+    <policies>
+      <!--
+        vf_hot_cold: parts land on the local `default` (hot) volume, then TTL
+        rules move them to the S3 `cold` volume after the hot window and finally
+        DELETE them after the cold window (see lake-migrate.ts {ttl} expansion).
+      -->
+      <vf_hot_cold>
+        <volumes>
+          <hot>
+            <disk>default</disk>
+          </hot>
+          <cold>
+            <disk>cold</disk>
+            <!-- Avoid merging parts on the remote cold volume (expensive S3 IO). -->
+            <prefer_not_to_merge>true</prefer_not_to_merge>
+          </cold>
+        </volumes>
+      </vf_hot_cold>
+    </policies>
+  </storage_configuration>
+</clickhouse>

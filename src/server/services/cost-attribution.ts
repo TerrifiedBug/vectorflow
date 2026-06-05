@@ -85,12 +85,49 @@ export interface EnvironmentCostInput {
   range: string;
 }
 
+/** A destination price model row (subset used for $-cost projection). */
+export interface DestinationCostModelLite {
+  sinkType: string;
+  label?: string | null;
+  pricePerGbCents: number;
+}
+
+export interface SinkCostRow {
+  sinkType: string;
+  label: string | null;
+  bytesOut: number;
+  /** Projected cents from bytesOut when a model exists for this sink; null = byte-only (unpriced). */
+  costCents: number | null;
+  pricePerGbCents: number | null;
+}
+
+export interface SinkCostInput {
+  environmentId: string;
+  range: string;
+  organizationId: string;
+}
+
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 /** Convert bytes processed to cost in cents using the environment rate. */
 export function computeCostCents(bytesIn: number, costPerGbCents: number): number {
   if (costPerGbCents === 0 || bytesIn === 0) return 0;
   return Math.round((bytesIn / BYTES_PER_GB) * costPerGbCents);
+}
+
+/**
+ * Project the dollar cost (cents) of `bytes` sent to a sink of `sinkType` using
+ * the org's destination cost models. Returns null when no model is configured
+ * for the sink — callers fall back to byte-only reporting (no $).
+ */
+export function projectSinkCostCents(
+  bytes: number,
+  sinkType: string,
+  costModels: readonly DestinationCostModelLite[],
+): number | null {
+  const model = costModels.find((m) => m.sinkType === sinkType);
+  if (!model) return null;
+  return computeCostCents(bytes, model.pricePerGbCents);
 }
 
 function rangeToSince(range: string): Date {
@@ -505,4 +542,89 @@ export async function getCurrentMonthCostCents(
   });
 
   return computeCostCents(Number(agg._sum.bytesIn ?? 0), costPerGbCents);
+}
+
+/** Load the org's destination price models (for $-cost projection). */
+export async function loadDestinationCostModels(
+  organizationId: string,
+): Promise<DestinationCostModelLite[]> {
+  return prisma.destinationCostModel.findMany({
+    where: { organizationId },
+    select: { sinkType: true, label: true, pricePerGbCents: true },
+    orderBy: { sinkType: "asc" },
+  });
+}
+
+/**
+ * Resolve each pipeline's primary (first, by componentKey) sink componentType,
+ * which keys into `DestinationCostModel.sinkType`. Pipelines without a sink node
+ * are omitted from the map.
+ */
+export async function getPrimarySinkTypes(
+  pipelineIds: readonly string[],
+): Promise<Map<string, string>> {
+  const ids = [...new Set(pipelineIds)];
+  if (ids.length === 0) return new Map();
+  const sinks = await prisma.pipelineNode.findMany({
+    where: { pipelineId: { in: ids }, kind: "SINK" },
+    select: { pipelineId: true, componentType: true, componentKey: true },
+    orderBy: { componentKey: "asc" },
+  });
+  const map = new Map<string, string>();
+  for (const sink of sinks) {
+    if (!map.has(sink.pipelineId)) map.set(sink.pipelineId, sink.componentType);
+  }
+  return map;
+}
+
+/**
+ * Cost broken down by destination sink type for an environment. Attributes each
+ * pipeline's bytesOut to its primary sink type, aggregates per type, and
+ * projects $ via the org's DestinationCostModel rows. Sinks with no configured
+ * model report costCents=null (byte-only).
+ */
+export async function getCostBySink(
+  input: SinkCostInput,
+): Promise<SinkCostRow[]> {
+  const { environmentId, range, organizationId } = input;
+  const since = rangeToSince(range);
+
+  const byPipeline = await prisma.pipelineMetric.groupBy({
+    by: ["pipelineId"],
+    where: {
+      pipeline: { environmentId },
+      ...AGGREGATE_PIPELINE_METRIC_FILTER,
+      timestamp: { gte: since },
+    },
+    _sum: { bytesOut: true },
+  });
+  if (byPipeline.length === 0) return [];
+
+  const sinkTypeByPipeline = await getPrimarySinkTypes(
+    byPipeline.map((p) => p.pipelineId),
+  );
+  const costModels = await loadDestinationCostModels(organizationId);
+
+  // Aggregate bytesOut per sink type.
+  const bytesBySink = new Map<string, number>();
+  for (const row of byPipeline) {
+    const sinkType = sinkTypeByPipeline.get(row.pipelineId);
+    if (!sinkType) continue;
+    const bytesOut = Number(row._sum.bytesOut ?? 0);
+    bytesBySink.set(sinkType, (bytesBySink.get(sinkType) ?? 0) + bytesOut);
+  }
+
+  const rows: SinkCostRow[] = [];
+  for (const [sinkType, bytesOut] of bytesBySink) {
+    const model = costModels.find((m) => m.sinkType === sinkType);
+    rows.push({
+      sinkType,
+      label: model?.label ?? null,
+      bytesOut,
+      pricePerGbCents: model ? model.pricePerGbCents : null,
+      costCents: model ? computeCostCents(bytesOut, model.pricePerGbCents) : null,
+    });
+  }
+
+  return rows.sort((a, b) => b.bytesOut - a.bytesOut);
 }

@@ -59,6 +59,7 @@ vi.mock("@/server/services/metrics-query", () => ({
   queryVolumeTimeSeries: vi.fn(async () => []),
   queryNodeMetricsAggregated: vi.fn(async () => ({ rows: [] })),
   resolveMetricsSource: vi.fn(() => "raw"),
+  resolveRollupGranularity: vi.fn(() => null),
 }));
 
 import { prisma } from "@/lib/prisma";

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import type { Prisma } from "@/generated/prisma";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
@@ -27,7 +28,7 @@ type PromotionStatusKey = (typeof PROMOTION_STATUS_KEYS)[number];
 
 const promotionStatusSchema = z.enum(PROMOTION_STATUS_KEYS);
 
-export const promotionRouter = router({
+export const promotionReleaseRouter = router({
   /**
    * Preflight check: validates all SECRET[name] references in the source pipeline
    * exist as named secrets in the target environment.
@@ -202,17 +203,19 @@ export const promotionRouter = router({
       }));
 
       // Create the PromotionRequest
-      const promotionRequest = await prisma.promotionRequest.create({
+      const promotionRequest = await prisma.release.create({
         data: {
-          sourcePipelineId: input.pipelineId,
-          sourceEnvironmentId: sourcePipeline.environmentId,
+          organizationId: ctx.organizationId,
+          strategy: "PROMOTION",
+          pipelineId: input.pipelineId,
+          environmentId: sourcePipeline.environmentId,
           targetEnvironmentId: input.targetEnvironmentId,
           status: "PENDING",
-          promotedById: userId,
+          requestedById: userId,
           targetPipelineName,
-          nodesSnapshot: nodesSnapshot as unknown as import("@/generated/prisma").Prisma.InputJsonValue,
-          edgesSnapshot: edgesSnapshot as unknown as import("@/generated/prisma").Prisma.InputJsonValue,
-          globalConfigSnapshot: sourcePipeline.globalConfig as import("@/generated/prisma").Prisma.InputJsonValue | null ?? undefined,
+          nodesSnapshot: nodesSnapshot as unknown as Prisma.InputJsonValue,
+          edgesSnapshot: edgesSnapshot as unknown as Prisma.InputJsonValue,
+          globalConfigSnapshot: sourcePipeline.globalConfig as Prisma.InputJsonValue | null ?? undefined,
         },
       });
 
@@ -261,8 +264,8 @@ export const promotionRouter = router({
           dataKeyCiphertext,
         });
 
-        await prisma.promotionRequest.update({
-          where: { id: promotionRequest.id },
+        await prisma.release.update({
+          where: { id: promotionRequest.id, strategy: "PROMOTION" },
           data: {
             prUrl: pr.prUrl,
             prNumber: pr.prNumber,
@@ -298,9 +301,9 @@ export const promotionRouter = router({
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user.id;
 
-      const request = await prisma.promotionRequest.findUnique({
-        where: { id: input.requestId },
-        select: { id: true, status: true, promotedById: true },
+      const request = await prisma.release.findFirst({
+        where: { id: input.requestId, strategy: "PROMOTION" },
+        select: { id: true, status: true, requestedById: true },
       });
       if (!request || request.status !== "PENDING") {
         throw new TRPCError({
@@ -310,7 +313,7 @@ export const promotionRouter = router({
       }
 
       // Self-review guard
-      if (request.promotedById === userId) {
+      if (request.requestedById === userId) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Cannot approve your own promotion request",
@@ -318,11 +321,11 @@ export const promotionRouter = router({
       }
 
       // Atomic claim — prevents double-approval race condition
-      const updated = await prisma.promotionRequest.updateMany({
-        where: { id: input.requestId, status: "PENDING" },
+      const updated = await prisma.release.updateMany({
+        where: { id: input.requestId, status: "PENDING", strategy: "PROMOTION" },
         data: {
           status: "APPROVED",
-          approvedById: userId,
+          reviewedById: userId,
           reviewedAt: new Date(),
         },
       });
@@ -348,8 +351,8 @@ export const promotionRouter = router({
     .use(withAudit("promotion.rejected", "PromotionRequest"))
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     .mutation(async ({ input, ctx }) => {
-      const request = await prisma.promotionRequest.findUnique({
-        where: { id: input.requestId },
+      const request = await prisma.release.findFirst({
+        where: { id: input.requestId, strategy: "PROMOTION" },
         select: { id: true, status: true, targetPipelineId: true },
       });
       if (!request || request.status !== "PENDING") {
@@ -360,8 +363,8 @@ export const promotionRouter = router({
       }
 
       // Atomically reject — prevents race with concurrent approve
-      const updated = await prisma.promotionRequest.updateMany({
-        where: { id: input.requestId, status: "PENDING" },
+      const updated = await prisma.release.updateMany({
+        where: { id: input.requestId, status: "PENDING", strategy: "PROMOTION" },
         data: {
           status: "REJECTED",
           reviewedAt: new Date(),
@@ -395,9 +398,9 @@ export const promotionRouter = router({
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user.id;
 
-      const request = await prisma.promotionRequest.findUnique({
-        where: { id: input.requestId },
-        select: { id: true, status: true, promotedById: true },
+      const request = await prisma.release.findFirst({
+        where: { id: input.requestId, strategy: "PROMOTION" },
+        select: { id: true, status: true, requestedById: true },
       });
       if (!request || request.status !== "PENDING") {
         throw new TRPCError({
@@ -407,15 +410,15 @@ export const promotionRouter = router({
       }
 
       // Only the original promoter can cancel
-      if (request.promotedById !== userId) {
+      if (request.requestedById !== userId) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Only the original promoter can cancel a pending request",
         });
       }
 
-      const updated = await prisma.promotionRequest.updateMany({
-        where: { id: input.requestId, status: "PENDING" },
+      const updated = await prisma.release.updateMany({
+        where: { id: input.requestId, status: "PENDING", strategy: "PROMOTION" },
         data: { status: "CANCELLED" },
       });
       if (updated.count === 0) {
@@ -432,9 +435,9 @@ export const promotionRouter = router({
     .input(z.object({ teamId: z.string() }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      const grouped = await prisma.promotionRequest.groupBy({
+      const grouped = await prisma.release.groupBy({
         by: ["status"],
-        where: { sourcePipeline: { environment: { teamId: input.teamId } } },
+        where: { strategy: "PROMOTION", pipeline: { environment: { teamId: input.teamId } } },
         _count: { _all: true },
       });
 
@@ -453,7 +456,7 @@ export const promotionRouter = router({
    * Returns recent promotion requests across an entire team, ordered by
    * createdAt desc. Powers the team-scoped Promotions hub view.
    *
-   * Team scope is enforced via `sourcePipeline.environment.teamId` — every
+   * Team scope is enforced via `pipeline.environment.teamId` — every
    * promotion is anchored to a source pipeline whose environment belongs to
    * exactly one team.
    *
@@ -477,20 +480,21 @@ export const promotionRouter = router({
           ? { status: { in: input.statuses } }
           : {};
 
-      const records = await prisma.promotionRequest.findMany({
+      const records = await prisma.release.findMany({
         where: {
-          sourcePipeline: { environment: { teamId: input.teamId } },
+          strategy: "PROMOTION",
+          pipeline: { environment: { teamId: input.teamId } },
           ...statusWhere,
         },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: input.limit + 1,
         ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
         include: {
-          sourcePipeline: { select: { id: true, name: true } },
+          pipeline: { select: { id: true, name: true } },
           targetPipeline: { select: { id: true, name: true } },
-          promotedBy: { select: { name: true, email: true } },
-          approvedBy: { select: { name: true, email: true } },
-          sourceEnvironment: { select: { name: true } },
+          requestedBy: { select: { name: true, email: true } },
+          reviewedBy: { select: { name: true, email: true } },
+          environment: { select: { name: true } },
           targetEnvironment: { select: { name: true } },
         },
       });
@@ -510,14 +514,14 @@ export const promotionRouter = router({
     .input(z.object({ pipelineId: z.string() }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      const records = await prisma.promotionRequest.findMany({
-        where: { sourcePipelineId: input.pipelineId },
+      const records = await prisma.release.findMany({
+        where: { strategy: "PROMOTION", pipelineId: input.pipelineId },
         orderBy: { createdAt: "desc" },
         take: 20,
         include: {
-          promotedBy: { select: { name: true, email: true } },
-          approvedBy: { select: { name: true, email: true } },
-          sourceEnvironment: { select: { name: true } },
+          requestedBy: { select: { name: true, email: true } },
+          reviewedBy: { select: { name: true, email: true } },
+          environment: { select: { name: true } },
           targetEnvironment: { select: { name: true } },
         },
       });

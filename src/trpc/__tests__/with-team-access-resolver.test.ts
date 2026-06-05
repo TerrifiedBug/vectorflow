@@ -71,13 +71,13 @@ describe("withTeamAccess resolver (VF-18)", () => {
   });
 
   it("resolves teamId from rolloutId (StagedRollout)", async () => {
-    prismaMock.stagedRollout.findUnique.mockResolvedValue({
+    prismaMock.release.findUnique.mockResolvedValue({
       environment: { teamId: "team-rollout" },
     } as never);
 
     const res = await makeCaller().byRollout({ rolloutId: "ro-1" });
     expect(res.resolvedTeamId).toBe("team-rollout");
-    expect(prismaMock.stagedRollout.findUnique).toHaveBeenCalledWith(
+    expect(prismaMock.release.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "ro-1" } }),
     );
   });
@@ -101,7 +101,7 @@ describe("withTeamAccess resolver (VF-18)", () => {
   });
 
   it("still throws BAD_REQUEST when a rolloutId resolves to no rollout", async () => {
-    prismaMock.stagedRollout.findUnique.mockResolvedValue(null);
+    prismaMock.release.findUnique.mockResolvedValue(null);
 
     await expect(makeCaller().byRollout({ rolloutId: "missing" })).rejects.toThrow(
       /Cannot resolve team context/i,

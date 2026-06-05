@@ -21,6 +21,10 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "pipeline.ai_conversation_started": "AI conversation started",
   "pipeline.ai_suggestion_applied": "AI suggestion applied",
   "pipeline.vrl_ai_suggestion_applied": "VRL AI suggestion applied",
+  "ai.change_proposed": "AI change proposed",
+  "ai.change_approved": "AI change approved",
+  "ai.change_rejected": "AI change rejected",
+  "ai.incident_rollback": "Incident copilot rollback",
 
   // Deploy
   "deploy.agent": "Deployed to agent",
@@ -39,6 +43,10 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "deployRequest.deployed": "Deploy request executed",
   "deployRequest.rejected": "Deploy request rejected",
 
+  // Lake replay
+  "replay.created": "Replay started",
+  "replay.cancelled": "Replay cancelled",
+
   // Environment
   "environment.created": "Environment created",
   "environment.updated": "Environment updated",
@@ -47,6 +55,8 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "environment.vaultConnection.tested": "Vault connection tested",
   "environment.enrollmentToken.generated": "Enrollment token generated",
   "environment.enrollmentToken.revoked": "Enrollment token revoked",
+  "environment.lake_bucket_set": "Lake cold-tier bucket configured",
+  "environment.lake_bucket_cleared": "Lake cold-tier bucket cleared",
 
   // Team
   "team.created": "Team created",
@@ -201,6 +211,10 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "cost_recommendation.dismiss": "Cost recommendation dismissed",
   "cost_recommendation.apply": "Cost recommendation applied",
   "cost_recommendation.trigger_analysis": "Cost analysis triggered",
+
+  // Destination Cost Models
+  "cost_model.upsert": "Destination cost model saved",
+  "cost_model.delete": "Destination cost model deleted",
 
   // Node Groups
   "nodeGroup.created": "Node group created",

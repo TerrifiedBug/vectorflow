@@ -67,6 +67,15 @@ export const pipelineStatusSchema = z.object({
   bytesIn: z.number().optional(),
   bytesOut: z.number().optional(),
   eventsDiscarded: z.number().optional(),
+  // Trace-pillar volume for THIS heartbeat interval (not cumulative). A
+  // trace-aware agent derives these from its trace-typed Vector component
+  // metrics; log/metric-only pipelines omit them (treated as 0). Unlike the
+  // cumulative eventsIn/eventsOut counters these are per-interval deltas —
+  // span/trace counting is windowed and NodePipelineStatus carries no span
+  // columns to diff against, so the agent reports the already-windowed count.
+  spansIn: z.number().optional(),
+  spansOut: z.number().optional(),
+  tracesIn: z.number().optional(),
   componentMetrics: z.array(componentMetricSchema).optional(),
   utilization: z.number().optional(),
   recentLogs: z.array(z.string()).optional(),

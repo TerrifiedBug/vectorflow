@@ -819,8 +819,8 @@ async function seedQa(prisma: PrismaClient) {
   await prisma.alertEvent.createMany({ data: ALERT_EVENTS.map((event) => ({ ...event })) as Prisma.AlertEventCreateManyInput[] });
   await prisma.anomalyEvent.createMany({ data: ANOMALY_EVENTS.map((event) => ({ ...event, createdAt: event.detectedAt })) as Prisma.AnomalyEventCreateManyInput[] });
   await prisma.costRecommendation.createMany({ data: COST_RECOMMENDATIONS.map((recommendation) => ({ ...recommendation })) as Prisma.CostRecommendationCreateManyInput[] });
-  await prisma.promotionRequest.createMany({ data: PROMOTIONS.map((promotion) => ({ ...promotion })) as Prisma.PromotionRequestCreateManyInput[] });
-  await prisma.deployRequest.createMany({ data: DEPLOY_REQUESTS.map((request) => ({ ...request })) as Prisma.DeployRequestCreateManyInput[] });
+  await prisma.release.createMany({ data: PROMOTIONS.map((promotion) => ({ ...promotion })) as Prisma.ReleaseCreateManyInput[] });
+  await prisma.release.createMany({ data: DEPLOY_REQUESTS.map((request) => ({ ...request, strategy: "DIRECT" as const })) as Prisma.ReleaseCreateManyInput[] });
   await prisma.auditLog.createMany({ data: AUDIT_LOGS.map((entry) => ({ ...entry })) as Prisma.AuditLogCreateManyInput[] });
   await prisma.migrationProject.createMany({ data: MIGRATION_PROJECTS.map((project) => ({ ...project })) as Prisma.MigrationProjectCreateManyInput[] });
 
@@ -1163,13 +1163,14 @@ function promotionDef(
   const source = PIPELINES.find((pipeline) => pipeline.id === sourcePipelineId)!;
   return {
     id,
-    sourcePipelineId,
+    strategy: "PROMOTION" as const,
+    pipelineId: sourcePipelineId,
     targetPipelineId: null,
-    sourceEnvironmentId,
+    environmentId: sourceEnvironmentId,
     targetEnvironmentId,
     status,
-    promotedById: QA_IDS.user,
-    approvedById: reviewedAt && status !== "REJECTED" ? QA_IDS.user : null,
+    requestedById: QA_IDS.user,
+    reviewedById: reviewedAt && status !== "REJECTED" ? QA_IDS.user : null,
     nodesSnapshot: source.nodes,
     edgesSnapshot: source.edges,
     globalConfigSnapshot: Prisma.JsonNull,
@@ -1177,6 +1178,7 @@ function promotionDef(
     reviewNote: reviewNote ?? null,
     prUrl: null,
     prNumber: null,
+    changelog: "",
     createdAt: reviewedAt ?? hoursAgo(14),
     reviewedAt,
     deployedAt: status === "DEPLOYED" ? hoursAgo(6) : null,
