@@ -685,6 +685,7 @@ model Environment {
   pipelineGroups        PipelineGroup[]
   nodeGroups            NodeGroup[]
   releasesAsTarget      Release[]               @relation("ReleaseTargetEnvironment")
+  lakeDatasets          LakeDataset[]           @relation("LakeDatasetEnvironment")
   filterPresets         FilterPreset[]
   gitSyncJobs           GitSyncJob[]
   costPerGbCents        Int                     @default(0) // cents per GB processed (0 = volume-only)
@@ -918,6 +919,7 @@ model Pipeline {
   pipelineMetricRollups     PipelineMetricRollup[]
   tapCaptures               TapCapture[]
   proposedChanges           ProposedChange[]       @relation("ProposedChangePipeline")
+  lakeDatasets              LakeDataset[]          @relation("LakeDatasetPipeline")
   gitSyncJobs               GitSyncJob[]
   migrationProject          MigrationProject?
   costRecommendations       CostRecommendation[]
@@ -2318,4 +2320,49 @@ model ProposedChange {
 
   @@index([organizationId])
   @@index([pipelineId, status])
+}
+
+/// Retention/tiering policy for lake datasets (A1). hotDays = days kept in the
+/// ClickHouse MergeTree hot tier before TTL-move to the S3-backed cold disk;
+/// coldDays = total retention before TTL-delete.
+model LakeRetentionPolicy {
+  id             String        @id @default(cuid())
+  organizationId String        @default("default")
+  name           String
+  hotDays        Int           @default(7)
+  coldDays       Int           @default(90)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  datasets       LakeDataset[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+/// Catalog metadata for a pipeline/environment's events stored in the lake
+/// (ClickHouse). The events live in ClickHouse `lake_events`; this Postgres row
+/// tracks the discovered schema, row/byte counts, time range and tiering so the
+/// search UI and ops can reason about a dataset without querying ClickHouse.
+model LakeDataset {
+  id                String               @id @default(cuid())
+  organizationId    String               @default("default")
+  pipelineId        String
+  pipeline          Pipeline             @relation("LakeDatasetPipeline", fields: [pipelineId], references: [id], onDelete: Cascade)
+  environmentId     String
+  environment       Environment          @relation("LakeDatasetEnvironment", fields: [environmentId], references: [id], onDelete: Cascade)
+  schemaJson        Json?
+  rowCount          BigInt               @default(0)
+  byteCount         BigInt               @default(0)
+  firstEventAt      DateTime?
+  lastEventAt       DateTime?
+  /// hot | cold | external (BYO bucket, cold-only — no in-place search).
+  tiering           String               @default("hot")
+  retentionPolicyId String?
+  retentionPolicy   LakeRetentionPolicy? @relation(fields: [retentionPolicyId], references: [id], onDelete: SetNull)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@unique([organizationId, pipelineId])
+  @@index([organizationId])
+  @@index([pipelineId])
 }

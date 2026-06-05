@@ -26,6 +26,7 @@
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
     "@aws-sdk/client-s3": "^3.1057.0",
+    "@clickhouse/client": "^1.20.0",
     "@dagrejs/dagre": "^3.0.0",
     "@hookform/resolvers": "^5.4.0",
     "@monaco-editor/react": "^4.7.0",

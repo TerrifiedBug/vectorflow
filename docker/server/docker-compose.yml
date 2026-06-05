@@ -65,6 +65,23 @@ services:
       VF_ALLOW_NEXTAUTH_DERIVED_KEY: ${VF_ALLOW_NEXTAUTH_DERIVED_KEY:-}
       AUTH_TRUST_HOST: "true"
       NEXTAUTH_URL:
+      # ── VectorFlow Lake (Optional, OFF by default) ───────────────────────
+      # Long-retention event store (logs/metrics/traces). Defaulted EMPTY so the
+      # lake stays fully inert (isLakeEnabled()=false) on standard single-tenant
+      # deployments — nothing connects. To enable: start the `lake` profile
+      # (clickhouse service below) and set VF_LAKE_CLICKHOUSE_URL here or in .env
+      # (e.g. http://clickhouse:8123). See docker/server/.env.example.
+      VF_LAKE_CLICKHOUSE_URL: ${VF_LAKE_CLICKHOUSE_URL:-}
+      VF_LAKE_CLICKHOUSE_DATABASE: ${VF_LAKE_CLICKHOUSE_DATABASE:-vectorflow_lake}
+      VF_LAKE_CLICKHOUSE_USER: ${VF_LAKE_CLICKHOUSE_USER:-}
+      VF_LAKE_CLICKHOUSE_PASSWORD: ${VF_LAKE_CLICKHOUSE_PASSWORD:-}
+      # Cold tier (optional): set VF_LAKE_S3_BUCKET to enable S3 tiering + the
+      # `vf_hot_cold` storage policy (otherwise lake_events is hot-only MergeTree).
+      VF_LAKE_S3_ENDPOINT: ${VF_LAKE_S3_ENDPOINT:-}
+      VF_LAKE_S3_BUCKET: ${VF_LAKE_S3_BUCKET:-}
+      VF_LAKE_S3_REGION: ${VF_LAKE_S3_REGION:-}
+      VF_LAKE_S3_ACCESS_KEY_ID: ${VF_LAKE_S3_ACCESS_KEY_ID:-}
+      VF_LAKE_S3_SECRET_ACCESS_KEY: ${VF_LAKE_S3_SECRET_ACCESS_KEY:-}
     volumes:
       - vfdata:/app/.vectorflow
       - backups:/backups
@@ -76,6 +93,48 @@ services:
       retries: 3
     mem_limit: 1g
     cpus: 2.0
+    restart: unless-stopped
+
+  # ── VectorFlow Lake (ClickHouse) — opt-in via `--profile lake` ───────────
+  # Long-retention event store. Behind the `lake` profile so the standard
+  # `docker compose up -d` stays lake-free. Enable with:
+  #   docker compose --profile lake up -d
+  # then apply the schema:  pnpm tsx scripts/lake-migrate.ts
+  # (run with VF_LAKE_CLICKHOUSE_URL=http://localhost:8123 pointing at this service).
+  clickhouse:
+    container_name: vectorflow-clickhouse
+    profiles: ["lake"]
+    image: clickhouse/clickhouse-server:24.8
+    environment:
+      CLICKHOUSE_DB: ${VF_LAKE_CLICKHOUSE_DATABASE:-vectorflow_lake}
+      # Optional auth — blank password uses the local `default` user.
+      CLICKHOUSE_USER: ${VF_LAKE_CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${VF_LAKE_CLICKHOUSE_PASSWORD:-}
+      # S3 cold-tier disk, read by config.d/storage.xml via `from_env`. The full
+      # bucket+prefix URL is composed from VF_LAKE_S3_ENDPOINT + VF_LAKE_S3_BUCKET.
+      # The disk is lazy, so these defaults are harmless when no real bucket
+      # exists — the `cold` volume is only used once a table opts into vf_hot_cold.
+      VF_LAKE_S3_DISK_ENDPOINT: "${VF_LAKE_S3_ENDPOINT:-http://minio:9000}/${VF_LAKE_S3_BUCKET:-vf-lake}/lake-cold/"
+      VF_LAKE_S3_ACCESS_KEY_ID: ${VF_LAKE_S3_ACCESS_KEY_ID:-}
+      VF_LAKE_S3_SECRET_ACCESS_KEY: ${VF_LAKE_S3_SECRET_ACCESS_KEY:-}
+      VF_LAKE_S3_REGION: ${VF_LAKE_S3_REGION:-us-east-1}
+    volumes:
+      - ./clickhouse/config.d/storage.xml:/etc/clickhouse-server/config.d/storage.xml:ro
+      - clickhouse-data:/var/lib/clickhouse
+#    ports:
+#      - "127.0.0.1:8123:8123"   # HTTP interface (clickhouse-client / debugging)
+    ulimits:
+      # ClickHouse recommends a high open-file limit for MergeTree parts.
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      # Auth-free HTTP /ping endpoint — works regardless of CLICKHOUSE_PASSWORD.
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8123/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     restart: unless-stopped
 
   vf-agent:
@@ -112,3 +171,5 @@ volumes:
     name: vectorflow-agent-data
   vector-data:
     name: vectorflow-vector-data
+  clickhouse-data:
+    name: vectorflow-clickhouse-data
