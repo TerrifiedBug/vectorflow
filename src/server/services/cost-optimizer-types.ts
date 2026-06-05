@@ -17,7 +17,19 @@ export interface AnalysisResult {
 export type SuggestedAction =
   | { type: "add_sampling"; config: { rate: number; componentKey: string } }
   | { type: "add_filter"; config: { condition: string; componentKey: string } }
+  | { type: "drop_field"; config: { fields: string[]; componentKey: string } }
   | { type: "disable_pipeline"; config: Record<string, never> };
+
+/** Per-field distinct-value cardinality over a sample of events. */
+export interface FieldCardinality {
+  field: string;
+  /** Distinct stringified values observed for this field. */
+  distinctCount: number;
+  /** Number of sampled events the field appears in. */
+  presentCount: number;
+  /** distinctCount / presentCount, 0.0-1.0 (1.0 = every value unique). */
+  ratio: number;
+}
 
 /** Pipeline metrics aggregated over the analysis window */
 export interface PipelineAggregates {
@@ -46,6 +58,12 @@ export interface AnalysisThresholds {
   maxEventsForStale: bigint;
   /** Minimum days deployed to be considered for stale detection */
   minDaysDeployedForStale: number;
+  /** Minimum (distinctValues / occurrences) ratio for a field to count as high-cardinality (0.0-1.0) */
+  minCardinalityRatio: number;
+  /** Minimum events a field must appear in before its cardinality is assessed */
+  minCardinalitySamples: number;
+  /** Minimum distinct values before a field is flagged (avoids flagging tiny samples) */
+  minCardinalityDistinct: number;
 }
 
 export const DEFAULT_THRESHOLDS: AnalysisThresholds = {
@@ -54,4 +72,7 @@ export const DEFAULT_THRESHOLDS: AnalysisThresholds = {
   minErrorRate: 0.10,                // More than 10% errors
   maxEventsForStale: BigInt(100),     // Fewer than 100 events/day
   minDaysDeployedForStale: 7,        // At least 7 days old
+  minCardinalityRatio: 0.9,          // 90%+ of values unique
+  minCardinalitySamples: 20,         // field must appear in >=20 sampled events
+  minCardinalityDistinct: 20,        // and have >=20 distinct values
 };

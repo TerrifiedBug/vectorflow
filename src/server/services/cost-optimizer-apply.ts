@@ -21,9 +21,25 @@ export function applyRecommendationToYaml(
         config: { condition: action.config.condition },
         targetSinkKey,
       });
+    case "drop_field":
+      return applyAddTransform(currentYaml, {
+        componentKey: action.config.componentKey,
+        type: "remap",
+        config: { source: dropFieldsVrl(action.config.fields) },
+        targetSinkKey,
+      });
     case "disable_pipeline":
       return null;
   }
+}
+
+/**
+ * Build a VRL `remap` source that deletes each offending field. Field names are
+ * emitted as quoted VRL paths (`del(."field")`) via JSON.stringify so names
+ * containing dots/quotes/dashes are escaped safely.
+ */
+export function dropFieldsVrl(fields: readonly string[]): string {
+  return fields.map((field) => `del(.${JSON.stringify(field)})`).join("\n");
 }
 
 interface AddTransformParams {

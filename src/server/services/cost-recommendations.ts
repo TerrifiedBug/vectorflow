@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import type { AnalysisResult } from "@/server/services/cost-optimizer-types";
+import {
+  loadDestinationCostModels,
+  getPrimarySinkTypes,
+  projectSinkCostCents,
+} from "@/server/services/cost-attribution";
 import { debugLog } from "@/lib/logger";
 import { Prisma } from "@/generated/prisma";
 import type { RecommendationStatus, CostRecommendation } from "@/generated/prisma";
@@ -116,5 +121,46 @@ export async function markRecommendationApplied(
       status: "APPLIED",
       appliedAt: new Date(),
     },
+  });
+}
+
+/** A recommendation enriched with a projected dollar saving. */
+export type WithEstimatedSavingsCents<T> = T & {
+  /** Projected savings in cents; null when no DestinationCostModel covers the sink (byte-only). */
+  estimatedSavingsCents: number | null;
+};
+
+/**
+ * Attach a projected dollar saving (`estimatedSavingsCents`) to each
+ * recommendation by mapping its pipeline's primary sink type to the org's
+ * DestinationCostModel. Recommendations whose sink has no configured model (or
+ * that have no byte estimate) get `estimatedSavingsCents: null` (byte-only). A
+ * single batch query resolves all sink types; cost models are loaded once.
+ */
+export async function enrichRecommendationsWithCost<
+  T extends { pipelineId: string; estimatedSavingsBytes: bigint | null },
+>(
+  recs: readonly T[],
+  organizationId: string,
+): Promise<WithEstimatedSavingsCents<T>[]> {
+  if (recs.length === 0) return [];
+
+  const costModels = await loadDestinationCostModels(organizationId);
+  if (costModels.length === 0) {
+    return recs.map((rec) => ({ ...rec, estimatedSavingsCents: null }));
+  }
+
+  const sinkTypeByPipeline = await getPrimarySinkTypes(
+    recs.map((rec) => rec.pipelineId),
+  );
+
+  return recs.map((rec) => {
+    const sinkType = sinkTypeByPipeline.get(rec.pipelineId);
+    const bytes = rec.estimatedSavingsBytes;
+    const estimatedSavingsCents =
+      sinkType != null && bytes != null
+        ? projectSinkCostCents(Number(bytes), sinkType, costModels)
+        : null;
+    return { ...rec, estimatedSavingsCents };
   });
 }

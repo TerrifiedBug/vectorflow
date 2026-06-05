@@ -31,6 +31,7 @@ import { gitSyncRouter } from "@/server/routers/git-sync";
 import { migrationRouter } from "@/server/routers/migration";
 import { analyticsRouter } from "@/server/routers/analytics";
 import { costRecommendationRouter } from "@/server/routers/cost-recommendation";
+import { costModelRouter } from "@/server/routers/cost-model";
 import { anomalyRouter } from "@/server/routers/anomaly";
 import { telemetryRouter } from "@/server/routers/telemetry";
 import { governanceRouter } from "@/server/routers/governance";
@@ -71,6 +72,7 @@ export const appRouter = router({
   migration: migrationRouter,
   analytics: analyticsRouter,
   costRecommendation: costRecommendationRouter,
+  costModel: costModelRouter,
   anomaly: anomalyRouter,
   telemetry: telemetryRouter,
   governance: governanceRouter,

@@ -21,6 +21,7 @@ import {
   Sparkles,
   TrendingDown,
   CheckCheck,
+  Fingerprint,
 } from "lucide-react";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -31,7 +32,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-type RecommendationType = "LOW_REDUCTION" | "HIGH_ERROR_RATE" | "STALE_PIPELINE";
+type RecommendationType =
+  | "LOW_REDUCTION"
+  | "HIGH_ERROR_RATE"
+  | "STALE_PIPELINE"
+  | "HIGH_CARDINALITY";
 
 interface RecommendationCardProps {
   recommendation: {
@@ -41,6 +46,7 @@ interface RecommendationCardProps {
     description: string;
     aiSummary: string | null;
     estimatedSavingsBytes: bigint | null;
+    estimatedSavingsCents?: number | null;
     suggestedAction: unknown;
     aiSuggestions: unknown[] | null;
     createdAt: Date;
@@ -68,6 +74,11 @@ const TYPE_CONFIG: Record<
     icon: Clock,
     label: "Stale Pipeline",
     color: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
+  },
+  HIGH_CARDINALITY: {
+    icon: Fingerprint,
+    label: "High Cardinality",
+    color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
   },
 };
 
@@ -173,6 +184,9 @@ export function RecommendationCard({
               <TrendingDown className="h-3 w-3" />
               <span>
                 Est. savings: {formatBytes(Number(recommendation.estimatedSavingsBytes))}/day
+                {recommendation.estimatedSavingsCents != null &&
+                  recommendation.estimatedSavingsCents > 0 &&
+                  ` (~$${(recommendation.estimatedSavingsCents / 100).toFixed(2)}/day)`}
               </span>
             </div>
           )}

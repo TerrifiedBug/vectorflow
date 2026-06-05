@@ -202,6 +202,10 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "cost_recommendation.apply": "Cost recommendation applied",
   "cost_recommendation.trigger_analysis": "Cost analysis triggered",
 
+  // Destination Cost Models
+  "cost_model.upsert": "Destination cost model saved",
+  "cost_model.delete": "Destination cost model deleted",
+
   // Node Groups
   "nodeGroup.created": "Node group created",
   "nodeGroup.updated": "Node group updated",

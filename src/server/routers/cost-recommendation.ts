@@ -7,10 +7,12 @@ import {
   listRecommendations,
   dismissRecommendation,
   markRecommendationApplied,
+  enrichRecommendationsWithCost,
 } from "@/server/services/cost-recommendations";
 import {
   previewRecommendation,
   applyRecommendation,
+  simulateTransform,
 } from "@/server/services/cost-recommendation-procedures";
 import { runDailyCostAnalysisForOrg } from "@/server/services/cost-optimizer-scheduler";
 
@@ -25,19 +27,22 @@ export const costRecommendationRouter = router({
       }),
     )
     .use(withTeamAccess("VIEWER"))
-    .query(async ({ input }) => {
-      return listRecommendations({
+    .query(async ({ input, ctx }) => {
+      const recs = await listRecommendations({
         environmentId: input.environmentId,
         status: input.status as "PENDING" | "DISMISSED" | "APPLIED" | undefined,
         limit: input.limit,
       });
+      // Attach projected $ savings (estimatedSavingsCents) per the org's
+      // DestinationCostModel; null per-rec when the sink is unpriced.
+      return enrichRecommendationsWithCost(recs, ctx.organizationId);
     }),
 
   /** Get a single recommendation by ID. */
   getById: protectedProcedure
     .input(z.object({ environmentId: z.string(), id: z.string() }))
     .use(withTeamAccess("VIEWER"))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const rec = await prisma.costRecommendation.findUnique({
         where: { id: input.id },
         include: {
@@ -66,7 +71,8 @@ export const costRecommendationRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Recommendation not found" });
       }
 
-      return rec;
+      const [enriched] = await enrichRecommendationsWithCost([rec], ctx.organizationId);
+      return enriched;
     }),
 
   /** Dismiss a recommendation (marks it as not actionable). */
@@ -127,6 +133,32 @@ export const costRecommendationRouter = router({
       return previewRecommendation(input.id, input.environmentId);
     }),
 
+  /**
+   * What-if simulator: project a transform's reduction (and $ saving) against
+   * the pipeline's most recent sampled events BEFORE applying. Either pass a
+   * recommendation `id` (uses its suggested transform) or a `pipelineId` with a
+   * caller-supplied `vrl`. Read-only; runs the VRL via the eval harness.
+   */
+  simulate: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        id: z.string().optional(),
+        pipelineId: z.string().optional(),
+        vrl: z.string().max(50_000).optional(),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input, ctx }) => {
+      return simulateTransform({
+        environmentId: input.environmentId,
+        organizationId: ctx.organizationId,
+        recommendationId: input.id,
+        pipelineId: input.pipelineId,
+        vrl: input.vrl,
+      });
+    }),
+
   /** Apply a recommendation by creating a new pipeline version (or disabling the pipeline). */
   applyRecommendation: protectedProcedure
     .input(z.object({ environmentId: z.string(), id: z.string() }))
@@ -140,8 +172,8 @@ export const costRecommendationRouter = router({
   summary: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
     .use(withTeamAccess("VIEWER"))
-    .query(async ({ input }) => {
-      const [pending, totalSavings] = await Promise.all([
+    .query(async ({ input, ctx }) => {
+      const [pending, totalSavings, pendingRecs] = await Promise.all([
         prisma.costRecommendation.count({
           where: {
             environmentId: input.environmentId,
@@ -158,11 +190,32 @@ export const costRecommendationRouter = router({
           },
           _sum: { estimatedSavingsBytes: true },
         }),
+        prisma.costRecommendation.findMany({
+          where: {
+            environmentId: input.environmentId,
+            status: "PENDING",
+            expiresAt: { gt: new Date() },
+            estimatedSavingsBytes: { not: null },
+          },
+          select: { pipelineId: true, estimatedSavingsBytes: true },
+        }),
       ]);
+
+      // Project total $ savings across pending recs; null when no sink is
+      // priced (byte-only org).
+      const enriched = await enrichRecommendationsWithCost(
+        pendingRecs,
+        ctx.organizationId,
+      );
+      const anyPriced = enriched.some((r) => r.estimatedSavingsCents != null);
+      const estimatedSavingsCents = anyPriced
+        ? enriched.reduce((sum, r) => sum + (r.estimatedSavingsCents ?? 0), 0)
+        : null;
 
       return {
         pendingCount: pending,
         estimatedSavingsBytes: totalSavings._sum.estimatedSavingsBytes ?? BigInt(0),
+        estimatedSavingsCents,
       };
     }),
 
