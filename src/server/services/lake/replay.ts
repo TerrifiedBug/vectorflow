@@ -336,9 +336,11 @@ export async function createReplayJob(args: {
  * Returns `null` when no active job exists (the route answers 204).
  *
  * The cursor read+advance happen in one org transaction, and the advancing
- * update is guarded on the job still being active — so a cancel landing
- * between the find and the update wins (the batch is discarded, the counter
- * never moves), keeping a mid-run cancel consistent.
+ * update is guarded on the job still being active AND on `replayedEvents` still
+ * equalling the value we read — so a cancel landing between the find and the
+ * update wins (batch discarded, counter never moves), and two concurrent pulls
+ * for the same job cannot both serve the same OFFSET window: the loser's update
+ * matches no row (count 0) and returns null instead of duplicating the batch.
  */
 export async function nextReplayBatch(args: {
   orgId: string;
@@ -387,7 +389,7 @@ export async function nextReplayBatch(args: {
     // Guard on the job still being active: if it was cancelled/completed
     // concurrently, do not resurrect it or hand out the batch.
     const updated = await tx.replayJob.updateMany({
-      where: { id: job.id, status: { in: ACTIVE_STATUSES } },
+      where: { id: job.id, status: { in: ACTIVE_STATUSES }, replayedEvents: job.replayedEvents },
       data,
     });
     if (updated.count === 0) return null;

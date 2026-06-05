@@ -256,7 +256,7 @@ describe("nextReplayBatch", () => {
 
     expect(prismaMock.replayJob.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "job-1", status: { in: ["PENDING", "RUNNING"] } },
+        where: { id: "job-1", status: { in: ["PENDING", "RUNNING"] }, replayedEvents: BigInt(0) },
         data: expect.objectContaining({
           status: "RUNNING",
           replayedEvents: BigInt(3),
@@ -310,12 +310,12 @@ describe("nextReplayBatch", () => {
     expect(result?.events).toHaveLength(0);
   });
 
-  it("discards the batch and advances nothing if the job was cancelled mid-pull", async () => {
+  it("discards the batch and advances nothing when the guarded update matches no row (cancel or a concurrent pull)", async () => {
     prismaMock.replayJob.findFirst.mockResolvedValue(
       jobFixture({ status: "RUNNING", replayedEvents: BigInt(0), totalEvents: BigInt(10) }) as never,
     );
     lakeQueryMock.mockResolvedValueOnce([lakeEvent("a"), lakeEvent("b")]);
-    // The guarded update matches no active row → someone cancelled/completed it.
+    // The guarded update (status + replayedEvents) matches no row → the job was cancelled/completed, or a concurrent pull advanced the cursor first.
     prismaMock.replayJob.updateMany.mockResolvedValue({ count: 0 } as never);
 
     const result = await nextReplayBatch({ orgId: ORG, targetPipelineId: "tgt", batchSize: 2 });

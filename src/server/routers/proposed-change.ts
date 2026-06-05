@@ -19,6 +19,7 @@
 
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { randomUUID } from "crypto";
 import { Prisma } from "@/generated/prisma";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
@@ -412,10 +413,30 @@ export const proposedChangeRouter = router({
 
       return withOrgTx(ctx.organizationId, async (tx) => {
         if (change.kind === "PIPELINE_GRAPH") {
+          // Normalize node ids before persisting. nodeSchema allows nodes without
+          // an `id`, and validation matched edges via `id ?? componentKey`, so a
+          // proposal can legitimately reference nodes by component key. Assign a
+          // concrete id to every node and rewrite edge endpoints to it — otherwise
+          // saveGraphComponents generates fresh ids for id-less nodes while edges
+          // still point at component keys, and the edge FK inserts fail.
+          const proposedNodes = (change.proposedNodes as unknown as ProposedNode[]) ?? [];
+          const proposedEdges = (change.proposedEdges as unknown as ProposedEdge[]) ?? [];
+          const idByRef = new Map<string, string>();
+          const normalizedNodes = proposedNodes.map((n) => {
+            const id = n.id ?? randomUUID();
+            if (n.id) idByRef.set(n.id, id);
+            idByRef.set(n.componentKey, id);
+            return { ...n, id };
+          });
+          const normalizedEdges = proposedEdges.map((e) => ({
+            ...e,
+            sourceNodeId: idByRef.get(e.sourceNodeId) ?? e.sourceNodeId,
+            targetNodeId: idByRef.get(e.targetNodeId) ?? e.targetNodeId,
+          }));
           await saveGraphComponents(tx, {
             pipelineId: change.pipelineId,
-            nodes: (change.proposedNodes as unknown as ProposedNode[]) ?? [],
-            edges: (change.proposedEdges as unknown as ProposedEdge[]) ?? [],
+            nodes: normalizedNodes,
+            edges: normalizedEdges,
             globalConfig: (change.proposedGlobalConfig as Record<string, unknown> | null) ?? null,
             userId,
           });

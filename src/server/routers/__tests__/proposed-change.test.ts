@@ -257,6 +257,37 @@ describe("proposedChange.approve", () => {
     expect((res as { status: string }).status).toBe("APPLIED");
   });
 
+  it("normalizes id-less proposed nodes and rewrites edges by component key before saving", async () => {
+    db.proposedChange.findFirst.mockResolvedValue({
+      id: "pc-3",
+      pipelineId: "pipe-1",
+      status: "PENDING",
+      validated: true,
+      kind: "PIPELINE_GRAPH",
+      proposedNodes: [
+        { componentKey: "in", componentType: "demo_logs", kind: "SOURCE", config: {}, positionX: 0, positionY: 0, disabled: false },
+        { componentKey: "out", componentType: "console", kind: "SINK", config: {}, positionX: 1, positionY: 0, disabled: false },
+      ],
+      proposedEdges: [{ sourceNodeId: "in", targetNodeId: "out" }],
+      proposedGlobalConfig: null,
+      targetComponentKey: null,
+      vrlSource: null,
+    } as never);
+    db.proposedChange.update.mockResolvedValue({ id: "pc-3", status: "APPLIED" } as never);
+
+    await caller.proposedChange.approve({ pipelineId: "pipe-1", changeId: "pc-3" });
+
+    const [, params] = saveGraphMock.mock.calls.at(-1)!;
+    const nodes = (params as { nodes: Array<{ id: string; componentKey: string }> }).nodes;
+    const edges = (params as { edges: Array<{ sourceNodeId: string; targetNodeId: string }> }).edges;
+    // Every saved node has a concrete id…
+    expect(nodes.every((n) => typeof n.id === "string" && n.id.length > 0)).toBe(true);
+    // …and the edge endpoints now point at those ids, not the component keys.
+    const idOf = (key: string) => nodes.find((n) => n.componentKey === key)!.id;
+    expect(edges[0].sourceNodeId).toBe(idOf("in"));
+    expect(edges[0].targetNodeId).toBe(idOf("out"));
+  });
+
   it("applies a validated VRL change by setting the target component's source", async () => {
     db.proposedChange.findFirst.mockResolvedValue({
       id: "pc-2",
