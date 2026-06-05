@@ -182,6 +182,7 @@ export const directReleaseRouter = router({
 
           return tx.release.create({
             data: {
+              organizationId: ctx.organizationId,
               strategy: "DIRECT",
               status: "PENDING",
               pipelineId: input.pipelineId,

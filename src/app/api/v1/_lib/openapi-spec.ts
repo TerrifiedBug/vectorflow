@@ -2018,15 +2018,15 @@ registry.registerPath({
 });
 
 // ---------------------------------------------------------------------------
-// tRPC — Deploy procedures
+// tRPC — Release (direct) procedures
 // ---------------------------------------------------------------------------
 
-// deploy.agent (mutation → POST)
+// release.direct.agent (mutation → POST)
 registry.registerPath({
   method: "post",
-  path: "/api/trpc/deploy.agent",
-  operationId: "trpcDeployAgent",
-  summary: "deploy.agent — Deploy pipeline to agents",
+  path: "/api/trpc/release.direct.agent",
+  operationId: "trpcReleaseDirectAgent",
+  summary: "release.direct.agent — Deploy pipeline to agents",
   description:
     `${trpcNote}\n\nValidates the pipeline config, creates a new version, and marks it as deployed. ` +
     "Fleet agents pick up the change on their next poll. If the environment requires deploy approval and the caller is an EDITOR (not ADMIN), " +
@@ -2067,12 +2067,12 @@ registry.registerPath({
   },
 });
 
-// deploy.undeploy (mutation → POST)
+// release.direct.undeploy (mutation → POST)
 registry.registerPath({
   method: "post",
-  path: "/api/trpc/deploy.undeploy",
-  operationId: "trpcDeployUndeploy",
-  summary: "deploy.undeploy — Undeploy pipeline",
+  path: "/api/trpc/release.direct.undeploy",
+  operationId: "trpcReleaseDirectUndeploy",
+  summary: "release.direct.undeploy — Undeploy pipeline",
   description: `${trpcNote}\n\nStops a deployed pipeline on all fleet nodes (agents stop it on their next poll).`,
   tags: ["tRPC"],
   security: trpcSecurity,

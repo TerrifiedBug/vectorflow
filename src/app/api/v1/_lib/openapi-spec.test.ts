@@ -168,8 +168,8 @@ describe("generateOpenAPISpec", () => {
     expect(paths["/api/trpc/pipeline.create"]?.post).toBeDefined();
     expect(paths["/api/trpc/pipeline.update"]?.post).toBeDefined();
     expect(paths["/api/trpc/pipeline.delete"]?.post).toBeDefined();
-    expect(paths["/api/trpc/deploy.agent"]?.post).toBeDefined();
-    expect(paths["/api/trpc/deploy.undeploy"]?.post).toBeDefined();
+    expect(paths["/api/trpc/release.direct.agent"]?.post).toBeDefined();
+    expect(paths["/api/trpc/release.direct.undeploy"]?.post).toBeDefined();
     expect(paths["/api/trpc/secret.create"]?.post).toBeDefined();
     expect(paths["/api/trpc/serviceAccount.create"]?.post).toBeDefined();
   });
@@ -202,7 +202,7 @@ describe("generateOpenAPISpec", () => {
       "/api/trpc/pipeline.get",
       "/api/trpc/pipeline.create",
       "/api/trpc/pipeline.delete",
-      "/api/trpc/deploy.agent",
+      "/api/trpc/release.direct.agent",
       "/api/trpc/fleet.list",
       "/api/trpc/fleet.get",
       "/api/trpc/secret.list",

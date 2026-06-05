@@ -390,6 +390,7 @@ export async function POST(req: NextRequest) {
 
         await prisma.release.create({
           data: {
+            organizationId: matchedEnv.organizationId,
             strategy: "DIRECT",
             status: "PENDING",
             pipelineId: pipeline.id,

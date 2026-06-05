@@ -1,6 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import { mockDeep } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
+import { TRPCError } from "@trpc/server";
 
 const { t, auditCalls } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -63,6 +64,11 @@ vi.mock("@/server/services/lake/replay", () => {
   };
 });
 
+// Mock the source-pipeline access gate; resolved by default in beforeEach.
+vi.mock("@/server/authz", () => ({
+  assertPipelineBatchAccess: vi.fn(),
+}));
+
 import { replayRouter } from "@/server/routers/replay";
 import {
   createReplayJob,
@@ -71,11 +77,13 @@ import {
   listReplayJobs,
   ReplayError,
 } from "@/server/services/lake/replay";
+import { assertPipelineBatchAccess } from "@/server/authz";
 
 const createMock = vi.mocked(createReplayJob);
 const cancelMock = vi.mocked(cancelReplayJob);
 const getMock = vi.mocked(getReplayJob);
 const listMock = vi.mocked(listReplayJobs);
+const assertAccessMock = vi.mocked(assertPipelineBatchAccess);
 
 const caller = t.createCallerFactory(replayRouter)({
   session: { user: { id: "user-1", email: "u@test.com", name: "U" } },
@@ -103,6 +111,7 @@ function job(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  assertAccessMock.mockResolvedValue({ teamId: "team-1", userRole: "ADMIN" } as never);
 });
 
 describe("replayRouter.create", () => {
@@ -127,6 +136,17 @@ describe("replayRouter.create", () => {
       }),
     );
     expect(result).toMatchObject({ id: "job-1", status: "PENDING" });
+  });
+
+  it("denies create when the caller lacks source-pipeline team access", async () => {
+    assertAccessMock.mockRejectedValue(
+      new TRPCError({ code: "FORBIDDEN", message: "not a member" }),
+    );
+    await expect(
+      caller.create({ pipelineId: "tgt", sourcePipelineId: "src", fromTime: FROM, toTime: TO }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(assertAccessMock).toHaveBeenCalledWith(["src"], "user-1", "VIEWER", "org-1");
+    expect(createMock).not.toHaveBeenCalled();
   });
 
   it("rejects an inverted time range before calling the service", async () => {

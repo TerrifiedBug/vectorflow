@@ -205,6 +205,7 @@ export const promotionReleaseRouter = router({
       // Create the PromotionRequest
       const promotionRequest = await prisma.release.create({
         data: {
+          organizationId: ctx.organizationId,
           strategy: "PROMOTION",
           pipelineId: input.pipelineId,
           environmentId: sourcePipeline.environmentId,

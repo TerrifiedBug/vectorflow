@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { withAudit } from "@/server/middleware/audit";
+import { assertPipelineBatchAccess } from "@/server/authz";
 import { LAKE_EVENT_TYPES, LAKE_MAX_RANGE_MS } from "@/server/services/lake/lake-query";
 import {
   createReplayJob,
@@ -85,6 +86,16 @@ export const replayRouter = router({
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("replay.created", "ReplayJob"))
     .mutation(async ({ input, ctx }) => {
+      // The target pipeline (input.pipelineId) is gated by withTeamAccess above.
+      // The source pipeline is a separate tenant-scoped input: require VIEWER on
+      // ITS team too, or a target-only editor could replay another team's lake
+      // events into a pipeline they control (cross-team data exposure).
+      await assertPipelineBatchAccess(
+        [input.sourcePipelineId],
+        ctx.session.user.id,
+        "VIEWER",
+        ctx.organizationId,
+      );
       try {
         return await createReplayJob({
           orgId: ctx.organizationId,

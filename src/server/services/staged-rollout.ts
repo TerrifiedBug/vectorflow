@@ -332,6 +332,7 @@ export class StagedRolloutService {
 
     const rollout = await prisma.release.create({
       data: {
+        organizationId: pipeline.organizationId,
         strategy: "CANARY",
         pipelineId,
         environmentId: pipeline.environmentId,
