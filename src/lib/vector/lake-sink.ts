@@ -147,19 +147,23 @@ function resolveLakeBlock(
 /**
  * VRL for the delivery-injected lake normalization remap. Maps an arbitrary
  * event onto the `lake_events` schema so the columns search/replay filter on
- * (organizationId, pipelineId, eventType, timestamp) are always populated, and
- * the full original event is preserved in `raw`. org/pipeline are the owning
- * pipeline's ids, injected at delivery — the editor graph never carries them.
- * Infallible: every fallible `to_string` is `??`-coalesced; `to_string(null)`
- * is "" so absent fields normalize to empty strings, not the literal "null".
+ * (organizationId, pipelineId, eventType, timestamp) are always populated, the
+ * full original event is preserved in `raw`, and the original top-level fields
+ * survive as stringified `attrs` (what getSchema/fieldStats discover + query).
+ * eventType detects traces (trace/span ids) and metrics (metric_to_log value
+ * keys), else log. org/pipeline are injected at delivery. Infallible: fallible
+ * `to_string` is `??`-coalesced (`to_string(null)` is "").
  */
 export function buildLakeNormalizeVrl(orgId: string, pipelineId: string): string {
   return [
-    ".raw = encode_json(.)",
+    "orig = .",
+    ".raw = encode_json(orig)",
     `.organizationId = ${JSON.stringify(orgId)}`,
     `.pipelineId = ${JSON.stringify(pipelineId)}`,
     "if exists(.trace_id) || exists(.span_id) || exists(.traceId) || exists(.spanId) {",
     '  .eventType = "trace"',
+    "} else if exists(.gauge) || exists(.counter) || exists(.set) || exists(.distribution) || exists(.aggregated_histogram) || exists(.aggregated_summary) || exists(.sketch) {",
+    '  .eventType = "metric"',
     "} else {",
     '  .eventType = "log"',
     "}",
@@ -169,7 +173,7 @@ export function buildLakeNormalizeVrl(orgId: string, pipelineId: string): string
     '.source = to_string(.source_type) ?? to_string(.source) ?? ""',
     '.severity = to_string(.level) ?? to_string(.severity) ?? ""',
     '.message = to_string(.message) ?? ""',
-    ".attrs = {}",
+    '.attrs = map_values(orig) -> |value| { to_string(value) ?? encode_json(value) }',
     "if !exists(.timestamp) {",
     "  .timestamp = now()",
     "}",

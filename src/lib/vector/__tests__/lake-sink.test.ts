@@ -130,8 +130,12 @@ describe("resolveLakeSinkForDelivery — lake enabled", () => {
     const src = normalize.source as string;
     expect(src).toContain('.organizationId = "org_abc"');
     expect(src).toContain('.pipelineId = "pl_xyz"');
-    expect(src).toContain(".eventType");
-    expect(src).toContain(".raw = encode_json(.)");
+    expect(src).toContain('.eventType = "trace"');
+    expect(src).toContain('.eventType = "metric"');
+    expect(src).toContain('.eventType = "log"');
+    expect(src).toContain(".raw = encode_json(orig)");
+    // Original fields survive as searchable attrs (getSchema/fieldStats read these).
+    expect(src).toContain("map_values(orig)");
   });
 
   it("drops the auth block when the lake server is unauthenticated", () => {
