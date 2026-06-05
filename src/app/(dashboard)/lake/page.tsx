@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Database,
   Search,
@@ -14,6 +15,7 @@ import {
   ArrowUpRight,
   BarChart3,
   Bell,
+  Activity,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -38,6 +40,8 @@ import { FilterPresetBar } from "@/components/filter-preset/FilterPresetBar";
 import { SaveFilterDialog } from "@/components/filter-preset/SaveFilterDialog";
 import { LakeResultsTable } from "./_components/lake-results-table";
 import { LakeSummarizeChart } from "./_components/lake-summarize-chart";
+import { TraceList } from "./_components/trace-list";
+import { TraceDetail } from "./_components/trace-detail";
 import { ReplayDialog } from "./_components/replay-dialog";
 import { CreateAlertDialog, type AlertSourceSpec } from "./_components/create-alert-dialog";
 import { LakeAlertsPanel } from "./_components/lake-alerts-panel";
@@ -96,6 +100,7 @@ export default function LakePage() {
   const trpc = useTRPC();
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
   const setSelectedEnvironmentId = useEnvironmentStore((s) => s.setSelectedEnvironmentId);
+  const searchParams = useSearchParams();
 
   const statusQuery = useQuery(trpc.lake.status.queryOptions());
   const lakeEnabled = statusQuery.data?.enabled ?? false;
@@ -112,7 +117,10 @@ export default function LakePage() {
   });
   const datasets = datasetsQuery.data ?? [];
 
-  const [pipelineId, setPipelineId] = useState<string>("");
+  // Deep-link: Fleet/Live-Tap link here with ?pipelineId=… — preselect it.
+  const [pipelineId, setPipelineId] = useState<string>(
+    () => searchParams.get("pipelineId") ?? "",
+  );
   const [eventType, setEventType] = useState<string>(ALL_VALUE);
   const [queryText, setQueryText] = useState<string>("");
   const [rangeKey, setRangeKey] = useState<string>("1h");
@@ -123,10 +131,11 @@ export default function LakePage() {
   const [saveOpen, setSaveOpen] = useState(false);
   const [replayOpen, setReplayOpen] = useState(false);
   const [createAlertOpen, setCreateAlertOpen] = useState(false);
-  const [resultsView, setResultsView] = useState<"events" | "summarize">("events");
+  const [resultsView, setResultsView] = useState<"events" | "summarize" | "traces">("events");
   const [summarizeGroupBy, setSummarizeGroupBy] = useState<string>(ALL_VALUE);
   const [summarizeMetric, setSummarizeMetric] = useState<string>("count");
   const [summarizeMetricField, setSummarizeMetricField] = useState<string>("");
+  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
 
   const selectedDataset = datasets.find((d) => d.pipelineId === pipelineId);
 
@@ -167,6 +176,7 @@ export default function LakePage() {
     const to = new Date();
     const from = new Date(to.getTime() - (RANGE_PRESETS[rangeKey]?.ms ?? RANGE_PRESETS["1h"].ms));
     setStatsField("");
+    setSelectedTraceId(null);
     setApplied({
       mode,
       pipelineId,
@@ -252,6 +262,25 @@ export default function LakePage() {
         : { pipelineId: "", from: EPOCH, to: EPOCH, metric: "count" },
     ),
     enabled: summarizeReady,
+  });
+
+  // ── Traces ─────────────────────────────────────────────────────────────────
+  const tracesQuery = useQuery({
+    ...trpc.lake.listTraces.queryOptions(
+      applied && resultsView === "traces"
+        ? { pipelineId: applied.pipelineId, from: applied.from, to: applied.to }
+        : { pipelineId: "", from: EPOCH, to: EPOCH },
+    ),
+    enabled: !!applied && resultsView === "traces",
+  });
+
+  const traceDetailQuery = useQuery({
+    ...trpc.lake.getTrace.queryOptions(
+      applied && selectedTraceId
+        ? { pipelineId: applied.pipelineId, traceId: selectedTraceId }
+        : { pipelineId: "", traceId: "_" },
+    ),
+    enabled: !!applied && !!selectedTraceId && resultsView === "traces",
   });
 
   const schemaQuery = useQuery({
@@ -496,7 +525,9 @@ export default function LakePage() {
                   <Tabs
                     value={resultsView}
                     onValueChange={(v) =>
-                      setResultsView(v === "summarize" ? "summarize" : "events")
+                      setResultsView(
+                        v === "summarize" ? "summarize" : v === "traces" ? "traces" : "events",
+                      )
                     }
                     className="mb-4"
                   >
@@ -509,6 +540,10 @@ export default function LakePage() {
                         <BarChart3 className="h-4 w-4" />
                         Summarize
                       </TabsTrigger>
+                      <TabsTrigger value="traces" className="gap-1.5">
+                        <Activity className="h-4 w-4" />
+                        Traces
+                      </TabsTrigger>
                     </TabsList>
                   </Tabs>
 
@@ -520,6 +555,24 @@ export default function LakePage() {
                       hasSearched={!!applied}
                       onRetry={() => activeSearch.refetch()}
                     />
+                  ) : resultsView === "traces" ? (
+                    selectedTraceId ? (
+                      <TraceDetail
+                        traceId={selectedTraceId}
+                        spans={traceDetailQuery.data ?? []}
+                        isLoading={traceDetailQuery.isLoading && !!selectedTraceId}
+                        onBack={() => setSelectedTraceId(null)}
+                      />
+                    ) : (
+                      <TraceList
+                        traces={tracesQuery.data ?? []}
+                        isLoading={tracesQuery.isLoading && !!applied}
+                        isError={tracesQuery.isError}
+                        hasSearched={!!applied}
+                        onSelect={(id) => setSelectedTraceId(id)}
+                        onRetry={() => tracesQuery.refetch()}
+                      />
+                    )
                   ) : (
                     <>
                       <div className="mb-4 flex flex-wrap items-end gap-3">

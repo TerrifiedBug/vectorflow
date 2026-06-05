@@ -13,6 +13,8 @@ import {
   searchEvents,
   rawSearchEvents,
   summarizeEvents,
+  listTraces,
+  getTrace,
   getSchema,
   fieldStats,
   listDatasets,
@@ -361,6 +363,41 @@ export const lakeRouter = router({
         from: input.from,
         to: input.to,
         limit: input.limit,
+      });
+    }),
+
+  /** Recent traces (grouped by traceId) over an org+pipeline window (VIEWER). */
+  listTraces: protectedProcedure
+    .input(
+      z
+        .object({
+          pipelineId: z.string(),
+          from: z.coerce.date(),
+          to: z.coerce.date(),
+          limit: limitSchema,
+        })
+        .refine(withinMaxRange, { message: rangeMessage, path: ["to"] }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input, ctx }) => {
+      return listTraces({
+        orgId: ctx.organizationId,
+        pipelineId: input.pipelineId,
+        from: input.from,
+        to: input.to,
+        limit: input.limit,
+      });
+    }),
+
+  /** All spans of a single trace, ordered by start time (VIEWER). */
+  getTrace: protectedProcedure
+    .input(z.object({ pipelineId: z.string(), traceId: z.string().min(1).max(256) }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input, ctx }) => {
+      return getTrace({
+        orgId: ctx.organizationId,
+        pipelineId: input.pipelineId,
+        traceId: input.traceId,
       });
     }),
 });

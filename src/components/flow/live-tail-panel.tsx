@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Clipboard, Pause, Play, Radio, Save, Square, Trash2, WrapText } from "lucide-react";
-import { useMutation } from "@tanstack/react-query";
+import { ChevronDown, ChevronUp, Clipboard, Database, Pause, Play, Radio, Save, Square, Trash2, WrapText } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useLiveTap } from "@/hooks/use-live-tap";
 import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import Link from "next/link";
+import { useTeamStore } from "@/stores/team-store";
 
 interface LiveTailPanelProps {
   pipelineId: string;
@@ -25,6 +27,16 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
   const trpc = useTRPC();
   const [showSave, setShowSave] = useState(false);
   const [captureName, setCaptureName] = useState("");
+
+  // Lake glue: a "search history in Lake" link when this pipeline has a lake
+  // dataset, stitching Live-Tap (live) → Lake (durable history).
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
+  const lakeStatusQuery = useQuery(trpc.lake.status.queryOptions());
+  const lakeDatasetsQuery = useQuery({
+    ...trpc.lake.listDatasets.queryOptions({ teamId: selectedTeamId ?? "" }),
+    enabled: !!selectedTeamId && (lakeStatusQuery.data?.enabled ?? false),
+  });
+  const hasLakeDataset = (lakeDatasetsQuery.data ?? []).some((d) => d.pipelineId === pipelineId);
 
   const saveCapture = useMutation(
     trpc.tapCapture.create.mutationOptions({
@@ -81,6 +93,19 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
           <span className="font-mono text-[10px] uppercase tracking-[0.04em] text-fg-2">Live tail</span>
           <span className="ml-1 text-[10px] text-fg-2">{lines.length}/200</span>
           <div className="ml-auto flex items-center gap-1">
+            {hasLakeDataset && (
+              <Button
+                asChild
+                size="icon-xs"
+                variant="ghost"
+                aria-label="Search history in Lake"
+                title="Search this pipeline's history in Lake"
+              >
+                <Link href={`/lake?pipelineId=${pipelineId}`}>
+                  <Database className="h-3 w-3" />
+                </Link>
+              </Button>
+            )}
             <Button
               size="icon-xs"
               variant="ghost"
