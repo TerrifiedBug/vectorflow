@@ -145,10 +145,45 @@ function resolveLakeBlock(
 }
 
 /**
+ * VRL for the delivery-injected lake normalization remap. Maps an arbitrary
+ * event onto the `lake_events` schema so the columns search/replay filter on
+ * (organizationId, pipelineId, eventType, timestamp) are always populated, and
+ * the full original event is preserved in `raw`. org/pipeline are the owning
+ * pipeline's ids, injected at delivery — the editor graph never carries them.
+ * Infallible: every fallible `to_string` is `??`-coalesced; `to_string(null)`
+ * is "" so absent fields normalize to empty strings, not the literal "null".
+ */
+export function buildLakeNormalizeVrl(orgId: string, pipelineId: string): string {
+  return [
+    ".raw = encode_json(.)",
+    `.organizationId = ${JSON.stringify(orgId)}`,
+    `.pipelineId = ${JSON.stringify(pipelineId)}`,
+    "if exists(.trace_id) || exists(.span_id) || exists(.traceId) || exists(.spanId) {",
+    '  .eventType = "trace"',
+    "} else {",
+    '  .eventType = "log"',
+    "}",
+    '.traceId = to_string(.trace_id) ?? to_string(.traceId) ?? ""',
+    '.spanId = to_string(.span_id) ?? to_string(.spanId) ?? ""',
+    '.host = to_string(.host) ?? ""',
+    '.source = to_string(.source_type) ?? to_string(.source) ?? ""',
+    '.severity = to_string(.level) ?? to_string(.severity) ?? ""',
+    '.message = to_string(.message) ?? ""',
+    ".attrs = {}",
+    "if !exists(.timestamp) {",
+    "  .timestamp = now()",
+    "}",
+  ].join("\n");
+}
+
+/**
  * Resolve managed lake sinks in a delivery config:
  *  - `creds` present (lake enabled): replace `LAKE[...]` refs with the concrete
  *    endpoint/database/credentials; drop credential fields that are unset and
- *    drop the `auth` block when the server is unauthenticated.
+ *    drop the `auth` block when the server is unauthenticated. When `opts` is
+ *    supplied, inject a per-sink `<key>__lake_normalize` remap mapping events
+ *    onto the lake_events schema — the sink writes raw JSON, so without it the
+ *    columns search/replay filter on are never populated.
  *  - `creds` null (lake disabled): rewrite each lake sink to a no-op `blackhole`
  *    sink so the delivered config stays valid and the lake is fully inert — no
  *    connection is attempted, the topology and upstream transforms are
@@ -160,6 +195,7 @@ function resolveLakeBlock(
 export function resolveLakeSinkForDelivery(
   config: Record<string, unknown>,
   creds: LakeSinkCreds | null,
+  opts?: { orgId: string; pipelineId: string },
 ): { config: Record<string, unknown>; applied: boolean } {
   const sinks = config.sinks;
   if (!sinks || typeof sinks !== "object" || Array.isArray(sinks)) {
@@ -170,6 +206,7 @@ export function resolveLakeSinkForDelivery(
   // Clone lazily — only when a lake sink is actually present, so the common
   // (no-lake) delivery path allocates nothing.
   let nextSinks: Record<string, unknown> | null = null;
+  let nextTransforms: Record<string, unknown> | null = null;
 
   for (const [key, block] of Object.entries(sinkMap)) {
     if (!isLakeSinkBlock(block)) continue;
@@ -181,9 +218,34 @@ export function resolveLakeSinkForDelivery(
         : { type: "blackhole" };
       continue;
     }
-    nextSinks[key] = resolveLakeBlock(b, creds);
+
+    let resolved = resolveLakeBlock(b, creds);
+
+    // Normalize events onto the lake_events schema just before the sink. Without
+    // it the clickhouse sink writes events whose organizationId/pipelineId/
+    // eventType/timestamp columns are empty and search/replay return nothing.
+    if (opts && Array.isArray(resolved.inputs) && resolved.inputs.length > 0) {
+      const normalizeKey = `${key}__lake_normalize`;
+      if (!nextTransforms) {
+        const existing = config.transforms;
+        nextTransforms =
+          existing && typeof existing === "object" && !Array.isArray(existing)
+            ? { ...(existing as Record<string, unknown>) }
+            : {};
+      }
+      nextTransforms[normalizeKey] = {
+        type: "remap",
+        inputs: resolved.inputs,
+        source: buildLakeNormalizeVrl(opts.orgId, opts.pipelineId),
+      };
+      resolved = { ...resolved, inputs: [normalizeKey] };
+    }
+
+    nextSinks[key] = resolved;
   }
 
   if (!nextSinks) return { config, applied: false };
-  return { config: { ...config, sinks: nextSinks }, applied: true };
+  const next: Record<string, unknown> = { ...config, sinks: nextSinks };
+  if (nextTransforms) next.transforms = nextTransforms;
+  return { config: next, applied: true };
 }

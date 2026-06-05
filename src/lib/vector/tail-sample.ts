@@ -165,9 +165,10 @@ export function buildTailSampleKeepVrl(config: TailSampleConfig): string {
 
 /**
  * Expand a `tail_sample` editor node into its Vector transform blocks:
- * `<key>__tail_prepare` (remap) → `<key>__tail_collect` (reduce) → `<key>`
- * (keep-decision filter). The final filter reuses the node's `componentKey`
- * so downstream `inputs` references resolve to the sampled output.
+ * `<key>__tail_prepare` (remap) → `<key>__tail_collect` (reduce) →
+ * `<key>__tail_keep` (keep-decision filter) → `<key>__tail_expand` (remap,
+ * unnest) → `<key>` (remap, restore span). The final remap reuses the node's
+ * `componentKey` so downstream `inputs` resolve to the per-span sampled output.
  */
 export function renderTailSampleBlocks(
   componentKey: string,
@@ -177,6 +178,8 @@ export function renderTailSampleBlocks(
   const config = normalizeTailSampleConfig(rawConfig);
   const prepareKey = `${componentKey}__tail_prepare`;
   const collectKey = `${componentKey}__tail_collect`;
+  const keepKey = `${componentKey}__tail_keep`;
+  const expandKey = `${componentKey}__tail_expand`;
 
   // Capture the raw span first (clean), then derive top-level numeric signals
   // the reduce can aggregate with `max`.
@@ -212,13 +215,29 @@ export function renderTailSampleBlocks(
     },
   };
 
-  blocks[componentKey] = {
+  // Keep or drop the whole trace atomically, deciding on the single reduced event.
+  blocks[keepKey] = {
     type: "filter",
     inputs: [collectKey],
     condition: {
       type: "vrl",
       source: buildTailSampleKeepVrl(config),
     },
+  };
+
+  // Fan the kept trace's buffered spans back out into individual events so trace
+  // sinks receive the original spans, not the reduced aggregate wrapper. `unnest`
+  // assigned to the root emits one event per array element; the final remap
+  // restores each span as the event root (dropping the vf_* sampling scratch).
+  blocks[expandKey] = {
+    type: "remap",
+    inputs: [keepKey],
+    source: ". = unnest!(.vf_span)",
+  };
+  blocks[componentKey] = {
+    type: "remap",
+    inputs: [expandKey],
+    source: ". = object!(.vf_span)",
   };
 
   return blocks;

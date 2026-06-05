@@ -113,6 +113,27 @@ describe("resolveLakeSinkForDelivery — lake enabled", () => {
     expect(JSON.stringify(config)).not.toContain("LAKE[");
   });
 
+  it("injects a normalization remap mapping events onto the lake_events schema", () => {
+    const { config } = resolveLakeSinkForDelivery(lakeDeliveryConfig(), CREDS, {
+      orgId: "org_abc",
+      pipelineId: "pl_xyz",
+    });
+    const transforms = config.transforms as Record<string, Record<string, unknown>>;
+    const normalize = transforms.lake__lake_normalize;
+    expect(normalize.type).toBe("remap");
+    // Takes the sink's original inputs…
+    expect(normalize.inputs).toEqual(["in"]);
+    // …and the sink now reads from the normalize transform.
+    const sink = (config.sinks as Record<string, Record<string, unknown>>).lake;
+    expect(sink.inputs).toEqual(["lake__lake_normalize"]);
+    // The VRL stamps org/pipeline + the columns search/replay filter on.
+    const src = normalize.source as string;
+    expect(src).toContain('.organizationId = "org_abc"');
+    expect(src).toContain('.pipelineId = "pl_xyz"');
+    expect(src).toContain(".eventType");
+    expect(src).toContain(".raw = encode_json(.)");
+  });
+
   it("drops the auth block when the lake server is unauthenticated", () => {
     const { config } = resolveLakeSinkForDelivery(lakeDeliveryConfig(), {
       endpoint: "http://ch:8123",

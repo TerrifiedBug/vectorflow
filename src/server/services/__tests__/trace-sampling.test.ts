@@ -350,8 +350,14 @@ describe("renderTailSampleBlocks", () => {
     ["src"],
   );
 
-  it("expands to prepare → collect → keep-filter, keeping the node key last", () => {
-    expect(Object.keys(blocks)).toEqual(["ts__tail_prepare", "ts__tail_collect", "ts"]);
+  it("expands to prepare → collect → keep-filter → expand → restore, node key last", () => {
+    expect(Object.keys(blocks)).toEqual([
+      "ts__tail_prepare",
+      "ts__tail_collect",
+      "ts__tail_keep",
+      "ts__tail_expand",
+      "ts",
+    ]);
   });
 
   it("prepare normalizes per-span signals from the incoming inputs", () => {
@@ -376,8 +382,8 @@ describe("renderTailSampleBlocks", () => {
     });
   });
 
-  it("the keep-filter applies a VRL keep decision and drops the rest", () => {
-    const filter = blocks["ts"];
+  it("the keep-filter applies a VRL keep decision on the reduced event", () => {
+    const filter = blocks["ts__tail_keep"];
     expect(filter.type).toBe("filter");
     expect(filter.inputs).toEqual(["ts__tail_collect"]);
     expect(filter.condition).toMatchObject({ type: "vrl" });
@@ -386,6 +392,18 @@ describe("renderTailSampleBlocks", () => {
     expect(source).toContain("is_slow");
     expect(source).toContain("in_baseline");
     expect(source).toContain("seahash");
+  });
+
+  it("expands kept traces back into spans (unnest!) restored as the event root", () => {
+    const expand = blocks["ts__tail_expand"];
+    expect(expand.type).toBe("remap");
+    expect(expand.inputs).toEqual(["ts__tail_keep"]);
+    expect(expand.source).toBe(". = unnest!(.vf_span)");
+
+    const restore = blocks["ts"];
+    expect(restore.type).toBe("remap");
+    expect(restore.inputs).toEqual(["ts__tail_expand"]);
+    expect(restore.source).toBe(". = object!(.vf_span)");
   });
 });
 

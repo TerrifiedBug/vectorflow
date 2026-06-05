@@ -314,7 +314,10 @@ export async function GET(request: Request) {
             password: lakeCfg.password,
           };
         }
-        const lakeResult = resolveLakeSinkForDelivery(configForDelivery, lakeCreds);
+        const lakeResult = resolveLakeSinkForDelivery(configForDelivery, lakeCreds, {
+          orgId: orgResult.orgId,
+          pipelineId: pipeline.id,
+        });
         if (lakeResult.applied) {
           configForDelivery = lakeResult.config;
           shouldDumpConfig = true;
