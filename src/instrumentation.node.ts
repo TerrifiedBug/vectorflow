@@ -165,6 +165,19 @@ export async function registerNodeInstrumentation() {
     }
 
     try {
+      // VectorFlow Lake: scheduled threshold alerts. Leader-gated and a no-op
+      // when the lake is disabled (same contract as runLakeMigrations), so
+      // operators get alerting by setting the lake env alone. Best-effort —
+      // a scheduler init hiccup never blocks boot.
+      const { initLakeAlertScheduler } = await import(
+        "@/server/services/lake/lake-alerts"
+      );
+      initLakeAlertScheduler();
+    } catch (error) {
+      errorLog("instrumentation", "Failed to initialize lake alert scheduler", error);
+    }
+
+    try {
       const { importLegacyBackups } = await import("@/server/services/backup");
       const result = await importLegacyBackups();
       infoLog("instrumentation", `Legacy backup import: ${result.imported} imported, ${result.skipped} skipped`);

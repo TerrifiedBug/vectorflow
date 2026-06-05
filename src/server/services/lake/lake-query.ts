@@ -318,17 +318,28 @@ const STAT_COLUMN_ALLOWLIST: Record<string, true> = {
 };
 
 /**
- * Resolve a user-supplied field name to a safe SQL expression. Known columns
- * come from a fixed allowlist (safe identifier); anything else is treated as a
- * dynamic `attrs` key and bound as a parameter (`attrs[{field:String}]`), so an
- * arbitrary field name can never be interpolated into the SQL text.
+ * Resolve a user-supplied field name to a safe SQL expression with a
+ * caller-chosen bound-param name. Known columns come from a fixed allowlist
+ * (safe identifier); anything else is a dynamic `attrs` key bound as a
+ * parameter (`attrs[{<paramName>:String}]`), so an arbitrary field name can
+ * never be interpolated into the SQL text. A distinct `paramName` lets one
+ * query reference two dynamic fields (group + metric) without param collision.
  */
-function fieldStatExpr(field: string): { expr: string; attrKey?: string } {
+function fieldExprWithParam(
+  field: string,
+  paramName: string,
+): { expr: string; param?: { name: string; value: string } } {
   if (STAT_COLUMN_ALLOWLIST[field] === true) {
     return { expr: `toString(${field})` };
   }
   const attrKey = field.startsWith("attrs.") ? field.slice("attrs.".length) : field;
-  return { expr: "attrs[{field:String}]", attrKey };
+  return { expr: `attrs[{${paramName}:String}]`, param: { name: paramName, value: attrKey } };
+}
+
+/** fieldStats variant: resolves against the fixed `field` bound-param name. */
+function fieldStatExpr(field: string): { expr: string; attrKey?: string } {
+  const resolved = fieldExprWithParam(field, "field");
+  return { expr: resolved.expr, attrKey: resolved.param?.value };
 }
 
 /**
@@ -370,6 +381,287 @@ export async function fieldStats(args: {
 
   const rows = await lakeQuery<{ value: string | null; count: string | number }>(sql, params);
   return rows.map((r) => ({ value: String(r.value ?? ""), count: Number(r.count ?? 0) }));
+}
+
+// ── Summarize (aggregation) ──────────────────────────────────────────────────
+/** Aggregate functions exposed by `summarizeEvents`. `count` needs no field;
+ *  `count_distinct` operates on the raw field; the rest coerce the field to a
+ *  number via `toFloat64OrNull` first. */
+export const LAKE_AGG_FUNCTIONS = [
+  "count",
+  "count_distinct",
+  "sum",
+  "avg",
+  "min",
+  "max",
+  "p50",
+  "p95",
+  "p99",
+] as const;
+export type LakeAggFunction = (typeof LAKE_AGG_FUNCTIONS)[number];
+
+/** Time-bucket widths a summarize query may use (seconds). The router/UI pick
+ *  one from the range; the engine clamps to this set + a max-bucket cap so a
+ *  query can never emit an unbounded number of points. */
+export const LAKE_BUCKET_SECONDS = [
+  10, 30, 60, 300, 900, 1800, 3600, 21600, 86400,
+] as const;
+/** Hard cap on time buckets per summarize query (result-row backstop). */
+const LAKE_SUMMARIZE_MAX_BUCKETS = 2000;
+/** Default + max number of top-N grouped series. */
+const LAKE_SUMMARIZE_DEFAULT_SERIES = 10;
+export const LAKE_SUMMARIZE_MAX_SERIES = 50;
+
+/** Thrown when summarize arguments are invalid (e.g. a numeric metric with no
+ *  field). The router maps this to BAD_REQUEST. */
+export class LakeSummarizeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LakeSummarizeError";
+  }
+}
+
+/**
+ * Pick a safe bucket width: honour the caller's request when it is in the
+ * allowed set and coarse enough to stay under the bucket cap; otherwise fall to
+ * the smallest allowed bucket that keeps the point count bounded.
+ */
+function clampBucketSeconds(bucketSeconds: number | undefined, from: Date, to: Date): number {
+  const rangeSec = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 1000));
+  const minAllowed = Math.ceil(rangeSec / LAKE_SUMMARIZE_MAX_BUCKETS);
+  const coarsestFit =
+    LAKE_BUCKET_SECONDS.find((b) => b >= minAllowed) ??
+    LAKE_BUCKET_SECONDS[LAKE_BUCKET_SECONDS.length - 1];
+  if (typeof bucketSeconds === "number" && Number.isFinite(bucketSeconds)) {
+    const requested = Math.floor(bucketSeconds);
+    if (
+      (LAKE_BUCKET_SECONDS as readonly number[]).includes(requested) &&
+      requested >= minAllowed
+    ) {
+      return requested;
+    }
+  }
+  return coarsestFit;
+}
+
+/**
+ * Build the aggregate SQL expression for a metric, binding the metric field as
+ * a parameter when needed. Throws `LakeSummarizeError` for a numeric/distinct
+ * metric with no field. Never interpolates raw field text — the field resolves
+ * through the column allowlist or a bound `attrs[...]` param.
+ */
+function buildAggExpr(
+  metric: LakeAggFunction,
+  metricField: string | undefined,
+  params: Record<string, unknown>,
+): string {
+  if (metric === "count") {
+    return "count()";
+  }
+  const field = metricField?.trim();
+  if (!field) {
+    throw new LakeSummarizeError(`Metric '${metric}' requires a metric field`);
+  }
+  const resolved = fieldExprWithParam(field, "metricField");
+  if (resolved.param) {
+    params[resolved.param.name] = resolved.param.value;
+  }
+  if (metric === "count_distinct") {
+    return `uniqExact(${resolved.expr})`;
+  }
+  const numeric = `toFloat64OrNull(${resolved.expr})`;
+  switch (metric) {
+    case "sum":
+      return `sum(${numeric})`;
+    case "avg":
+      return `avg(${numeric})`;
+    case "min":
+      return `min(${numeric})`;
+    case "max":
+      return `max(${numeric})`;
+    case "p50":
+      return `quantile(0.5)(${numeric})`;
+    case "p95":
+      return `quantile(0.95)(${numeric})`;
+    case "p99":
+      return `quantile(0.99)(${numeric})`;
+    default:
+      throw new LakeSummarizeError(`Unsupported metric '${metric}'`);
+  }
+}
+
+/** A single (bucket, series) aggregate point. `series` is "" when ungrouped. */
+export interface LakeSummaryPoint {
+  bucket: string;
+  series: string;
+  value: number;
+}
+
+export interface SummarizeEventsArgs {
+  orgId: string;
+  pipelineId: string;
+  from: Date;
+  to: Date;
+  eventType?: LakeEventType;
+  /** Free-text term matched (case-insensitive) against `message` and `raw`. */
+  query?: string;
+  /** Optional group-by field (column allowlist or dynamic attr key). */
+  groupBy?: string;
+  metric: LakeAggFunction;
+  /** Field to aggregate; required for every metric except `count`. */
+  metricField?: string;
+  bucketSeconds?: number;
+  /** Top-N grouped series to return (by aggregate over the whole window). */
+  seriesLimit?: number;
+}
+
+/**
+ * Time-bucketed aggregation over an org+pipeline window — count-over-time,
+ * group-by + top-N, and numeric aggregates (sum/avg/min/max/percentiles).
+ * Security mirrors `fieldStats`/`searchEvents` exactly: org/pipeline/time are
+ * bound params; `groupBy`/`metricField` resolve through the column allowlist or
+ * a bound `attrs[...]` param; `metric`/`bucketSeconds`/`seriesLimit` are
+ * enums/clamped ints — no raw user text ever reaches the SQL.
+ */
+export async function summarizeEvents(args: SummarizeEventsArgs): Promise<LakeSummaryPoint[]> {
+  if (!isLakeEnabled()) return [];
+
+  const to = args.to;
+  const from = clampFrom(args.from, to);
+  const bucketSec = clampBucketSeconds(args.bucketSeconds, from, to);
+
+  const params: Record<string, unknown> = {
+    orgId: args.orgId,
+    pipelineId: args.pipelineId,
+    from,
+    to,
+    bucketSec,
+  };
+
+  const aggExpr = buildAggExpr(args.metric, args.metricField, params);
+
+  const conditions = [
+    "organizationId = {orgId:String}",
+    "pipelineId = {pipelineId:String}",
+    "timestamp >= {from:DateTime64(3)}",
+    "timestamp <= {to:DateTime64(3)}",
+  ];
+  if (args.eventType) {
+    conditions.push("eventType = {eventType:String}");
+    params.eventType = args.eventType;
+  }
+  const term = args.query?.trim();
+  if (term) {
+    conditions.push(
+      "(positionCaseInsensitive(message, {query:String}) > 0 OR positionCaseInsensitive(raw, {query:String}) > 0)",
+    );
+    params.query = term;
+  }
+  const whereClause = conditions.join(" AND ");
+  const bucketExpr = "toStartOfInterval(timestamp, toIntervalSecond({bucketSec:UInt32}))";
+
+  const groupBy = args.groupBy?.trim();
+  let sql: string;
+  if (!groupBy) {
+    sql =
+      `SELECT ${bucketExpr} AS bucket, '' AS series, ${aggExpr} AS value ` +
+      `FROM ${LAKE_EVENTS_TABLE} WHERE ${whereClause} ` +
+      `GROUP BY bucket ORDER BY bucket ASC ` +
+      lakeSettingsClause();
+  } else {
+    const seriesLimit = clampLimit(
+      args.seriesLimit,
+      LAKE_SUMMARIZE_DEFAULT_SERIES,
+      LAKE_SUMMARIZE_MAX_SERIES,
+    );
+    params.seriesLimit = seriesLimit;
+    const resolved = fieldExprWithParam(groupBy, "groupField");
+    if (resolved.param) {
+      params[resolved.param.name] = resolved.param.value;
+    }
+    const seriesExpr = resolved.expr;
+    // Restrict to the top-N series by aggregate over the whole window, then
+    // bucket within those series. The inner subquery reuses the same bound
+    // params (org/pipeline/time/field), so it adds no injection surface.
+    sql =
+      `SELECT ${bucketExpr} AS bucket, ${seriesExpr} AS series, ${aggExpr} AS value ` +
+      `FROM ${LAKE_EVENTS_TABLE} WHERE ${whereClause} AND ${seriesExpr} IN (` +
+      `SELECT ${seriesExpr} AS series FROM ${LAKE_EVENTS_TABLE} WHERE ${whereClause} ` +
+      `GROUP BY series ORDER BY ${aggExpr} DESC LIMIT {seriesLimit:UInt32}` +
+      `) GROUP BY bucket, series ORDER BY bucket ASC, series ASC ` +
+      lakeSettingsClause();
+  }
+
+  const rows = await lakeQuery<{
+    bucket: string;
+    series: string | null;
+    value: string | number | null;
+  }>(sql, params);
+  return rows.map((r) => ({
+    bucket: r.bucket,
+    series: String(r.series ?? ""),
+    value: Number(r.value ?? 0),
+  }));
+}
+
+export interface AggregateValueArgs {
+  orgId: string;
+  pipelineId: string;
+  from: Date;
+  to: Date;
+  eventType?: LakeEventType;
+  query?: string;
+  metric: LakeAggFunction;
+  metricField?: string;
+}
+
+/**
+ * Single scalar aggregate over an org+pipeline window (no time bucketing) — the
+ * primitive backing scheduled threshold alerts. Same safe query shape as
+ * `summarizeEvents` (org/pipeline/time bound; metric via the allowlist/bound
+ * param). Returns null when the lake is disabled or the aggregate is undefined
+ * (e.g. avg over no numeric values). `count`/`count_distinct` return 0 for an
+ * empty window, so a count alert never silently no-ops.
+ */
+export async function aggregateValue(args: AggregateValueArgs): Promise<number | null> {
+  if (!isLakeEnabled()) return null;
+
+  const to = args.to;
+  const from = clampFrom(args.from, to);
+  const params: Record<string, unknown> = {
+    orgId: args.orgId,
+    pipelineId: args.pipelineId,
+    from,
+    to,
+  };
+  const aggExpr = buildAggExpr(args.metric, args.metricField, params);
+
+  const conditions = [
+    "organizationId = {orgId:String}",
+    "pipelineId = {pipelineId:String}",
+    "timestamp >= {from:DateTime64(3)}",
+    "timestamp <= {to:DateTime64(3)}",
+  ];
+  if (args.eventType) {
+    conditions.push("eventType = {eventType:String}");
+    params.eventType = args.eventType;
+  }
+  const term = args.query?.trim();
+  if (term) {
+    conditions.push(
+      "(positionCaseInsensitive(message, {query:String}) > 0 OR positionCaseInsensitive(raw, {query:String}) > 0)",
+    );
+    params.query = term;
+  }
+
+  const sql =
+    `SELECT ${aggExpr} AS value FROM ${LAKE_EVENTS_TABLE} ` +
+    `WHERE ${conditions.join(" AND ")} ` +
+    lakeSettingsClause();
+
+  const rows = await lakeQuery<{ value: string | number | null }>(sql, params);
+  const v = rows[0]?.value;
+  return v === null || v === undefined ? null : Number(v);
 }
 
 /** A catalog dataset row with its pipeline/environment/retention labels. */

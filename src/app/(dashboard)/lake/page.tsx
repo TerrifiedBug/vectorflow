@@ -12,6 +12,8 @@ import {
   Users,
   Rewind,
   ArrowUpRight,
+  BarChart3,
+  Bell,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -35,7 +37,10 @@ import { formatBytes } from "@/lib/format";
 import { FilterPresetBar } from "@/components/filter-preset/FilterPresetBar";
 import { SaveFilterDialog } from "@/components/filter-preset/SaveFilterDialog";
 import { LakeResultsTable } from "./_components/lake-results-table";
+import { LakeSummarizeChart } from "./_components/lake-summarize-chart";
 import { ReplayDialog } from "./_components/replay-dialog";
+import { CreateAlertDialog, type AlertSourceSpec } from "./_components/create-alert-dialog";
+import { LakeAlertsPanel } from "./_components/lake-alerts-panel";
 
 const ALL_VALUE = "__all__";
 const EPOCH = new Date(0);
@@ -48,6 +53,32 @@ const RANGE_PRESETS: Record<string, { label: string; ms: number }> = {
   "7d": { label: "Last 7 days", ms: 7 * 24 * 60 * 60 * 1000 },
 };
 
+/** Summarize aggregate options (mirror of LAKE_AGG_FUNCTIONS, server-validated). */
+const SUMMARIZE_METRICS: { value: string; label: string }[] = [
+  { value: "count", label: "count" },
+  { value: "count_distinct", label: "count distinct" },
+  { value: "sum", label: "sum" },
+  { value: "avg", label: "avg" },
+  { value: "min", label: "min" },
+  { value: "max", label: "max" },
+  { value: "p50", label: "p50" },
+  { value: "p95", label: "p95" },
+  { value: "p99", label: "p99" },
+];
+
+/** Mirror of LAKE_BUCKET_SECONDS (src/server/services/lake/lake-query.ts). The
+ *  server re-clamps, so this only needs to pick a chart-friendly width (~80
+ *  points) from the selected range. Can't import the server constant — that
+ *  module pulls in Prisma/ClickHouse. */
+const BUCKET_CHOICES = [10, 30, 60, 300, 900, 1800, 3600, 21600, 86400];
+function pickBucketSeconds(rangeMs: number, target = 80): number {
+  const rangeSec = rangeMs / 1000;
+  return (
+    BUCKET_CHOICES.find((b) => rangeSec / b <= target) ??
+    BUCKET_CHOICES[BUCKET_CHOICES.length - 1]
+  );
+}
+
 type EventType = "log" | "metric" | "trace";
 
 interface AppliedSearch {
@@ -55,6 +86,7 @@ interface AppliedSearch {
   pipelineId: string;
   from: Date;
   to: Date;
+  rangeKey: string;
   eventType?: EventType;
   query?: string;
   where?: string;
@@ -90,6 +122,11 @@ export default function LakePage() {
   const [statsField, setStatsField] = useState<string>("");
   const [saveOpen, setSaveOpen] = useState(false);
   const [replayOpen, setReplayOpen] = useState(false);
+  const [createAlertOpen, setCreateAlertOpen] = useState(false);
+  const [resultsView, setResultsView] = useState<"events" | "summarize">("events");
+  const [summarizeGroupBy, setSummarizeGroupBy] = useState<string>(ALL_VALUE);
+  const [summarizeMetric, setSummarizeMetric] = useState<string>("count");
+  const [summarizeMetricField, setSummarizeMetricField] = useState<string>("");
 
   const selectedDataset = datasets.find((d) => d.pipelineId === pipelineId);
 
@@ -102,6 +139,10 @@ export default function LakePage() {
     rangeKey,
     mode,
     rawWhere,
+    resultsView,
+    summarizeGroupBy,
+    summarizeMetric,
+    summarizeMetricField,
   };
 
   function applyPreset(filters: Record<string, unknown>) {
@@ -111,6 +152,14 @@ export default function LakePage() {
     if (typeof filters.rangeKey === "string") setRangeKey(filters.rangeKey);
     if (filters.mode === "raw" || filters.mode === "guided") setMode(filters.mode);
     if (typeof filters.rawWhere === "string") setRawWhere(filters.rawWhere);
+    if (filters.resultsView === "events" || filters.resultsView === "summarize") {
+      setResultsView(filters.resultsView);
+    }
+    if (typeof filters.summarizeGroupBy === "string") setSummarizeGroupBy(filters.summarizeGroupBy);
+    if (typeof filters.summarizeMetric === "string") setSummarizeMetric(filters.summarizeMetric);
+    if (typeof filters.summarizeMetricField === "string") {
+      setSummarizeMetricField(filters.summarizeMetricField);
+    }
   }
 
   function runSearch() {
@@ -123,6 +172,7 @@ export default function LakePage() {
       pipelineId,
       from,
       to,
+      rangeKey,
       eventType:
         mode === "guided" && eventType !== ALL_VALUE ? (eventType as EventType) : undefined,
       query: mode === "guided" && queryText.trim() ? queryText.trim() : undefined,
@@ -160,6 +210,49 @@ export default function LakePage() {
   });
 
   const activeSearch = applied?.mode === "raw" ? rawSearch : guidedSearch;
+
+  // ── Summarize (aggregation) ────────────────────────────────────────────────
+  const summarizeGroupByValue =
+    summarizeGroupBy && summarizeGroupBy !== ALL_VALUE ? summarizeGroupBy : undefined;
+  const summarizeNeedsField = summarizeMetric !== "count";
+  const summarizeFieldArg =
+    summarizeNeedsField && summarizeMetricField ? summarizeMetricField : undefined;
+  const summarizeReady =
+    !!applied && resultsView === "summarize" && (!summarizeNeedsField || !!summarizeFieldArg);
+  const summarizeMetricLabel =
+    summarizeMetric === "count"
+      ? "count"
+      : `${summarizeMetric}(${summarizeMetricField || "?"})`;
+  const alertSource: AlertSourceSpec = {
+    metric: summarizeMetric,
+    metricField: summarizeFieldArg,
+    eventType: applied?.eventType,
+    query: applied?.query,
+    groupBy: summarizeGroupByValue,
+  };
+  const alertWindowSeconds = applied
+    ? Math.round((applied.to.getTime() - applied.from.getTime()) / 1000)
+    : 3600;
+
+  const summarizeQuery = useQuery({
+    ...trpc.lake.summarize.queryOptions(
+      applied && resultsView === "summarize" && (!summarizeNeedsField || !!summarizeFieldArg)
+        ? {
+            pipelineId: applied.pipelineId,
+            from: applied.from,
+            to: applied.to,
+            eventType: applied.eventType,
+            query: applied.query,
+            groupBy: summarizeGroupByValue,
+            metric: summarizeMetric,
+            metricField: summarizeFieldArg,
+            bucketSeconds: pickBucketSeconds(applied.to.getTime() - applied.from.getTime()),
+            seriesLimit: 10,
+          }
+        : { pipelineId: "", from: EPOCH, to: EPOCH, metric: "count" },
+    ),
+    enabled: summarizeReady,
+  });
 
   const schemaQuery = useQuery({
     ...trpc.lake.getSchema.queryOptions({ pipelineId }),
@@ -400,13 +493,145 @@ export default function LakePage() {
                   <CardTitle className="text-sm font-medium">Results</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <LakeResultsTable
-                    rows={activeSearch.data ?? []}
-                    isLoading={activeSearch.isLoading && !!applied}
-                    isError={activeSearch.isError}
-                    hasSearched={!!applied}
-                    onRetry={() => activeSearch.refetch()}
-                  />
+                  <Tabs
+                    value={resultsView}
+                    onValueChange={(v) =>
+                      setResultsView(v === "summarize" ? "summarize" : "events")
+                    }
+                    className="mb-4"
+                  >
+                    <TabsList>
+                      <TabsTrigger value="events" className="gap-1.5">
+                        <ListTree className="h-4 w-4" />
+                        Events
+                      </TabsTrigger>
+                      <TabsTrigger value="summarize" className="gap-1.5">
+                        <BarChart3 className="h-4 w-4" />
+                        Summarize
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+
+                  {resultsView === "events" ? (
+                    <LakeResultsTable
+                      rows={activeSearch.data ?? []}
+                      isLoading={activeSearch.isLoading && !!applied}
+                      isError={activeSearch.isError}
+                      hasSearched={!!applied}
+                      onRetry={() => activeSearch.refetch()}
+                    />
+                  ) : (
+                    <>
+                      <div className="mb-4 flex flex-wrap items-end gap-3">
+                        <div className="flex flex-col gap-1.5">
+                          <label
+                            htmlFor="lake-sum-metric"
+                            className="text-xs text-muted-foreground"
+                          >
+                            Metric
+                          </label>
+                          <Select value={summarizeMetric} onValueChange={setSummarizeMetric}>
+                            <SelectTrigger id="lake-sum-metric" className="w-[160px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {SUMMARIZE_METRICS.map((m) => (
+                                <SelectItem key={m.value} value={m.value}>
+                                  {m.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {summarizeNeedsField && (
+                          <div className="flex flex-col gap-1.5">
+                            <label
+                              htmlFor="lake-sum-field"
+                              className="text-xs text-muted-foreground"
+                            >
+                              Metric field
+                            </label>
+                            <Select
+                              value={summarizeMetricField || ALL_VALUE}
+                              onValueChange={(v) =>
+                                setSummarizeMetricField(v === ALL_VALUE ? "" : v)
+                              }
+                            >
+                              <SelectTrigger id="lake-sum-field" className="w-[200px]">
+                                <SelectValue placeholder="Select a field" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {schema.length === 0 ? (
+                                  <SelectItem value={ALL_VALUE} disabled>
+                                    No fields discovered
+                                  </SelectItem>
+                                ) : (
+                                  schema.map((field) => (
+                                    <SelectItem key={field.name} value={field.name}>
+                                      {field.name}
+                                    </SelectItem>
+                                  ))
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+
+                        <div className="flex flex-col gap-1.5">
+                          <label
+                            htmlFor="lake-sum-group"
+                            className="text-xs text-muted-foreground"
+                          >
+                            Group by
+                          </label>
+                          <Select value={summarizeGroupBy} onValueChange={setSummarizeGroupBy}>
+                            <SelectTrigger id="lake-sum-group" className="w-[200px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={ALL_VALUE}>No grouping</SelectItem>
+                              {schema.map((field) => (
+                                <SelectItem key={field.name} value={field.name}>
+                                  {field.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <Button
+                          variant="outline"
+                          className="gap-1.5"
+                          disabled={!summarizeReady || !selectedDataset}
+                          onClick={() => setCreateAlertOpen(true)}
+                        >
+                          <Bell className="h-4 w-4" />
+                          Alert on this query
+                        </Button>
+                      </div>
+
+                      {summarizeNeedsField && !summarizeFieldArg ? (
+                        <EmptyState
+                          icon={BarChart3}
+                          title="Pick a metric field"
+                          description={`The ${summarizeMetric} metric needs a numeric field to aggregate.`}
+                          compact
+                        />
+                      ) : (
+                        <LakeSummarizeChart
+                          data={summarizeQuery.data}
+                          isLoading={summarizeQuery.isLoading && summarizeReady}
+                          isError={summarizeQuery.isError}
+                          hasSearched={!!applied}
+                          grouped={!!summarizeGroupByValue}
+                          range={applied?.rangeKey ?? rangeKey}
+                          metricLabel={summarizeMetricLabel}
+                          onRetry={() => summarizeQuery.refetch()}
+                        />
+                      )}
+                    </>
+                  )}
                 </CardContent>
               </Card>
 
@@ -472,6 +697,20 @@ export default function LakePage() {
                 </CardContent>
               </Card>
             </div>
+
+            {selectedDataset && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                    <Bell className="h-4 w-4" />
+                    Alert rules
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <LakeAlertsPanel teamId={selectedTeamId} lakeEnabled={lakeEnabled} />
+                </CardContent>
+              </Card>
+            )}
           </>
         )}
 
@@ -494,6 +733,18 @@ export default function LakePage() {
             environmentId={selectedDataset.environmentId}
             defaultEventType={eventType}
             defaultQuery={queryText}
+          />
+        )}
+
+        {selectedDataset && (
+          <CreateAlertDialog
+            open={createAlertOpen}
+            onOpenChange={setCreateAlertOpen}
+            pipelineId={selectedDataset.pipelineId}
+            pipelineName={selectedDataset.pipeline.name}
+            environmentId={selectedDataset.environmentId}
+            source={alertSource}
+            defaultWindowSeconds={alertWindowSeconds}
           />
         )}
       </div>

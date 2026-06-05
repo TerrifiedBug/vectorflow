@@ -29,6 +29,9 @@ import {
   LakeRawWhereError,
   LAKE_MAX_LIMIT,
   LAKE_MAX_RANGE_MS,
+  summarizeEvents,
+  LakeSummarizeError,
+  LAKE_SUMMARIZE_MAX_SERIES,
 } from "../lake-query";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
@@ -254,5 +257,182 @@ describe("listDatasets", () => {
     isLakeEnabledMock.mockReturnValue(false);
     await expect(listDatasets({ orgId: "o" })).resolves.toEqual([]);
     expect(prismaMock.lakeDataset.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("summarizeEvents — count over time (ungrouped)", () => {
+  it("buckets by a bound interval and binds org/pipeline/time, never interpolating them", async () => {
+    await summarizeEvents({
+      orgId: "org-A",
+      pipelineId: "pipe-1",
+      from: FROM,
+      to: TO,
+      metric: "count",
+    });
+
+    expect(lakeQueryMock).toHaveBeenCalledTimes(1);
+    const [sql, params] = lakeQueryMock.mock.calls[0];
+    expect(sql).toContain("toStartOfInterval(timestamp, toIntervalSecond({bucketSec:UInt32}))");
+    expect(sql).toContain("count() AS value");
+    expect(sql).toContain("'' AS series");
+    expect(sql).toContain("organizationId = {orgId:String}");
+    expect(sql).not.toContain("org-A");
+    // ungrouped → no top-N series subquery
+    expect(sql).not.toContain(" IN (");
+    expect(params).toMatchObject({ orgId: "org-A", pipelineId: "pipe-1" });
+    expect(typeof params?.bucketSec).toBe("number");
+  });
+
+  it("maps ClickHouse rows to {bucket, series, value:number}", async () => {
+    lakeQueryMock.mockResolvedValueOnce([
+      { bucket: "2026-06-01 00:00:00", series: "", value: "42" },
+      { bucket: "2026-06-01 00:01:00", series: "", value: 7 },
+    ]);
+    const out = await summarizeEvents({
+      orgId: "o",
+      pipelineId: "p",
+      from: FROM,
+      to: TO,
+      metric: "count",
+    });
+    expect(out).toEqual([
+      { bucket: "2026-06-01 00:00:00", series: "", value: 42 },
+      { bucket: "2026-06-01 00:01:00", series: "", value: 7 },
+    ]);
+  });
+
+  it("returns [] and never queries when the lake is disabled", async () => {
+    isLakeEnabledMock.mockReturnValue(false);
+    await expect(
+      summarizeEvents({ orgId: "o", pipelineId: "p", from: FROM, to: TO, metric: "count" }),
+    ).resolves.toEqual([]);
+    expect(lakeQueryMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("summarizeEvents — group-by + top-N", () => {
+  it("binds a dynamic attr group field and restricts to top-N series via subquery", async () => {
+    await summarizeEvents({
+      orgId: "o",
+      pipelineId: "p",
+      from: FROM,
+      to: TO,
+      metric: "count",
+      groupBy: "attrs.status",
+      seriesLimit: 5,
+    });
+    const [sql, params] = lakeQueryMock.mock.calls[0];
+    // dynamic attr key bound as a parameter — never interpolated
+    expect(sql).toContain("attrs[{groupField:String}] AS series");
+    expect(sql).toContain("AND attrs[{groupField:String}] IN (");
+    expect(sql).toContain("LIMIT {seriesLimit:UInt32}");
+    expect(params?.groupField).toBe("status");
+    expect(params?.seriesLimit).toBe(5);
+    expect(sql).not.toContain("status'"); // no raw identifier injection
+  });
+
+  it("uses a safe identifier for an allowlisted group column (no attr param)", async () => {
+    await summarizeEvents({
+      orgId: "o",
+      pipelineId: "p",
+      from: FROM,
+      to: TO,
+      metric: "count",
+      groupBy: "host",
+    });
+    const [sql, params] = lakeQueryMock.mock.calls[0];
+    expect(sql).toContain("toString(host) AS series");
+    expect(params).not.toHaveProperty("groupField");
+  });
+
+  it("clamps an over-large seriesLimit to LAKE_SUMMARIZE_MAX_SERIES", async () => {
+    await summarizeEvents({
+      orgId: "o",
+      pipelineId: "p",
+      from: FROM,
+      to: TO,
+      metric: "count",
+      groupBy: "host",
+      seriesLimit: 100_000,
+    });
+    expect(lakeQueryMock.mock.calls[0][1]?.seriesLimit).toBe(LAKE_SUMMARIZE_MAX_SERIES);
+  });
+});
+
+describe("summarizeEvents — metrics", () => {
+  it("requires a metric field for any non-count metric", async () => {
+    await expect(
+      summarizeEvents({ orgId: "o", pipelineId: "p", from: FROM, to: TO, metric: "avg" }),
+    ).rejects.toBeInstanceOf(LakeSummarizeError);
+    expect(lakeQueryMock).not.toHaveBeenCalled();
+  });
+
+  it("coerces a dynamic metric field to a number and binds it as a param", async () => {
+    await summarizeEvents({
+      orgId: "o",
+      pipelineId: "p",
+      from: FROM,
+      to: TO,
+      metric: "avg",
+      metricField: "attrs.duration_ms",
+    });
+    const [sql, params] = lakeQueryMock.mock.calls[0];
+    expect(sql).toContain("avg(toFloat64OrNull(attrs[{metricField:String}]))");
+    expect(params?.metricField).toBe("duration_ms");
+    expect(sql).not.toContain("duration_ms'");
+  });
+
+  it("maps percentile + count_distinct to the right ClickHouse aggregate", async () => {
+    await summarizeEvents({
+      orgId: "o",
+      pipelineId: "p",
+      from: FROM,
+      to: TO,
+      metric: "p95",
+      metricField: "attrs.latency",
+    });
+    expect(lakeQueryMock.mock.calls[0][0]).toContain(
+      "quantile(0.95)(toFloat64OrNull(attrs[{metricField:String}]))",
+    );
+
+    await summarizeEvents({
+      orgId: "o",
+      pipelineId: "p",
+      from: FROM,
+      to: TO,
+      metric: "count_distinct",
+      metricField: "host",
+    });
+    expect(lakeQueryMock.mock.calls[1][0]).toContain("uniqExact(toString(host))");
+  });
+});
+
+describe("summarizeEvents — bucket clamp", () => {
+  it("bumps a too-fine bucket on a wide range so the point count stays bounded", async () => {
+    // 1-day window with a 10s bucket would be 8640 points; engine bumps it up.
+    await summarizeEvents({
+      orgId: "o",
+      pipelineId: "p",
+      from: FROM,
+      to: TO,
+      metric: "count",
+      bucketSeconds: 10,
+    });
+    const bucketSec = lakeQueryMock.mock.calls[0][1]?.bucketSec as number;
+    expect(bucketSec).toBeGreaterThan(10);
+    const rangeSec = (TO.getTime() - FROM.getTime()) / 1000;
+    expect(rangeSec / bucketSec).toBeLessThanOrEqual(2000);
+  });
+
+  it("honours an in-range requested bucket", async () => {
+    await summarizeEvents({
+      orgId: "o",
+      pipelineId: "p",
+      from: FROM,
+      to: TO,
+      metric: "count",
+      bucketSeconds: 3600,
+    });
+    expect(lakeQueryMock.mock.calls[0][1]?.bucketSec).toBe(3600);
   });
 });
