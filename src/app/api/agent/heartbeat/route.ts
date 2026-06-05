@@ -369,7 +369,13 @@ export async function POST(request: Request) {
 
     // Ingest metrics from pipelines that report counter data
     const metricsData = pipelines
-      .filter((p) => p.eventsIn !== undefined)
+      .filter(
+        (p) =>
+          p.eventsIn !== undefined ||
+          p.spansIn !== undefined ||
+          p.spansOut !== undefined ||
+          p.tracesIn !== undefined,
+      )
       .map((p) => ({
         nodeId: agent.nodeId,
         pipelineId: p.pipelineId,
