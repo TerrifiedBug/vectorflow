@@ -11,6 +11,7 @@ import {
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 import { formatBytes, formatTimeAxis } from "@/lib/format";
 import { Inbox } from "lucide-react";
+import Link from "next/link";
 
 interface FleetVolumeChartProps {
   data:
@@ -24,6 +25,8 @@ interface FleetVolumeChartProps {
     | undefined;
   isLoading: boolean;
   range: string;
+  /** When true, show that managed Lake storage is excluded + tracked separately. */
+  lakeEnabled?: boolean;
 }
 
 const chartConfig: ChartConfig = {
@@ -31,7 +34,7 @@ const chartConfig: ChartConfig = {
   bytesOut: { label: "Bytes Out", color: "oklch(0.65 0.17 163)" },
 };
 
-export function FleetVolumeChart({ data, isLoading, range }: FleetVolumeChartProps) {
+export function FleetVolumeChart({ data, isLoading, range, lakeEnabled }: FleetVolumeChartProps) {
   if (isLoading) {
     return (
       <Card>
@@ -55,6 +58,19 @@ export function FleetVolumeChart({ data, isLoading, range }: FleetVolumeChartPro
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium">Data Volume Trend</CardTitle>
+        {lakeEnabled && (
+          <p className="text-[11px] text-muted-foreground">
+            Egress to your sinks. Managed VectorFlow Lake storage is excluded and
+            tracked separately on the{" "}
+            <Link
+              href="/lake"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              Lake
+            </Link>{" "}
+            surface.
+          </p>
+        )}
       </CardHeader>
       <CardContent>
         {chartData.length === 0 ? (

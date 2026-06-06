@@ -495,7 +495,11 @@ export default function LakePage() {
                     Replay to pipeline
                   </Button>
                   {selectedDataset && (
-                    <span className="font-mono text-[11px] text-muted-foreground">
+                    <span
+                      className="font-mono text-[11px] text-muted-foreground"
+                      title="Lake storage volume — managed storage, tracked separately from your sink egress and cost"
+                    >
+                      <span className="text-foreground">Lake storage:</span>{" "}
                       {Number(selectedDataset.rowCount).toLocaleString()} rows ·{" "}
                       {formatBytes(selectedDataset.byteCount)} ·{" "}
                       <Badge variant="secondary" className="ml-1">

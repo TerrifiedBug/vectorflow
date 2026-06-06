@@ -1,5 +1,6 @@
 // src/server/services/cost-attribution.ts
 import { prisma } from "@/lib/prisma";
+import { LAKE_SINK_TYPE } from "@/lib/vector/lake-sink";
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
@@ -557,8 +558,10 @@ export async function loadDestinationCostModels(
 
 /**
  * Resolve each pipeline's primary (first, by componentKey) sink componentType,
- * which keys into `DestinationCostModel.sinkType`. Pipelines without a sink node
- * are omitted from the map.
+ * which keys into `DestinationCostModel.sinkType`. The managed VectorFlow Lake
+ * sink is excluded — it is managed storage, not a user destination, so it never
+ * counts as the billable sink. Pipelines without a (non-Lake) sink node are
+ * omitted from the map.
  */
 export async function getPrimarySinkTypes(
   pipelineIds: readonly string[],
@@ -566,7 +569,7 @@ export async function getPrimarySinkTypes(
   const ids = [...new Set(pipelineIds)];
   if (ids.length === 0) return new Map();
   const sinks = await prisma.pipelineNode.findMany({
-    where: { pipelineId: { in: ids }, kind: "SINK" },
+    where: { pipelineId: { in: ids }, kind: "SINK", componentType: { not: LAKE_SINK_TYPE } },
     select: { pipelineId: true, componentType: true, componentKey: true },
     orderBy: { componentKey: "asc" },
   });

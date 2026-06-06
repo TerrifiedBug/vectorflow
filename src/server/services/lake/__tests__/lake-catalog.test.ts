@@ -6,6 +6,7 @@ const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     lakeDataset: { upsert: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     pipeline: { findMany: vi.fn() },
+    pipelineNode: { findMany: vi.fn() },
   },
 }));
 
@@ -36,6 +37,7 @@ import {
   upsertLakeDataset,
   recordLakeIngest,
   updateLakeCatalogFromHeartbeat,
+  attachLakeSinkOutput,
 } from "../lake-catalog";
 
 const KEY = {
@@ -226,7 +228,7 @@ describe("updateLakeCatalogFromHeartbeat", () => {
     expect(prismaMock.lakeDataset.upsert).not.toHaveBeenCalled();
   });
 
-  it("upserts and records the output delta for pipelines routing to the lake", async () => {
+  it("records the Lake sink's write delta for a Lake-routed pipeline", async () => {
     process.env.VF_LAKE_CLICKHOUSE_URL = "http://clickhouse:8123";
     prismaMock.pipeline.findMany.mockResolvedValue([
       { id: "pipe-1", versions: [{ configYaml: LAKE_YAML }] },
@@ -248,7 +250,14 @@ describe("updateLakeCatalogFromHeartbeat", () => {
     await updateLakeCatalogFromHeartbeat({
       orgId: "org-1",
       environmentId: "env-1",
-      dataPoints: [dataPoint("pipe-1", { eventsOut: BigInt(10), bytesOut: BigInt(100) })],
+      dataPoints: [
+        dataPoint("pipe-1", {
+          eventsOut: BigInt(10),
+          bytesOut: BigInt(100),
+          lakeEventsOut: BigInt(10),
+          lakeBytesOut: BigInt(100),
+        }),
+      ],
       previousSnapshots,
     });
 
@@ -258,8 +267,46 @@ describe("updateLakeCatalogFromHeartbeat", () => {
       }),
     );
     const data = updateData();
-    expect(data.rowCount).toBe(BigInt(6)); // clamp(10, 4)
-    expect(data.byteCount).toBe(BigInt(60)); // clamp(100, 40)
+    expect(data.rowCount).toBe(BigInt(6)); // Lake-only delta: clamp(10, 4)
+    expect(data.byteCount).toBe(BigInt(60)); // Lake-only delta: clamp(100, 40)
+  });
+
+  it("records only the Lake sink's share, not the whole pipeline output", async () => {
+    process.env.VF_LAKE_CLICKHOUSE_URL = "http://clickhouse:8123";
+    prismaMock.pipeline.findMany.mockResolvedValue([
+      { id: "pipe-1", versions: [{ configYaml: LAKE_YAML }] },
+    ]);
+    prismaMock.lakeDataset.upsert.mockResolvedValue({});
+    prismaMock.lakeDataset.findUnique.mockResolvedValue({
+      rowCount: BigInt(0),
+      byteCount: BigInt(0),
+      firstEventAt: null,
+      lastEventAt: null,
+      schemaJson: null,
+    });
+    prismaMock.lakeDataset.update.mockResolvedValue({});
+
+    await updateLakeCatalogFromHeartbeat({
+      orgId: "org-1",
+      environmentId: "env-1",
+      // Pipeline output delta: events clamp(10,4)=6, bytes clamp(100,40)=60. The
+      // Lake is half the cumulative output, so only 3 rows / 30 bytes are its own.
+      dataPoints: [
+        dataPoint("pipe-1", {
+          eventsOut: BigInt(10),
+          bytesOut: BigInt(100),
+          lakeEventsOut: BigInt(5),
+          lakeBytesOut: BigInt(50),
+        }),
+      ],
+      previousSnapshots: new Map([
+        ["node-1:pipe-1", snapshot({ eventsOut: BigInt(4), bytesOut: BigInt(40) })],
+      ]),
+    });
+
+    const data = updateData();
+    expect(data.rowCount).toBe(BigInt(3)); // 6 * 5/10
+    expect(data.byteCount).toBe(BigInt(30)); // 60 * 50/100
   });
 
   it("skips pipelines that do not route to the lake", async () => {
@@ -279,5 +326,67 @@ describe("updateLakeCatalogFromHeartbeat", () => {
 
     expect(prismaMock.lakeDataset.upsert).not.toHaveBeenCalled();
     expect(prismaMock.lakeDataset.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("attachLakeSinkOutput", () => {
+  it("stamps the Lake sink's cumulative output onto matching data points", async () => {
+    prismaMock.pipelineNode.findMany.mockResolvedValue([
+      { pipelineId: "pipe-1", componentKey: "lake" },
+    ]);
+    const dataPoints: MetricsDataPoint[] = [
+      dataPoint("pipe-1", { eventsOut: BigInt(20), bytesOut: BigInt(200) }),
+    ];
+
+    await attachLakeSinkOutput(dataPoints, [
+      {
+        pipelineId: "pipe-1",
+        componentMetrics: [
+          { componentId: "user_sink", componentKind: "sink", sentEvents: 10, sentBytes: 120 },
+          { componentId: "lake", componentKind: "sink", sentEvents: 10, sentBytes: 80 },
+          { componentId: "src", componentKind: "source", sentEvents: 10, sentBytes: 0 },
+        ],
+      },
+    ]);
+
+    expect(dataPoints[0].lakeEventsOut).toBe(BigInt(10));
+    expect(dataPoints[0].lakeBytesOut).toBe(BigInt(80));
+  });
+
+  it("ignores non-sink components even when the key matches a Lake node", async () => {
+    prismaMock.pipelineNode.findMany.mockResolvedValue([
+      { pipelineId: "pipe-1", componentKey: "lake" },
+    ]);
+    const dataPoints: MetricsDataPoint[] = [dataPoint("pipe-1")];
+
+    await attachLakeSinkOutput(dataPoints, [
+      {
+        pipelineId: "pipe-1",
+        componentMetrics: [
+          { componentId: "lake", componentKind: "transform", sentEvents: 99, sentBytes: 99 },
+          { componentId: "user_sink", componentKind: "sink", sentEvents: 5, sentBytes: 50 },
+        ],
+      },
+    ]);
+
+    expect(dataPoints[0].lakeEventsOut).toBe(BigInt(0));
+    expect(dataPoints[0].lakeBytesOut).toBe(BigInt(0));
+  });
+
+  it("leaves data points untouched when the pipeline has no Lake node", async () => {
+    prismaMock.pipelineNode.findMany.mockResolvedValue([]);
+    const dataPoints: MetricsDataPoint[] = [dataPoint("pipe-1")];
+
+    await attachLakeSinkOutput(dataPoints, [
+      {
+        pipelineId: "pipe-1",
+        componentMetrics: [
+          { componentId: "lake", componentKind: "sink", sentEvents: 10, sentBytes: 80 },
+        ],
+      },
+    ]);
+
+    expect(dataPoints[0].lakeEventsOut).toBeUndefined();
+    expect(dataPoints[0].lakeBytesOut).toBeUndefined();
   });
 });

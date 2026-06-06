@@ -58,6 +58,11 @@ vi.mock("@/trpc/client", () => ({
         queryOptions: vi.fn(() => ({ queryKey: ["costByEnvironment"], queryFn: vi.fn() })),
       },
     },
+    lake: {
+      status: {
+        queryOptions: vi.fn(() => ({ queryKey: ["lakeStatus"], queryFn: vi.fn() })),
+      },
+    },
   }),
 }));
 

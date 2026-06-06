@@ -2,10 +2,11 @@ import yaml from "js-yaml";
 import { prisma } from "@/lib/prisma";
 import { withOrgTx } from "@/lib/with-org-tx";
 import { errorLog } from "@/lib/logger";
-import { configHasLakeSink } from "@/lib/vector/lake-sink";
+import { configHasLakeSink, LAKE_SINK_TYPE } from "@/lib/vector/lake-sink";
 import { isLakeEnabled } from "./clickhouse";
 import {
-  computeDeltas,
+  clamp,
+  splitLakeOutput,
   type MetricsDataPoint,
   type PreviousSnapshot,
 } from "@/server/services/metrics-ingest";
@@ -101,13 +102,80 @@ export interface LakeCatalogHeartbeatInput {
   previousSnapshots?: Map<string, PreviousSnapshot>;
 }
 
+/** Per-component heartbeat metric subset needed to attribute Lake-sink output. */
+export interface LakeComponentMetric {
+  componentId: string;
+  componentKind: string;
+  sentEvents: number;
+  sentBytes?: number;
+}
+
+/**
+ * Stamp each reporting pipeline's managed Lake sink output (cumulative
+ * sentEvents/sentBytes) onto the matching MetricsDataPoint, so metrics ingestion
+ * can split user egress from Lake-only writes. The Lake sink's Vector component
+ * id equals its `pipelineNode.componentKey` (the YAML generator emits the key
+ * verbatim), so we sum the `sink`-kind componentMetrics whose id is one of the
+ * pipeline's `vectorflow_lake` node keys. Mutates `dataPoints` in place; a no-op
+ * for pipelines with no Lake node or no componentMetrics (those keep their full
+ * output as egress — graceful for pre-componentMetrics agents). Gate the call on
+ * `isLakeEnabled()`.
+ */
+export async function attachLakeSinkOutput(
+  dataPoints: MetricsDataPoint[],
+  pipelines: ReadonlyArray<{
+    pipelineId: string;
+    componentMetrics?: readonly LakeComponentMetric[];
+  }>,
+): Promise<void> {
+  if (dataPoints.length === 0) return;
+  const pipelineIds = [...new Set(dataPoints.map((d) => d.pipelineId))];
+  const lakeNodes = await prisma.pipelineNode.findMany({
+    where: { pipelineId: { in: pipelineIds }, componentType: LAKE_SINK_TYPE },
+    select: { pipelineId: true, componentKey: true },
+  });
+  if (lakeNodes.length === 0) return;
+
+  const lakeKeysByPipeline = new Map<string, Set<string>>();
+  for (const node of lakeNodes) {
+    let keys = lakeKeysByPipeline.get(node.pipelineId);
+    if (!keys) {
+      keys = new Set<string>();
+      lakeKeysByPipeline.set(node.pipelineId, keys);
+    }
+    keys.add(node.componentKey);
+  }
+
+  const componentsByPipeline = new Map<string, readonly LakeComponentMetric[]>();
+  for (const p of pipelines) {
+    if (p.componentMetrics) componentsByPipeline.set(p.pipelineId, p.componentMetrics);
+  }
+
+  for (const dp of dataPoints) {
+    const lakeKeys = lakeKeysByPipeline.get(dp.pipelineId);
+    if (!lakeKeys) continue;
+    const components = componentsByPipeline.get(dp.pipelineId);
+    if (!components) continue;
+    let events = 0;
+    let bytes = 0;
+    for (const cm of components) {
+      if (cm.componentKind === "sink" && lakeKeys.has(cm.componentId)) {
+        events += cm.sentEvents;
+        bytes += cm.sentBytes ?? 0;
+      }
+    }
+    dp.lakeEventsOut = BigInt(Math.max(0, Math.round(events)));
+    dp.lakeBytesOut = BigInt(Math.max(0, Math.round(bytes)));
+  }
+}
+
 /**
  * Heartbeat hook: refresh the lake catalog for every reporting pipeline that
- * routes to the managed lake sink. No-op unless the lake is enabled. Uses the
- * pipeline's per-heartbeat OUTPUT delta (events/bytes since the previous
- * snapshot) as the lake-write estimate — exact per-sink accounting isn't
- * available at the metrics layer, so a pipeline fanning out to several sinks
- * over-counts; the catalog is an estimate, not a billing source.
+ * routes to the managed lake sink. No-op unless the lake is enabled. Records the
+ * managed Lake sink's OWN per-heartbeat write delta (events/bytes) — re-derived
+ * from the cumulative Lake fraction `attachLakeSinkOutput` stamps on each data
+ * point — so a pipeline fanning out to several sinks no longer over-counts the
+ * Lake's storage volume. Data points without a Lake share contribute nothing.
  */
 export async function updateLakeCatalogFromHeartbeat(
   input: LakeCatalogHeartbeatInput,
@@ -117,14 +185,27 @@ export async function updateLakeCatalogFromHeartbeat(
   if (dataPoints.length === 0) return;
 
   const now = new Date();
-  const deltas = computeDeltas(dataPoints, previousSnapshots, now, orgId);
 
+  // Accumulate the managed Lake sink's OWN write delta per pipeline (Lake-only,
+  // re-derived from the cumulative Lake fraction) — not the whole pipeline
+  // output — so the catalog reflects Lake storage volume, not fan-out egress.
   const perPipeline = new Map<string, { rows: bigint; bytes: bigint }>();
-  for (const delta of deltas) {
-    const acc = perPipeline.get(delta.pipelineId) ?? { rows: BigInt(0), bytes: BigInt(0) };
-    acc.rows += delta.eventsOut;
-    acc.bytes += delta.bytesOut;
-    perPipeline.set(delta.pipelineId, acc);
+  for (const dp of dataPoints) {
+    const prev = previousSnapshots?.get(`${dp.nodeId}:${dp.pipelineId}`);
+    const lakeRows = splitLakeOutput(
+      clamp(dp.eventsOut, prev?.eventsOut),
+      dp.lakeEventsOut,
+      dp.eventsOut,
+    ).lake;
+    const lakeBytes = splitLakeOutput(
+      clamp(dp.bytesOut, prev?.bytesOut),
+      dp.lakeBytesOut,
+      dp.bytesOut,
+    ).lake;
+    const acc = perPipeline.get(dp.pipelineId) ?? { rows: BigInt(0), bytes: BigInt(0) };
+    acc.rows += lakeRows;
+    acc.bytes += lakeBytes;
+    perPipeline.set(dp.pipelineId, acc);
   }
 
   const pipelineIds = [...perPipeline.keys()];
