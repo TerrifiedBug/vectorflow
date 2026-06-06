@@ -67,6 +67,8 @@ export function CostDashboard() {
     refetchInterval: pollingInterval,
   });
 
+  const lakeStatus = useQuery(trpc.lake.status.queryOptions());
+
   const pipelineCosts = useQuery({
     ...trpc.analytics.costByPipeline.queryOptions({ environmentId: selectedEnvironmentId ?? "", range }),
     enabled: !!selectedEnvironmentId,
@@ -178,7 +180,7 @@ export function CostDashboard() {
           <CostAnalyticsSectionNav />
         </div>
 
-      <HeroBand summary={summary.data ?? null} range={range} />
+      <HeroBand summary={summary.data ?? null} range={range} lakeEnabled={lakeStatus.data?.enabled ?? false} />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <RawReducedTrend data={timeSeries.data ?? []} range={range} isLoading={timeSeries.isLoading} />
@@ -207,7 +209,7 @@ export function CostDashboard() {
   );
 }
 
-function HeroBand({ summary, range }: { summary: CostSummaryResult | null; range: CostRange }) {
+function HeroBand({ summary, range, lakeEnabled }: { summary: CostSummaryResult | null; range: CostRange; lakeEnabled: boolean }) {
   const current = summary?.current;
   const previous = summary?.previous;
   const savings = current ? calculateSavings(current) : null;
@@ -227,6 +229,17 @@ function HeroBand({ summary, range }: { summary: CostSummaryResult | null; range
           </div>
           <p className="mt-3 max-w-[520px] text-[12px] leading-relaxed text-fg-1">
             Savings are estimated from raw bytes processed minus reduced bytes shipped, using the environment cost-per-GB setting.
+            {lakeEnabled && (
+              <>
+                {" "}
+                Managed VectorFlow Lake storage is excluded from egress and cost —
+                its volume is tracked separately on the{" "}
+                <Link href="/lake" className="underline underline-offset-2 hover:text-fg">
+                  Lake
+                </Link>{" "}
+                surface.
+              </>
+            )}
           </p>
         </div>
         <HeroMetric label="GB processed" value={current ? formatGb(current.bytesIn) : "—"} sub={trendLabel(trendPercent(current?.bytesIn ?? 0, previous?.bytesIn ?? 0))} />

@@ -38,6 +38,7 @@ import type { VectorComponentDef } from "@/lib/vector/types";
 import type { Node, Edge } from "@xyflow/react";
 import { formatEventsRate } from "@/lib/format";
 import { normalizeTailSampleConfig } from "@/lib/vector/tail-sample";
+import { LAKE_SINK_TYPE } from "@/lib/vector/lake-sink";
 
 /* ------------------------------------------------------------------ */
 /*  Node-type color tokens                                             */
@@ -717,6 +718,17 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
               <div className="flex items-start gap-2 rounded-[3px] border border-line-2 bg-bg-2 px-3 py-2 text-[12px] text-fg-1">
                 <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-status-info" />
                 <span>This source is managed by VectorFlow and cannot be edited.</span>
+              </div>
+            )}
+
+            {/* ---- Managed Lake sink info banner ---- */}
+            {componentDef.type === LAKE_SINK_TYPE && (
+              <div className="flex items-start gap-2 rounded-[3px] border border-line-2 bg-bg-2 px-3 py-2 text-[12px] text-fg-1">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-status-info" />
+                <span>
+                  Managed storage. Lake volume is tracked separately and does not
+                  count toward this pipeline&apos;s egress or cost.
+                </span>
               </div>
             )}
 

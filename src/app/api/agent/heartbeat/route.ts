@@ -8,7 +8,7 @@ import { authenticateAgentInOrg } from "@/server/services/agent-auth";
 import { resolveAgentOrg } from "@/server/services/agent-org-binding";
 import { checkOrgNodeHealth } from "@/server/services/fleet-health";
 import { ingestMetrics } from "@/server/services/metrics-ingest";
-import { updateLakeCatalogFromHeartbeat } from "@/server/services/lake/lake-catalog";
+import { attachLakeSinkOutput, updateLakeCatalogFromHeartbeat } from "@/server/services/lake/lake-catalog";
 import { isLakeEnabled } from "@/server/services/lake/clickhouse";
 import { ingestLogs } from "@/server/services/log-ingest";
 import { cleanupOldMetrics } from "@/server/services/metrics-cleanup";
@@ -394,6 +394,19 @@ export async function POST(request: Request) {
       }));
 
     if (metricsData.length > 0) {
+      // Attribute the managed Lake sink's output so ingestion can split user
+      // egress from Lake-only writes — a fan-out to a user sink AND the Lake
+      // would otherwise double-count both volume and cost. Awaited so it stamps
+      // metricsData before the fire-and-forget ingest + catalog read it; a
+      // failure degrades gracefully to no split (full egress, as before).
+      if (isLakeEnabled()) {
+        try {
+          await attachLakeSinkOutput(metricsData, pipelines);
+        } catch (err) {
+          errorLog("agent-heartbeat", "Lake sink attribution error", err);
+        }
+      }
+
       ingestMetrics(metricsData, orgResult.orgId, prevSnapshots).catch((err) =>
         errorLog("agent-heartbeat", "Metrics ingestion error", err),
       );

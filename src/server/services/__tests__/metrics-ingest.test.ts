@@ -10,6 +10,7 @@ import {
   ingestMetrics,
   clamp,
   computeDeltas,
+  splitLakeOutput,
   computeAggregation,
   accumulateRow,
   type MetricsDataPoint,
@@ -229,6 +230,126 @@ describe("computeDeltas", () => {
     expect(rows[0].spansIn).toBe(BigInt(0));
     expect(rows[0].spansOut).toBe(BigInt(0));
     expect(rows[0].tracesIn).toBe(BigInt(0));
+  });
+});
+
+// ─── Unit tests: splitLakeOutput ────────────────────────────────────────────
+
+describe("splitLakeOutput", () => {
+  it("returns the full delta as user egress when no Lake cumulative is given", () => {
+    expect(splitLakeOutput(BigInt(100), undefined, BigInt(200))).toEqual({
+      lake: BigInt(0),
+      user: BigInt(100),
+    });
+    expect(splitLakeOutput(BigInt(100), null, BigInt(200))).toEqual({
+      lake: BigInt(0),
+      user: BigInt(100),
+    });
+  });
+
+  it("splits the delta by the cumulative Lake fraction", () => {
+    // 60 delta, Lake is 100/200 of the cumulative output → lake 30, user 30
+    expect(splitLakeOutput(BigInt(60), BigInt(100), BigInt(200))).toEqual({
+      lake: BigInt(30),
+      user: BigInt(30),
+    });
+  });
+
+  it("attributes the whole delta to the Lake for a Lake-only pipeline", () => {
+    expect(splitLakeOutput(BigInt(60), BigInt(200), BigInt(200))).toEqual({
+      lake: BigInt(60),
+      user: BigInt(0),
+    });
+  });
+
+  it("never returns negative user egress when Lake cumulative exceeds total", () => {
+    expect(splitLakeOutput(BigInt(50), BigInt(300), BigInt(200))).toEqual({
+      lake: BigInt(50),
+      user: BigInt(0),
+    });
+  });
+
+  it("returns zero Lake when the cumulative totals are zero", () => {
+    expect(splitLakeOutput(BigInt(0), BigInt(0), BigInt(0))).toEqual({
+      lake: BigInt(0),
+      user: BigInt(0),
+    });
+  });
+});
+
+// ─── Unit tests: computeDeltas Lake egress split ────────────────────────────
+
+describe("computeDeltas — Lake egress split", () => {
+  it("subtracts the Lake share so stored eventsOut/bytesOut are user egress", () => {
+    const dataPoints = [
+      makeDataPoint({
+        pipelineId: "pipe-1",
+        lakeEventsOut: BigInt(450),
+        lakeBytesOut: BigInt(22500),
+      }),
+    ];
+    const snapshots = new Map<string, PreviousSnapshot>();
+    snapshots.set(`${NODE_ID}:pipe-1`, makeSnapshot());
+
+    const rows = computeDeltas(dataPoints, snapshots, NOW, ORG);
+
+    // eventsOut delta 900-450=450, Lake fraction 450/900 → user egress 225
+    expect(rows[0].eventsOut).toBe(BigInt(225));
+    // bytesOut delta 45000-22000=23000, Lake fraction 22500/45000 → user 11500
+    expect(rows[0].bytesOut).toBe(BigInt(11500));
+    // ingress is untouched by the split
+    expect(rows[0].eventsIn).toBe(BigInt(500));
+    expect(rows[0].bytesIn).toBe(BigInt(25000));
+  });
+
+  it("leaves output unchanged when no Lake cumulative is provided (fallback)", () => {
+    const dataPoints = [makeDataPoint({ pipelineId: "pipe-1" })];
+    const snapshots = new Map<string, PreviousSnapshot>();
+    snapshots.set(`${NODE_ID}:pipe-1`, makeSnapshot());
+
+    const rows = computeDeltas(dataPoints, snapshots, NOW, ORG);
+
+    expect(rows[0].eventsOut).toBe(BigInt(450));
+    expect(rows[0].bytesOut).toBe(BigInt(23000));
+  });
+
+  it("yields zero user egress for a Lake-only pipeline", () => {
+    const dataPoints = [
+      makeDataPoint({
+        pipelineId: "pipe-1",
+        lakeEventsOut: BigInt(900),
+        lakeBytesOut: BigInt(45000),
+      }),
+    ];
+    const snapshots = new Map<string, PreviousSnapshot>();
+    snapshots.set(`${NODE_ID}:pipe-1`, makeSnapshot());
+
+    const rows = computeDeltas(dataPoints, snapshots, NOW, ORG);
+
+    expect(rows[0].eventsOut).toBe(BigInt(0));
+    expect(rows[0].bytesOut).toBe(BigInt(0));
+  });
+
+  it("never produces negative egress on a counter reset with a Lake share", () => {
+    const dataPoints = [
+      makeDataPoint({
+        pipelineId: "pipe-1",
+        eventsOut: BigInt(10),
+        bytesOut: BigInt(50),
+        lakeEventsOut: BigInt(5),
+        lakeBytesOut: BigInt(25),
+      }),
+    ];
+    const snapshots = new Map<string, PreviousSnapshot>();
+    snapshots.set(
+      `${NODE_ID}:pipe-1`,
+      makeSnapshot({ eventsOut: BigInt(900), bytesOut: BigInt(40000) }),
+    );
+
+    const rows = computeDeltas(dataPoints, snapshots, NOW, ORG);
+
+    expect(rows[0].eventsOut).toBe(BigInt(0));
+    expect(rows[0].bytesOut).toBe(BigInt(0));
   });
 });
 
@@ -606,6 +727,30 @@ describe("ingestMetrics", () => {
     // The first createMany call should have 2 rows (one per pipeline)
     const firstCall = createManyCalls[0][0] as { data: unknown[] };
     expect(firstCall.data).toHaveLength(2);
+  });
+
+  it("stores user egress (Lake share subtracted) on the per-node row", async () => {
+    const dataPoints = [
+      makeDataPoint({
+        pipelineId: "pipe-1",
+        lakeEventsOut: BigInt(450),
+        lakeBytesOut: BigInt(22500),
+      }),
+    ];
+    const snapshots = new Map<string, PreviousSnapshot>([
+      [`${NODE_ID}:pipe-1`, makeSnapshot()],
+    ]);
+
+    await ingestMetrics(dataPoints, ORG, snapshots);
+
+    const perNodeData = (
+      mockTx.pipelineMetric.createMany.mock.calls[0][0] as {
+        data: Array<{ eventsOut: bigint; bytesOut: bigint }>;
+      }
+    ).data;
+    // eventsOut delta 450 (half Lake) → user 225; bytesOut delta 23000 → user 11500.
+    expect(perNodeData[0].eventsOut).toBe(BigInt(225));
+    expect(perNodeData[0].bytesOut).toBe(BigInt(11500));
   });
 
   it("stamps the real organizationId on BOTH per-node and aggregation rows", async () => {

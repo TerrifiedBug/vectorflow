@@ -11,8 +11,10 @@ import { prisma } from "@/lib/prisma";
 import {
   projectSinkCostCents,
   getCostBySink,
+  getPrimarySinkTypes,
   type DestinationCostModelLite,
 } from "@/server/services/cost-attribution";
+import { LAKE_SINK_TYPE } from "@/lib/vector/lake-sink";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const GIB = 1_073_741_824;
@@ -112,5 +114,27 @@ describe("getCostBySink", () => {
       organizationId: "org-1",
     });
     expect(rows).toEqual([]);
+  });
+});
+
+describe("getPrimarySinkTypes", () => {
+  it("excludes the managed Lake sink from the primary-sink query", async () => {
+    prismaMock.pipelineNode.findMany.mockResolvedValue([
+      { pipelineId: "p1", componentType: "s3", componentKey: "user_sink" },
+    ] as never);
+
+    const map = await getPrimarySinkTypes(["p1"]);
+
+    // The Lake sink must be filtered out at the query level so it can never be
+    // attributed as the billable primary sink for cost.
+    expect(prismaMock.pipelineNode.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          kind: "SINK",
+          componentType: { not: LAKE_SINK_TYPE },
+        }),
+      }),
+    );
+    expect(map.get("p1")).toBe("s3");
   });
 });

@@ -66,6 +66,8 @@ export default function FleetOverviewPage() {
     refetchInterval: polling,
   });
 
+  const lakeStatus = useQuery(trpc.lake.status.queryOptions());
+
   const nodeThroughput = useQuery({
     ...trpc.fleet.nodeThroughput.queryOptions({
       environmentId: selectedEnvironmentId ?? "",
@@ -239,6 +241,7 @@ export default function FleetOverviewPage() {
         data={volumeTrend.data}
         isLoading={volumeTrend.isLoading}
         range={range}
+        lakeEnabled={lakeStatus.data?.enabled ?? false}
       />
 
       <FleetThroughputChart

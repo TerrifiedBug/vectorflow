@@ -18,6 +18,15 @@ export interface MetricsDataPoint {
   spansIn?: bigint;
   spansOut?: bigint;
   tracesIn?: bigint;
+  // Cumulative sent events/bytes attributable to the managed VectorFlow Lake
+  // sink(s) on this pipeline, from the same heartbeat's componentMetrics. The
+  // agent sums every sink into eventsOut/bytesOut, so a pipeline fanning out to
+  // a user sink AND the Lake double-counts; ingestion subtracts this share so
+  // PipelineMetric stores user egress only and the Lake catalog gets Lake-only
+  // writes. Absent ⇒ no Lake sink / pre-componentMetrics agent (no subtraction).
+  // Stamped by attachLakeSinkOutput() during heartbeat ingestion.
+  lakeEventsOut?: bigint;
+  lakeBytesOut?: bigint;
 }
 
 export interface PreviousSnapshot {
@@ -37,6 +46,30 @@ export function clamp(curr: bigint, prevVal: bigint | null | undefined): bigint 
   if (prevVal == null) return BigInt(0);
   const diff = curr - prevVal;
   return diff < BigInt(0) ? BigInt(0) : diff;
+}
+
+/**
+ * Split a pipeline output delta into the managed-Lake-sink share and the user
+ * egress remainder, using the cumulative Lake fraction (`lakeCum / totalCum`)
+ * reported in the same heartbeat. The agent's pipeline-level output counter sums
+ * every sink, so a fan-out to a user sink AND the Lake double-counts; this
+ * re-derives the Lake share so PipelineMetric keeps user egress only and the
+ * Lake catalog gets Lake-only writes. Returns `{ lake: 0, user: delta }` when no
+ * Lake cumulative is available (no Lake sink / pre-componentMetrics agent) or
+ * the totals are degenerate — the result never goes negative or exceeds `delta`.
+ */
+export function splitLakeOutput(
+  delta: bigint,
+  lakeCum: bigint | null | undefined,
+  totalCum: bigint,
+): { lake: bigint; user: bigint } {
+  const safeDelta = delta < BigInt(0) ? BigInt(0) : delta;
+  if (lakeCum == null || lakeCum <= BigInt(0) || totalCum <= BigInt(0)) {
+    return { lake: BigInt(0), user: safeDelta };
+  }
+  let lake = (safeDelta * lakeCum) / totalCum;
+  if (lake > safeDelta) lake = safeDelta;
+  return { lake, user: safeDelta - lake };
 }
 
 /** Shape of a per-node metric row to insert. */
@@ -74,17 +107,25 @@ export function computeDeltas(
     const snapshotKey = `${dp.nodeId}:${dp.pipelineId}`;
     const prev = previousSnapshots?.get(snapshotKey);
 
+    const eventsOutDelta = clamp(dp.eventsOut, prev?.eventsOut);
+    const bytesOutDelta = clamp(dp.bytesOut, prev?.bytesOut);
+    // Subtract the managed Lake sink's share so the stored row is USER egress
+    // (the Lake is managed storage, not a user destination). The Lake catalog
+    // re-derives the Lake portion from the same cumulative fraction.
+    const eventsOut = splitLakeOutput(eventsOutDelta, dp.lakeEventsOut, dp.eventsOut).user;
+    const bytesOut = splitLakeOutput(bytesOutDelta, dp.lakeBytesOut, dp.bytesOut).user;
+
     rows.push({
       organizationId,
       pipelineId: dp.pipelineId,
       nodeId: dp.nodeId,
       timestamp: now,
       eventsIn: clamp(dp.eventsIn, prev?.eventsIn),
-      eventsOut: clamp(dp.eventsOut, prev?.eventsOut),
+      eventsOut,
       errorsTotal: clamp(dp.errorsTotal, prev?.errorsTotal),
       eventsDiscarded: clamp(dp.eventsDiscarded, prev?.eventsDiscarded),
       bytesIn: clamp(dp.bytesIn, prev?.bytesIn),
-      bytesOut: clamp(dp.bytesOut, prev?.bytesOut),
+      bytesOut,
       utilization: dp.utilization,
       // Trace counters arrive already windowed per heartbeat, so they are NOT
       // clamped against a previous cumulative snapshot — recorded as-is.
