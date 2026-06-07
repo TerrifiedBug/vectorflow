@@ -81,7 +81,7 @@ export const networkSinks: VectorComponentDef[] = [
         protocol: {
           type: "object",
           description:
-            "OTLP transport. Vector currently ships the HTTP protocol; uri, encoding, auth, tls, batch and request all live under it.",
+            "OTLP transport. Vector currently ships the HTTP protocol; uri, encoding, compression, batch and request live under it. (Auth / mTLS for the OTLP sink is a follow-up — see PR notes.)",
           default: { type: "http", encoding: { codec: "otlp" } },
           properties: {
             type: {
@@ -95,7 +95,6 @@ export const networkSinks: VectorComponentDef[] = [
               description:
                 "OTLP/HTTP endpoint, e.g. https://collector.example.com:4318/v1/logs",
             },
-            ...authBasicBearerSchema(),
             encoding: {
               type: "object",
               description:
@@ -111,7 +110,6 @@ export const networkSinks: VectorComponentDef[] = [
               required: ["codec"],
             },
             ...compressionSchema(["none", "gzip", "zstd"]),
-            ...tlsSchema(),
             ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
             ...requestSchema(),
           },
