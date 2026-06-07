@@ -35,9 +35,10 @@ describe("Vector Catalog (PERF-04)", () => {
       expect.arrayContaining(["log", "metric", "trace"]),
     );
     // OTLP/HTTP shape: uri + encoding live under `protocol`.
-    const protocol = sink?.configSchema?.properties?.protocol as
-      | { properties?: Record<string, unknown> }
+    const schema = sink?.configSchema as
+      | { properties?: Record<string, { properties?: Record<string, unknown> }> }
       | undefined;
+    const protocol = schema?.properties?.protocol;
     expect(protocol?.properties).toHaveProperty("uri");
     expect(protocol?.properties).toHaveProperty("encoding");
   });
