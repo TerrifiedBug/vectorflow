@@ -152,6 +152,12 @@ export interface FlowState {
   // Auto-layout
   autoLayout: (selectedOnly?: boolean) => void;
 
+  // Alignment / distribution (multi-select)
+  alignSelectedNodes: (
+    mode: "left" | "center-x" | "right" | "top" | "center-y" | "bottom",
+  ) => void;
+  distributeSelectedNodes: (axis: "horizontal" | "vertical") => void;
+
   // Undo / Redo
   undo: () => void;
   redo: () => void;
@@ -1096,6 +1102,66 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       ...history,
       nodes: layoutedNodes,
     });
+  },
+
+  /* ---- Alignment / Distribution ---- */
+
+  alignSelectedNodes: (mode) => {
+    const state = get();
+    const ids = state.selectedNodeIds;
+    const dims = (n: Node) => ({
+      w: n.measured?.width ?? 0,
+      h: n.measured?.height ?? 0,
+    });
+    // Exclude system-locked nodes — they must never be repositioned.
+    const sel = state.nodes.filter((n) => ids.has(n.id) && !n.data?.isSystemLocked);
+    if (sel.length < 2) return;
+    const selIds = new Set(sel.map((n) => n.id));
+    const minLeft = Math.min(...sel.map((n) => n.position.x));
+    const maxRight = Math.max(...sel.map((n) => n.position.x + dims(n).w));
+    const minTop = Math.min(...sel.map((n) => n.position.y));
+    const maxBottom = Math.max(...sel.map((n) => n.position.y + dims(n).h));
+    const centerX = (minLeft + maxRight) / 2;
+    const centerY = (minTop + maxBottom) / 2;
+    const history = pushSnapshot(state as InternalState);
+    const nodes = state.nodes.map((n) => {
+      if (!selIds.has(n.id)) return n;
+      const { w, h } = dims(n);
+      let { x, y } = n.position;
+      switch (mode) {
+        case "left": x = minLeft; break;
+        case "center-x": x = centerX - w / 2; break;
+        case "right": x = maxRight - w; break;
+        case "top": y = minTop; break;
+        case "center-y": y = centerY - h / 2; break;
+        case "bottom": y = maxBottom - h; break;
+      }
+      return { ...n, position: { x, y } };
+    });
+    set({ ...history, nodes, isDirty: true });
+  },
+
+  distributeSelectedNodes: (axis) => {
+    const state = get();
+    const ids = state.selectedNodeIds;
+    const axisKey: "x" | "y" = axis === "horizontal" ? "x" : "y";
+    // Exclude system-locked nodes — they must never be repositioned.
+    const sel = state.nodes
+      .filter((n) => ids.has(n.id) && !n.data?.isSystemLocked)
+      .sort((a, b) => a.position[axisKey] - b.position[axisKey]);
+    if (sel.length < 3) return;
+    const first = sel[0].position[axisKey];
+    const last = sel[sel.length - 1].position[axisKey];
+    const step = (last - first) / (sel.length - 1);
+    const targets = new Map<string, number>();
+    sel.forEach((n, i) => targets.set(n.id, first + step * i));
+    const history = pushSnapshot(state as InternalState);
+    const nodes = state.nodes.map((n) =>
+      targets.has(n.id)
+        ? { ...n, position: { ...n.position, [axisKey]: targets.get(n.id)! } }
+        : n,
+    );
+    set({ ...history, nodes, isDirty: true });
   },
 
   /* ---- Undo / Redo ---- */
