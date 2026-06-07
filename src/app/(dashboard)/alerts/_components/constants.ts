@@ -72,6 +72,7 @@ export const GLOBAL_METRICS = new Set([
 
 export const CHANNEL_TYPE_LABELS: Record<string, string> = {
   slack: "Slack",
+  teams: "Microsoft Teams",
   email: "Email",
   pagerduty: "PagerDuty",
   webhook: "Webhook",
@@ -79,6 +80,7 @@ export const CHANNEL_TYPE_LABELS: Record<string, string> = {
 
 export const CHANNEL_TYPE_ICONS: Record<string, typeof MessageSquare> = {
   slack: MessageSquare,
+  teams: MessageSquare,
   email: Mail,
   pagerduty: AlertTriangle,
   webhook: Webhook,

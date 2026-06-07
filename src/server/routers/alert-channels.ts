@@ -54,7 +54,7 @@ export const alertChannelsRouter = router({
       z.object({
         environmentId: z.string(),
         name: z.string().min(1).max(200),
-        type: z.enum(["slack", "email", "pagerduty", "webhook"]),
+        type: z.enum(["slack", "teams", "email", "pagerduty", "webhook"]),
         config: z.record(z.string(), z.unknown()),
       }),
     )
@@ -72,13 +72,13 @@ export const alertChannelsRouter = router({
         });
       }
 
-      // Validate URLs for Slack and Webhook types (SSRF protection)
-      if (input.type === "slack") {
+      // Validate URLs for Slack/Teams and Webhook types (SSRF protection)
+      if (input.type === "slack" || input.type === "teams") {
         const webhookUrl = input.config.webhookUrl as string | undefined;
         if (!webhookUrl) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "Slack channels require a webhookUrl",
+            message: "Slack and Teams channels require a webhookUrl",
           });
         }
         await validatePublicUrl(webhookUrl);
@@ -148,7 +148,7 @@ export const alertChannelsRouter = router({
 
       if (config) {
         // 1. SSRF-validate any new URLs supplied by the caller
-        if (existing.type === "slack") {
+        if (existing.type === "slack" || existing.type === "teams") {
           const webhookUrl = config.webhookUrl as string | undefined;
           if (webhookUrl) await validatePublicUrl(webhookUrl);
         }
@@ -174,10 +174,10 @@ export const alertChannelsRouter = router({
         }
 
         // 3. Validate the MERGED config still has all required fields.
-        if (existing.type === "slack") {
+        if (existing.type === "slack" || existing.type === "teams") {
           const webhookUrl = config.webhookUrl as string | undefined;
           if (!webhookUrl)
-            throw new TRPCError({ code: "BAD_REQUEST", message: "Slack channels require a webhookUrl" });
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Slack and Teams channels require a webhookUrl" });
         }
         if (existing.type === "webhook") {
           const url = config.url as string | undefined;

@@ -3,6 +3,7 @@ import { encrypt, decrypt, ENCRYPTION_DOMAINS } from "./crypto";
 export const SENSITIVE_FIELDS_BY_TYPE: Record<string, readonly string[]> = {
   webhook:   ["hmacSecret", "headers"],
   slack:     ["webhookUrl"],
+  teams:     ["webhookUrl"],
   pagerduty: ["integrationKey"],
   email:     ["smtpPass"],
 };

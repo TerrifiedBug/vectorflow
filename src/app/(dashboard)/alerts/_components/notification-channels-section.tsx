@@ -161,7 +161,7 @@ function ChannelDeliveryHistory({
 
 // ─── Notification Channels Section ───────────────────────────────────────────────
 
-type ChannelType = "slack" | "email" | "pagerduty" | "webhook";
+type ChannelType = "slack" | "teams" | "email" | "pagerduty" | "webhook";
 
 interface ChannelFormState {
   name: string;
@@ -202,6 +202,7 @@ const EMPTY_CHANNEL_FORM: ChannelFormState = {
 function buildConfigFromForm(form: ChannelFormState): Record<string, unknown> {
   switch (form.type) {
     case "slack":
+    case "teams":
       return { webhookUrl: form.webhookUrl };
     case "email":
       return {
@@ -241,6 +242,7 @@ function formFromConfig(
 
   switch (type) {
     case "slack":
+    case "teams":
       return { ...base, webhookUrl: (config.webhookUrl as string) ?? "" };
     case "email":
       return {
@@ -394,6 +396,7 @@ export function NotificationChannelsSection({
 
     switch (form.type) {
       case "slack":
+      case "teams":
         if (!form.webhookUrl.trim()) {
           toast.error("Webhook URL is required", { duration: 6000 });
           return false;
@@ -650,6 +653,7 @@ export function NotificationChannelsSection({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="slack">Slack</SelectItem>
+                    <SelectItem value="teams">Microsoft Teams</SelectItem>
                     <SelectItem value="email">Email</SelectItem>
                     <SelectItem value="pagerduty">PagerDuty</SelectItem>
                     <SelectItem value="webhook">Webhook</SelectItem>
@@ -659,20 +663,26 @@ export function NotificationChannelsSection({
             )}
 
             {/* Type-specific config forms */}
-            {form.type === "slack" && (
+            {(form.type === "slack" || form.type === "teams") && (
               <div className="space-y-2">
-                <Label htmlFor="slack-webhook-url">Webhook URL</Label>
+                <Label htmlFor="channel-webhook-url">Webhook URL</Label>
                 <Input
-                  id="slack-webhook-url"
+                  id="channel-webhook-url"
                   type="url"
-                  placeholder="https://hooks.slack.com/services/..."
+                  placeholder={
+                    form.type === "teams"
+                      ? "https://<tenant>.webhook.office.com/webhookb2/..."
+                      : "https://hooks.slack.com/services/..."
+                  }
                   value={form.webhookUrl}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, webhookUrl: e.target.value }))
                   }
                 />
                 <p className="text-xs text-muted-foreground">
-                  Create an Incoming Webhook in your Slack workspace settings.
+                  {form.type === "teams"
+                    ? "Add an Incoming Webhook connector to your Teams channel and paste its URL."
+                    : "Create an Incoming Webhook in your Slack workspace settings."}
                 </p>
               </div>
             )}
