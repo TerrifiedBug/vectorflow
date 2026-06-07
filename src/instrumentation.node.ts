@@ -47,6 +47,27 @@ export async function registerNodeInstrumentation() {
     errorLog("instrumentation", "Redis pub/sub init failed — continuing without cross-instance SSE", error);
   }
 
+  // Hydrate the live metric cache (L1) from Redis (L2) on boot so a restarted /
+  // failed-over instance serves current throughput immediately instead of zeros
+  // until the next heartbeat. Runs on EVERY instance, best-effort: with no Redis
+  // it stays in-memory only (current single-instance behavior).
+  try {
+    const { metricStore } = await import("@/server/services/metric-store");
+    const hydrated = await metricStore.hydrateFromRedis();
+    if (hydrated > 0) {
+      infoLog(
+        "instrumentation",
+        `Metric store hydrated ${hydrated} samples from Redis L2`,
+      );
+    }
+  } catch (error) {
+    errorLog(
+      "instrumentation",
+      "Metric store hydrate failed — continuing in-memory only",
+      error,
+    );
+  }
+
   // Start system Vector process if a deployed system pipeline exists.
   // NOTE: System Vector runs on every instance — it's not a singleton service.
   try {
