@@ -5,6 +5,7 @@ import { slackDriver } from "./slack";
 import { emailDriver } from "./email";
 import { pagerdutyDriver } from "./pagerduty";
 import { webhookDriver } from "./webhook";
+import { teamsDriver } from "./teams";
 import { trackChannelDelivery } from "@/server/services/delivery-tracking";
 import { isDemoMode } from "@/lib/is-demo-mode";
 import { decryptChannelConfig } from "@/server/services/channel-secrets";
@@ -16,6 +17,7 @@ const drivers: Record<string, ChannelDriver> = {
   email: emailDriver,
   pagerduty: pagerdutyDriver,
   webhook: webhookDriver,
+  teams: teamsDriver,
 };
 
 /**
