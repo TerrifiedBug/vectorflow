@@ -95,13 +95,25 @@ export const networkSinks: VectorComponentDef[] = [
                 "OTLP/HTTP endpoint, e.g. https://collector.example.com:4318/v1/logs",
             },
             ...authBasicBearerSchema(),
-            ...encodingSchema(["otlp"]),
+            encoding: {
+              type: "object",
+              description:
+                "OTLP protobuf encoding (required by Vector for OpenTelemetry export and native batching).",
+              properties: {
+                codec: {
+                  type: "string",
+                  enum: ["otlp"],
+                  default: "otlp",
+                  description: "OTLP protobuf codec",
+                },
+              },
+            },
             ...compressionSchema(["none", "gzip", "zstd"]),
             ...tlsSchema(),
             ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
             ...requestSchema(),
           },
-          required: ["type", "uri", "encoding"],
+          required: ["uri"],
         },
         ...bufferSchema(),
       },
