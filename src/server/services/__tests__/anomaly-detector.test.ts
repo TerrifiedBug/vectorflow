@@ -21,6 +21,7 @@ import {
   computeSeasonalBaseline,
   inSeasonalBucket,
   hourCircularDistance,
+  type CurrentMetricSnapshot,
   type MetricDataPoint,
   ANOMALY_CONFIG,
 } from "@/server/services/anomaly-detector";
@@ -693,8 +694,14 @@ describe("trace-metric anomalies (extraction + baseline path)", () => {
     prismaMock.anomalyEvent.create.mockResolvedValue({ id: "anom-spans" } as never);
 
     // Current-metrics extraction includes spansIn/tracesIn (a 5x spike here).
-    const currentMetricsMap = new Map<string, Record<string, number>>([
-      ["pipe-1", { eventsIn: 0, errorsTotal: 0, latencyMeanMs: 0, spansIn: 5000, tracesIn: 0 }],
+    const currentMetricsMap = new Map<string, CurrentMetricSnapshot>([
+      [
+        "pipe-1",
+        {
+          values: { eventsIn: 0, errorsTotal: 0, latencyMeanMs: 0, spansIn: 5000, tracesIn: 0 },
+          timestamp: new Date("2026-04-30T12:00:00Z"),
+        },
+      ],
     ]);
 
     const results = await evaluatePipeline(
@@ -838,7 +845,9 @@ describe("fetchBaselineSql seasonality (IF-3, via evaluatePipeline)", () => {
       latencyMeanMsSeasonalMean: null, latencyMeanMsSeasonalStddev: null,
       spansInSeasonalMean: null, spansInSeasonalStddev: null,
       tracesInSeasonalMean: null, tracesInSeasonalStddev: null,
-      seasonalCount: 0,
+      eventsInSeasonalCount: 0, errorsTotalSeasonalCount: 0,
+      latencyMeanMsSeasonalCount: 0, spansInSeasonalCount: 0,
+      tracesInSeasonalCount: 0,
       ...overrides,
     };
   }
@@ -848,8 +857,14 @@ describe("fetchBaselineSql seasonality (IF-3, via evaluatePipeline)", () => {
     environmentId: "env-1",
     environment: { teamId: "team-1" },
   };
-  const currentMetricsMap = new Map<string, Record<string, number>>([
-    ["pipe-1", { eventsIn: 1000, errorsTotal: 0, latencyMeanMs: 0, spansIn: 0, tracesIn: 0 }],
+  const currentMetricsMap = new Map<string, CurrentMetricSnapshot>([
+    [
+      "pipe-1",
+      {
+        values: { eventsIn: 1000, errorsTotal: 0, latencyMeanMs: 0, spansIn: 0, tracesIn: 0 },
+        timestamp: new Date("2026-03-18T14:00:00Z"),
+      },
+    ],
   ]);
   const cfg = {
     baselineWindowDays: ANOMALY_CONFIG.BASELINE_WINDOW_DAYS,
@@ -873,7 +888,7 @@ describe("fetchBaselineSql seasonality (IF-3, via evaluatePipeline)", () => {
         eventsInStddev: 180,
         eventsInSeasonalMean: 1000,
         eventsInSeasonalStddev: 20,
-        seasonalCount: 20,
+        eventsInSeasonalCount: 20,
       }),
     ] as never);
 
@@ -891,7 +906,7 @@ describe("fetchBaselineSql seasonality (IF-3, via evaluatePipeline)", () => {
         eventsInStddev: 180,
         eventsInSeasonalMean: 1000,
         eventsInSeasonalStddev: 20,
-        seasonalCount: 2, // < minSeasonalPoints → ignore the seasonal aggregate
+        eventsInSeasonalCount: 2, // < minSeasonalPoints → ignore the seasonal aggregate
       }),
     ] as never);
 

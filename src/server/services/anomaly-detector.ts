@@ -462,7 +462,11 @@ interface BaselineRow {
   spansInSeasonalStddev: number | null;
   tracesInSeasonalMean: number | null;
   tracesInSeasonalStddev: number | null;
-  seasonalCount: number;
+  eventsInSeasonalCount: number;
+  errorsTotalSeasonalCount: number;
+  latencyMeanMsSeasonalCount: number;
+  spansInSeasonalCount: number;
+  tracesInSeasonalCount: number;
 }
 
 // ─── SQL-optimized data fetching ─────────────────────────────────────────────
@@ -539,7 +543,11 @@ async function fetchBaselineSql(
        STDDEV_POP("spansIn"::float8)     FILTER (WHERE seasonal) AS "spansInSeasonalStddev",
        AVG("tracesIn"::float8)           FILTER (WHERE seasonal) AS "tracesInSeasonalMean",
        STDDEV_POP("tracesIn"::float8)    FILTER (WHERE seasonal) AS "tracesInSeasonalStddev",
-       COUNT(*) FILTER (WHERE seasonal)::int AS "seasonalCount"
+       COUNT("eventsIn") FILTER (WHERE seasonal)::int      AS "eventsInSeasonalCount",
+       COUNT("errorsTotal") FILTER (WHERE seasonal)::int   AS "errorsTotalSeasonalCount",
+       COUNT("latencyMeanMs") FILTER (WHERE seasonal)::int AS "latencyMeanMsSeasonalCount",
+       COUNT("spansIn") FILTER (WHERE seasonal)::int       AS "spansInSeasonalCount",
+       COUNT("tracesIn") FILTER (WHERE seasonal)::int      AS "tracesInSeasonalCount"
      FROM (
        SELECT "eventsIn", "errorsTotal", "latencyMeanMs", "spansIn", "tracesIn",
          (
@@ -570,27 +578,30 @@ async function fetchBaselineSql(
       baselines.set(metric, null);
     }
   } else {
-    // Prefer the seasonal bucket when it holds enough samples; otherwise the
-    // global baseline (z-score over the whole window) is the fallback.
-    const seasonalUsable =
-      seasonalityEnabled && row.seasonalCount >= minSeasonalPoints;
-
+    // Prefer the seasonal bucket per metric when it holds enough non-null
+    // samples; otherwise the global baseline (z-score over the whole window) is
+    // the fallback. Per-metric counts matter because a nullable metric
+    // (latencyMeanMs) can be sparse inside an otherwise-dense time bucket.
     const metricDefs: Array<{
       name: string;
       mean: number | null;
       stddev: number | null;
       seasonalMean: number | null;
       seasonalStddev: number | null;
+      seasonalCount: number;
     }> = [
-      { name: "eventsIn", mean: row.eventsInMean, stddev: row.eventsInStddev, seasonalMean: row.eventsInSeasonalMean, seasonalStddev: row.eventsInSeasonalStddev },
-      { name: "errorsTotal", mean: row.errorsTotalMean, stddev: row.errorsTotalStddev, seasonalMean: row.errorsTotalSeasonalMean, seasonalStddev: row.errorsTotalSeasonalStddev },
-      { name: "latencyMeanMs", mean: row.latencyMeanMsMean, stddev: row.latencyMeanMsStddev, seasonalMean: row.latencyMeanMsSeasonalMean, seasonalStddev: row.latencyMeanMsSeasonalStddev },
-      { name: "spansIn", mean: row.spansInMean, stddev: row.spansInStddev, seasonalMean: row.spansInSeasonalMean, seasonalStddev: row.spansInSeasonalStddev },
-      { name: "tracesIn", mean: row.tracesInMean, stddev: row.tracesInStddev, seasonalMean: row.tracesInSeasonalMean, seasonalStddev: row.tracesInSeasonalStddev },
+      { name: "eventsIn", mean: row.eventsInMean, stddev: row.eventsInStddev, seasonalMean: row.eventsInSeasonalMean, seasonalStddev: row.eventsInSeasonalStddev, seasonalCount: row.eventsInSeasonalCount },
+      { name: "errorsTotal", mean: row.errorsTotalMean, stddev: row.errorsTotalStddev, seasonalMean: row.errorsTotalSeasonalMean, seasonalStddev: row.errorsTotalSeasonalStddev, seasonalCount: row.errorsTotalSeasonalCount },
+      { name: "latencyMeanMs", mean: row.latencyMeanMsMean, stddev: row.latencyMeanMsStddev, seasonalMean: row.latencyMeanMsSeasonalMean, seasonalStddev: row.latencyMeanMsSeasonalStddev, seasonalCount: row.latencyMeanMsSeasonalCount },
+      { name: "spansIn", mean: row.spansInMean, stddev: row.spansInStddev, seasonalMean: row.spansInSeasonalMean, seasonalStddev: row.spansInSeasonalStddev, seasonalCount: row.spansInSeasonalCount },
+      { name: "tracesIn", mean: row.tracesInMean, stddev: row.tracesInStddev, seasonalMean: row.tracesInSeasonalMean, seasonalStddev: row.tracesInSeasonalStddev, seasonalCount: row.tracesInSeasonalCount },
     ];
 
     for (const def of metricDefs) {
-      const useSeasonal = seasonalUsable && def.seasonalMean != null;
+      const useSeasonal =
+        seasonalityEnabled &&
+        def.seasonalCount >= minSeasonalPoints &&
+        def.seasonalMean != null;
       const mean = useSeasonal ? def.seasonalMean : def.mean;
       const stddev = useSeasonal ? def.seasonalStddev : def.stddev;
       if (mean === null || mean === undefined) {
@@ -599,7 +610,7 @@ async function fetchBaselineSql(
         baselines.set(def.name, {
           mean,
           stddev: stddev ?? 0,
-          sampleCount: useSeasonal ? row.seasonalCount : row.sampleCount,
+          sampleCount: useSeasonal ? def.seasonalCount : row.sampleCount,
         });
       }
     }
@@ -618,6 +629,13 @@ interface CurrentMetricRow {
   spansIn: bigint;
   tracesIn: bigint;
   latencyMeanMs: number | null;
+  timestamp: Date;
+}
+
+/** Latest metric values for a pipeline plus the timestamp of that row. */
+export interface CurrentMetricSnapshot {
+  values: Record<string, number>;
+  timestamp: Date;
 }
 
 /**
@@ -627,7 +645,7 @@ interface CurrentMetricRow {
  */
 async function fetchAllCurrentMetrics(
   pipelineIds: string[],
-): Promise<Map<string, Record<string, number>>> {
+): Promise<Map<string, CurrentMetricSnapshot>> {
   if (pipelineIds.length === 0) {
     return new Map();
   }
@@ -639,7 +657,8 @@ async function fetchAllCurrentMetrics(
        "errorsTotal",
        "spansIn",
        "tracesIn",
-       "latencyMeanMs"
+       "latencyMeanMs",
+       "timestamp"
      FROM "PipelineMetric"
      WHERE "pipelineId" = ANY($1::text[])
        AND "componentId" IS NULL
@@ -647,14 +666,17 @@ async function fetchAllCurrentMetrics(
     pipelineIds,
   );
 
-  const result = new Map<string, Record<string, number>>();
+  const result = new Map<string, CurrentMetricSnapshot>();
   for (const row of rows) {
     result.set(row.pipelineId, {
-      eventsIn: Number(row.eventsIn),
-      errorsTotal: Number(row.errorsTotal),
-      spansIn: Number(row.spansIn),
-      tracesIn: Number(row.tracesIn),
-      latencyMeanMs: row.latencyMeanMs ?? 0,
+      values: {
+        eventsIn: Number(row.eventsIn),
+        errorsTotal: Number(row.errorsTotal),
+        spansIn: Number(row.spansIn),
+        tracesIn: Number(row.tracesIn),
+        latencyMeanMs: row.latencyMeanMs ?? 0,
+      },
+      timestamp: row.timestamp ?? new Date(),
     });
   }
   return result;
@@ -699,19 +721,22 @@ export async function evaluatePipeline(
     environment: { teamId: string | null };
   },
   config?: RuntimeAnomalyConfig,
-  currentMetricsMap?: Map<string, Record<string, number>>,
+  currentMetricsMap?: Map<string, CurrentMetricSnapshot>,
 ): Promise<AnomalyDetectionResult[]> {
   const cfg = config ?? await getAnomalyConfig();
 
   // Use pre-fetched batch map when available (evaluateAllPipelines path),
   // otherwise fetch for this single pipeline (standalone evaluatePipeline call)
-  const current = currentMetricsMap
+  const snapshot = currentMetricsMap
     ? (currentMetricsMap.get(pipeline.id) ?? null)
     : ((await fetchAllCurrentMetrics([pipeline.id])).get(pipeline.id) ?? null);
 
-  if (!current) return [];
+  if (!snapshot) return [];
 
-  const now = new Date();
+  const current = snapshot.values;
+  // Seasonal bucket + baseline window key off the metric's own timestamp, so a
+  // delayed/stale latest row is compared against its own hour, not wall-clock.
+  const now = snapshot.timestamp;
   const windowStart = new Date(
     now.getTime() - cfg.baselineWindowDays * 24 * 3600_000,
   );
