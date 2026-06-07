@@ -325,7 +325,7 @@ export function detectAnomalies(
     seasonalHourTolerance: ANOMALY_CONFIG.SEASONAL_HOUR_TOLERANCE,
     minSeasonalPoints: ANOMALY_CONFIG.MIN_SEASONAL_POINTS,
   },
-  now: Date = new Date(),
+  now?: Date,
 ): AnomalyDetectionResult[] {
   const results: AnomalyDetectionResult[] = [];
 
@@ -334,17 +334,19 @@ export function detectAnomalies(
     return results;
   }
 
-  // Seasonal baseline compares the current value against the same time-of-day
-  // (and weekday/weekend) history, falling back to the global z-score baseline
-  // when the seasonal bucket is too sparse.
-  const baseline = config.seasonalityEnabled
-    ? computeSeasonalBaseline(
-        baselinePoints,
-        now,
-        config.seasonalHourTolerance,
-        config.minSeasonalPoints,
-      ).baseline
-    : computeBaseline(baselinePoints);
+  // Seasonal baseline (when an evaluation time is supplied) compares the current
+  // value against the same time-of-day + weekday/weekend history, falling back
+  // to the global z-score baseline when the seasonal bucket is too sparse.
+  // Without `now`, this is the plain global baseline (deterministic).
+  const baseline =
+    config.seasonalityEnabled && now
+      ? computeSeasonalBaseline(
+          baselinePoints,
+          now,
+          config.seasonalHourTolerance,
+          config.minSeasonalPoints,
+        ).baseline
+      : computeBaseline(baselinePoints);
   if (!baseline) return results;
 
   return detectAnomalyFromBaseline(pipelineId, metricName, currentValue, baseline, config);
@@ -424,6 +426,8 @@ interface BaselineCacheEntry {
   /** Baselines keyed by metricName — null when sampleCount < minBaselinePoints */
   baselines: Map<string, Baseline | null>;
   fetchedAt: number;
+  /** Seasonal bucket identity this entry was computed for; a mismatch is a cache miss. */
+  bucketKey: string;
 }
 
 /** Module-level cache keyed by pipelineId */
@@ -485,19 +489,32 @@ async function fetchBaselineSql(
   windowStart: Date,
   minBaselinePoints: number,
   now: Date,
+  seasonalityEnabled: boolean,
   hourTolerance: number,
   minSeasonalPoints: number,
 ): Promise<Map<string, Baseline | null>> {
   const fetchTime = Date.now();
-  const cached = baselineCache.get(pipelineId);
-  if (cached && fetchTime - cached.fetchedAt < BASELINE_CACHE_TTL_MS) {
-    return cached.baselines;
-  }
 
   // Seasonal bucket parameters for the current evaluation time (UTC, to match
   // how Prisma stores DateTime and the JS getUTC* helpers).
   const nowHour = now.getUTCHours();
   const nowWeekend = isWeekendDay(now.getUTCDay());
+
+  // A cached baseline is only valid for the same seasonal bucket; a different
+  // hour/weekday (or seasonality disabled) must re-fetch rather than reuse a
+  // stale profile. "global" keeps full caching when seasonality is off.
+  const bucketKey = seasonalityEnabled
+    ? `${nowHour}:${nowWeekend ? "we" : "wd"}:${hourTolerance}:${minSeasonalPoints}`
+    : "global";
+
+  const cached = baselineCache.get(pipelineId);
+  if (
+    cached &&
+    cached.bucketKey === bucketKey &&
+    fetchTime - cached.fetchedAt < BASELINE_CACHE_TTL_MS
+  ) {
+    return cached.baselines;
+  }
 
   const rows = await prisma.$queryRawUnsafe<BaselineRow[]>(
     `SELECT
@@ -555,7 +572,8 @@ async function fetchBaselineSql(
   } else {
     // Prefer the seasonal bucket when it holds enough samples; otherwise the
     // global baseline (z-score over the whole window) is the fallback.
-    const seasonalUsable = row.seasonalCount >= minSeasonalPoints;
+    const seasonalUsable =
+      seasonalityEnabled && row.seasonalCount >= minSeasonalPoints;
 
     const metricDefs: Array<{
       name: string;
@@ -587,7 +605,7 @@ async function fetchBaselineSql(
     }
   }
 
-  baselineCache.set(pipelineId, { baselines, fetchedAt: fetchTime });
+  baselineCache.set(pipelineId, { baselines, fetchedAt: fetchTime, bucketKey });
   return baselines;
 }
 
@@ -702,6 +720,7 @@ export async function evaluatePipeline(
     windowStart,
     cfg.minBaselinePoints,
     now,
+    cfg.seasonalityEnabled,
     cfg.seasonalHourTolerance,
     cfg.minSeasonalPoints,
   );
