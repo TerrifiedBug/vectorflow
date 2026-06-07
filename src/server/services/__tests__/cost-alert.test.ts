@@ -7,6 +7,7 @@ vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { 
 
 vi.mock("@/server/services/cost-attribution", () => ({
   getCurrentMonthCostCents: vi.fn(),
+  getCurrentMonthGb: vi.fn(),
   computeCostCents: vi.fn((bytes: number, rate: number) =>
     Math.round((bytes / 1_073_741_824) * rate)
   ),
@@ -17,11 +18,12 @@ vi.mock("@/server/services/channels", () => ({
 }));
 
 import { prisma } from "@/lib/prisma";
-import { getCurrentMonthCostCents } from "@/server/services/cost-attribution";
+import { getCurrentMonthCostCents, getCurrentMonthGb } from "@/server/services/cost-attribution";
 import { evaluateCostAlerts } from "@/server/services/cost-alert";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const mockGetCurrentMonthCostCents = getCurrentMonthCostCents as ReturnType<typeof vi.fn>;
+const mockGetCurrentMonthGb = vi.mocked(getCurrentMonthGb);
 
 describe("evaluateCostAlerts", () => {
   beforeEach(() => {
@@ -186,5 +188,89 @@ describe("evaluateCostAlerts", () => {
       where: { id: "event-existing" },
       data: { status: "resolved", resolvedAt: expect.any(Date) },
     });
+  });
+
+  it("fires a volume alert when monthly GB exceeds the volume budget, even with no cost rate", async () => {
+    prismaMock.alertRule.findMany.mockResolvedValue([
+      {
+        id: "rule-v",
+        name: "Volume Budget Alert",
+        metric: "cost_threshold_exceeded",
+        condition: "gt",
+        threshold: 0,
+        durationSeconds: null,
+        enabled: true,
+        environmentId: "env-v",
+        pipelineId: null,
+        teamId: "team-1",
+        snoozedUntil: null,
+        environment: {
+          id: "env-v",
+          name: "Volume-only Env",
+          costPerGbCents: 0, // no $-rate -> cost branch is skipped
+          costBudgetCents: null,
+          volumeBudgetGb: 500,
+          team: { name: "Platform" },
+        },
+      },
+    ] as never);
+
+    mockGetCurrentMonthGb.mockResolvedValue(620);
+    prismaMock.alertEvent.findFirst.mockResolvedValue(null);
+    prismaMock.alertEvent.create.mockResolvedValue({
+      id: "event-v",
+      alertRuleId: "rule-v",
+      status: "firing",
+      value: 620,
+      message: "Monthly volume 620.0 GB exceeds budget 500 GB",
+      firedAt: new Date(),
+    } as never);
+    prismaMock.alertRuleChannel.findMany.mockResolvedValue([]);
+
+    const results = await evaluateCostAlerts();
+
+    expect(results).toHaveLength(1);
+    // cost branch must be skipped when there is no $-rate
+    expect(mockGetCurrentMonthCostCents).not.toHaveBeenCalled();
+    const createArg = prismaMock.alertEvent.create.mock.calls[0][0] as {
+      data: { message: string; value: number };
+    };
+    expect(createArg.data.message).toContain("620.0 GB exceeds budget 500 GB");
+    expect(createArg.data.value).toBe(620);
+  });
+
+  it("does not fire a volume alert when monthly GB is under the volume budget", async () => {
+    prismaMock.alertRule.findMany.mockResolvedValue([
+      {
+        id: "rule-v2",
+        name: "Volume Budget Alert",
+        metric: "cost_threshold_exceeded",
+        condition: "gt",
+        threshold: 0,
+        durationSeconds: null,
+        enabled: true,
+        environmentId: "env-v2",
+        pipelineId: null,
+        teamId: "team-1",
+        snoozedUntil: null,
+        environment: {
+          id: "env-v2",
+          name: "Volume-only Env",
+          costPerGbCents: 0,
+          costBudgetCents: null,
+          volumeBudgetGb: 500,
+          team: { name: "Platform" },
+        },
+      },
+    ] as never);
+
+    mockGetCurrentMonthGb.mockResolvedValue(420);
+    prismaMock.alertEvent.findFirst.mockResolvedValue(null);
+    prismaMock.alertRuleChannel.findMany.mockResolvedValue([]);
+
+    const results = await evaluateCostAlerts();
+
+    expect(results).toHaveLength(0);
+    expect(prismaMock.alertEvent.create).not.toHaveBeenCalled();
   });
 });

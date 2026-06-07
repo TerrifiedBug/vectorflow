@@ -545,6 +545,23 @@ export async function getCurrentMonthCostCents(
   return computeCostCents(Number(agg._sum.bytesIn ?? 0), costPerGbCents);
 }
 
+/** Get current month's processed volume in GB (binary GiB, matching formatBytes / cost calc) for volume-budget alerts. */
+export async function getCurrentMonthGb(environmentId: string): Promise<number> {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const agg = await prisma.pipelineMetric.aggregate({
+    where: {
+      pipeline: { environmentId },
+      ...AGGREGATE_PIPELINE_METRIC_FILTER,
+      timestamp: { gte: monthStart },
+    },
+    _sum: { bytesIn: true },
+  });
+
+  return Number(agg._sum.bytesIn ?? 0) / 1_073_741_824;
+}
+
 /** Load the org's destination price models (for $-cost projection). */
 export async function loadDestinationCostModels(
   organizationId: string,
