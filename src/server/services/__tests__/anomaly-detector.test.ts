@@ -18,6 +18,9 @@ import {
   evaluatePipeline,
   evaluateAllPipelines,
   invalidateBaselineCache,
+  computeSeasonalBaseline,
+  inSeasonalBucket,
+  hourCircularDistance,
   type MetricDataPoint,
   ANOMALY_CONFIG,
 } from "@/server/services/anomaly-detector";
@@ -44,6 +47,21 @@ function makeStableMetrics(mean: number, count: number): MetricDataPoint[] {
     values.push(mean + (i % 2 === 0 ? 10 : -10));
   }
   return makeMetricPoints(values);
+}
+
+// Build `days` days of hourly points whose value depends only on the UTC
+// hour-of-day — i.e. a metric with a repeating daily (seasonal) cycle.
+function makeSeasonalPoints(
+  valueForHour: (hour: number) => number,
+  days = 7,
+  start: Date = new Date("2026-03-16T00:00:00Z"), // Monday 00:00 UTC
+): MetricDataPoint[] {
+  const points: MetricDataPoint[] = [];
+  for (let i = 0; i < days * 24; i++) {
+    const timestamp = new Date(start.getTime() + i * 3600_000);
+    points.push({ timestamp, value: valueForHour(timestamp.getUTCHours()) });
+  }
+  return points;
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -650,6 +668,9 @@ describe("trace-metric anomalies (extraction + baseline path)", () => {
       pollIntervalMs: ANOMALY_CONFIG.POLL_INTERVAL_MS,
       dedupWindowHours: ANOMALY_CONFIG.DEDUP_WINDOW_HOURS,
       enabledMetrics: ["spansIn"],
+      seasonalityEnabled: ANOMALY_CONFIG.SEASONALITY_ENABLED,
+      seasonalHourTolerance: ANOMALY_CONFIG.SEASONAL_HOUR_TOLERANCE,
+      minSeasonalPoints: ANOMALY_CONFIG.MIN_SEASONAL_POINTS,
     };
 
     // Baseline SQL row carries the spansIn aggregate (mirrors the new columns).
@@ -686,5 +707,198 @@ describe("trace-metric anomalies (extraction + baseline path)", () => {
     expect(results[0].metricName).toBe("spansIn");
     expect(results[0].anomalyType).toBe("throughput_spike");
     expect(prismaMock.anomalyEvent.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─── Seasonality (IF-3) ──────────────────────────────────────────────────────
+
+describe("hourCircularDistance", () => {
+  it("measures distance within the same day", () => {
+    expect(hourCircularDistance(5, 5)).toBe(0);
+    expect(hourCircularDistance(0, 12)).toBe(12);
+    expect(hourCircularDistance(8, 11)).toBe(3);
+  });
+
+  it("wraps around midnight (23↔1 is 2, not 22)", () => {
+    expect(hourCircularDistance(23, 1)).toBe(2);
+    expect(hourCircularDistance(22, 2)).toBe(4);
+    expect(hourCircularDistance(0, 23)).toBe(1);
+  });
+});
+
+describe("inSeasonalBucket", () => {
+  const now = new Date("2026-03-18T14:30:00Z"); // Wednesday 14:30 (weekday)
+
+  it("matches points within the hour window on the same day-type", () => {
+    expect(inSeasonalBucket(new Date("2026-03-11T14:00:00Z"), now, 1)).toBe(true);
+    expect(inSeasonalBucket(new Date("2026-03-11T13:00:00Z"), now, 1)).toBe(true);
+    expect(inSeasonalBucket(new Date("2026-03-11T16:00:00Z"), now, 1)).toBe(false);
+  });
+
+  it("rejects weekend points when now is a weekday", () => {
+    // Saturday 14:00 — same hour but the wrong day-type.
+    expect(inSeasonalBucket(new Date("2026-03-21T14:00:00Z"), now, 1)).toBe(false);
+  });
+});
+
+describe("computeSeasonalBaseline", () => {
+  it("uses the seasonal bucket when it has enough samples", () => {
+    const points = makeSeasonalPoints((h) => (h === 14 ? 1000 : 100));
+    const now = new Date("2026-03-18T14:00:00Z"); // Wednesday 14:00 (weekday)
+    const { baseline, seasonal } = computeSeasonalBaseline(points, now, 1, 8);
+    expect(seasonal).toBe(true);
+    expect(baseline).not.toBeNull();
+    // Afternoon bucket sits far above the 24h-flat mean (~137).
+    expect(baseline!.mean).toBeGreaterThan(300);
+  });
+
+  it("falls back to the global baseline when the bucket is too sparse", () => {
+    // Two days only → the weekday 14:00 bucket has < 8 samples.
+    const points = makeSeasonalPoints((h) => (h === 14 ? 1000 : 100), 2);
+    const now = new Date("2026-03-18T14:00:00Z");
+    const { baseline, seasonal } = computeSeasonalBaseline(points, now, 1, 8);
+    expect(seasonal).toBe(false);
+    expect(baseline).not.toBeNull();
+  });
+});
+
+describe("detectAnomalies seasonality (IF-3)", () => {
+  // Metric peaks to 1000 every day at 14:00 UTC, sits at 100 otherwise.
+  const dailyPeak = () => makeSeasonalPoints((h) => (h === 14 ? 1000 : 100));
+  const peakHour = new Date("2026-03-18T14:00:00Z"); // Wednesday 14:00 (weekday)
+
+  const seasonalCfg = {
+    baselineWindowDays: ANOMALY_CONFIG.BASELINE_WINDOW_DAYS,
+    sigmaThreshold: ANOMALY_CONFIG.SIGMA_THRESHOLD,
+    minBaselinePoints: ANOMALY_CONFIG.MIN_BASELINE_POINTS,
+    minStddevFloorPercent: ANOMALY_CONFIG.MIN_STDDEV_FLOOR_PERCENT,
+    pollIntervalMs: ANOMALY_CONFIG.POLL_INTERVAL_MS,
+    dedupWindowHours: ANOMALY_CONFIG.DEDUP_WINDOW_HOURS,
+    enabledMetrics: ["eventsIn", "errorsTotal", "latencyMeanMs"],
+    seasonalityEnabled: true,
+    seasonalHourTolerance: ANOMALY_CONFIG.SEASONAL_HOUR_TOLERANCE,
+    minSeasonalPoints: ANOMALY_CONFIG.MIN_SEASONAL_POINTS,
+  };
+
+  it("does NOT flag the normal daily peak that the flat z-score raises as a false positive", () => {
+    // 1000 at 14:00 is normal for this metric, yet > 3σ above the flat 24h mean.
+    const flat = detectAnomalies(
+      "pipe-1",
+      "eventsIn",
+      1000,
+      dailyPeak(),
+      { ...seasonalCfg, seasonalityEnabled: false },
+      peakHour,
+    );
+    expect(flat).toHaveLength(1); // flat z-score false-positives on the cyclic peak
+    expect(flat[0].anomalyType).toBe("throughput_spike");
+
+    const seasonal = detectAnomalies(
+      "pipe-1",
+      "eventsIn",
+      1000,
+      dailyPeak(),
+      seasonalCfg,
+      peakHour,
+    );
+    expect(seasonal).toHaveLength(0); // seasonal baseline recognizes the recurring peak
+  });
+
+  it("still flags a genuine spike that exceeds even the seasonal norm", () => {
+    const seasonal = detectAnomalies(
+      "pipe-1",
+      "eventsIn",
+      5000,
+      dailyPeak(),
+      seasonalCfg,
+      peakHour,
+    );
+    expect(seasonal).toHaveLength(1);
+    expect(seasonal[0].anomalyType).toBe("throughput_spike");
+  });
+});
+
+describe("fetchBaselineSql seasonality (IF-3, via evaluatePipeline)", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    invalidateBaselineCache();
+    prismaMock.anomalyEvent.findFirst.mockResolvedValue(null);
+  });
+
+  function baselineRow(overrides: Record<string, unknown>) {
+    return {
+      eventsInMean: null, eventsInStddev: null,
+      errorsTotalMean: null, errorsTotalStddev: null,
+      latencyMeanMsMean: null, latencyMeanMsStddev: null,
+      spansInMean: null, spansInStddev: null,
+      tracesInMean: null, tracesInStddev: null,
+      sampleCount: 168,
+      eventsInSeasonalMean: null, eventsInSeasonalStddev: null,
+      errorsTotalSeasonalMean: null, errorsTotalSeasonalStddev: null,
+      latencyMeanMsSeasonalMean: null, latencyMeanMsSeasonalStddev: null,
+      spansInSeasonalMean: null, spansInSeasonalStddev: null,
+      tracesInSeasonalMean: null, tracesInSeasonalStddev: null,
+      seasonalCount: 0,
+      ...overrides,
+    };
+  }
+
+  const pipeline = {
+    id: "pipe-1",
+    environmentId: "env-1",
+    environment: { teamId: "team-1" },
+  };
+  const currentMetricsMap = new Map<string, Record<string, number>>([
+    ["pipe-1", { eventsIn: 1000, errorsTotal: 0, latencyMeanMs: 0, spansIn: 0, tracesIn: 0 }],
+  ]);
+  const cfg = {
+    baselineWindowDays: ANOMALY_CONFIG.BASELINE_WINDOW_DAYS,
+    sigmaThreshold: ANOMALY_CONFIG.SIGMA_THRESHOLD,
+    minBaselinePoints: ANOMALY_CONFIG.MIN_BASELINE_POINTS,
+    minStddevFloorPercent: ANOMALY_CONFIG.MIN_STDDEV_FLOOR_PERCENT,
+    pollIntervalMs: ANOMALY_CONFIG.POLL_INTERVAL_MS,
+    dedupWindowHours: ANOMALY_CONFIG.DEDUP_WINDOW_HOURS,
+    enabledMetrics: ["eventsIn"],
+    seasonalityEnabled: true,
+    seasonalHourTolerance: ANOMALY_CONFIG.SEASONAL_HOUR_TOLERANCE,
+    minSeasonalPoints: ANOMALY_CONFIG.MIN_SEASONAL_POINTS,
+  };
+
+  it("uses the seasonal baseline when the bucket is dense (suppresses the cyclic false positive)", async () => {
+    // Global baseline would flag 1000 (mean 137.5, stddev 180 → ~4.8σ); the
+    // dense seasonal bucket says 1000 is the norm for this hour.
+    prismaMock.$queryRawUnsafe.mockResolvedValueOnce([
+      baselineRow({
+        eventsInMean: 137.5,
+        eventsInStddev: 180,
+        eventsInSeasonalMean: 1000,
+        eventsInSeasonalStddev: 20,
+        seasonalCount: 20,
+      }),
+    ] as never);
+
+    const results = await evaluatePipeline(pipeline, cfg, currentMetricsMap);
+
+    expect(results).toHaveLength(0);
+    expect(prismaMock.anomalyEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the global baseline when the seasonal bucket is too sparse", async () => {
+    prismaMock.anomalyEvent.create.mockResolvedValue({ id: "anom-1" } as never);
+    prismaMock.$queryRawUnsafe.mockResolvedValueOnce([
+      baselineRow({
+        eventsInMean: 137.5,
+        eventsInStddev: 180,
+        eventsInSeasonalMean: 1000,
+        eventsInSeasonalStddev: 20,
+        seasonalCount: 2, // < minSeasonalPoints → ignore the seasonal aggregate
+      }),
+    ] as never);
+
+    const results = await evaluatePipeline(pipeline, cfg, currentMetricsMap);
+
+    expect(results).toHaveLength(1);
+    expect(results[0].metricName).toBe("eventsIn");
+    expect(results[0].anomalyType).toBe("throughput_spike");
   });
 });
