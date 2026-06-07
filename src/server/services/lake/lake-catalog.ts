@@ -170,6 +170,28 @@ export async function attachLakeSinkOutput(
 }
 
 /**
+ * In-memory debounce buffer for lake-catalog writes (SC-5). Heartbeats fold
+ * their per-pipeline Lake deltas here and flush at most once per
+ * LAKE_CATALOG_FLUSH_MS window, instead of an upsert + update transaction on
+ * every heartbeat. A lost buffer (restart) only delays a catalog refresh — the
+ * counts are re-derived from the next heartbeat's cumulative deltas.
+ */
+interface PendingLakeWrite {
+  environmentId: string;
+  rows: bigint;
+  bytes: bigint;
+  firstEventAt: Date;
+  lastEventAt: Date;
+  firstSeenAt: number;
+}
+const pendingLakeWrites = new Map<string, PendingLakeWrite>();
+
+/** Test seam: clear the debounce buffer between cases. */
+export function __resetLakeCatalogBuffer(): void {
+  pendingLakeWrites.clear();
+}
+
+/**
  * Heartbeat hook: refresh the lake catalog for every reporting pipeline that
  * routes to the managed lake sink. No-op unless the lake is enabled. Records the
  * managed Lake sink's OWN per-heartbeat write delta (events/bytes) — re-derived
@@ -185,6 +207,8 @@ export async function updateLakeCatalogFromHeartbeat(
   if (dataPoints.length === 0) return;
 
   const now = new Date();
+  const nowMs = now.getTime();
+  const flushMs = Number(process.env.LAKE_CATALOG_FLUSH_MS ?? 60_000);
 
   // Accumulate the managed Lake sink's OWN write delta per pipeline (Lake-only,
   // re-derived from the cumulative Lake fraction) — not the whole pipeline
@@ -208,13 +232,41 @@ export async function updateLakeCatalogFromHeartbeat(
     perPipeline.set(dp.pipelineId, acc);
   }
 
-  const pipelineIds = [...perPipeline.keys()];
-  if (pipelineIds.length === 0) return;
+  // Fold this heartbeat's deltas into the debounce buffer rather than writing
+  // now. Each (org, pipeline) flushes at most once per LAKE_CATALOG_FLUSH_MS
+  // window, collapsing N heartbeats into one upsert + update and skipping the
+  // config-resolving query on the heartbeats in between.
+  for (const [pipelineId, totals] of perPipeline) {
+    const key = `${orgId}:${pipelineId}`;
+    const pending = pendingLakeWrites.get(key);
+    if (pending) {
+      pending.rows += totals.rows;
+      pending.bytes += totals.bytes;
+      pending.lastEventAt = now;
+    } else {
+      pendingLakeWrites.set(key, {
+        environmentId,
+        rows: totals.rows,
+        bytes: totals.bytes,
+        firstEventAt: now,
+        lastEventAt: now,
+        firstSeenAt: nowMs,
+      });
+    }
+  }
 
-  // Resolve which of these pipelines route to the lake from their latest
-  // deployed config snapshot (the saved YAML still carries the LAKE[...] refs).
+  const duePipelineIds: string[] = [];
+  for (const [key, pending] of pendingLakeWrites) {
+    if (key.startsWith(`${orgId}:`) && nowMs - pending.firstSeenAt >= flushMs) {
+      duePipelineIds.push(key.slice(orgId.length + 1));
+    }
+  }
+  if (duePipelineIds.length === 0) return;
+
+  // Resolve which DUE pipelines route to the lake from their latest deployed
+  // config snapshot (the saved YAML still carries the LAKE[...] refs).
   const pipelines = await prisma.pipeline.findMany({
-    where: { id: { in: pipelineIds } },
+    where: { id: { in: duePipelineIds } },
     select: {
       id: true,
       versions: {
@@ -224,26 +276,33 @@ export async function updateLakeCatalogFromHeartbeat(
       },
     },
   });
-
+  const lakePipelineIds = new Set<string>();
   for (const pipeline of pipelines) {
     const configYaml = pipeline.versions[0]?.configYaml;
-    if (!configYaml || !configYamlHasLakeSink(configYaml)) continue;
-    const totals = perPipeline.get(pipeline.id);
-    if (!totals) continue;
+    if (configYaml && configYamlHasLakeSink(configYaml)) lakePipelineIds.add(pipeline.id);
+  }
+
+  for (const pipelineId of duePipelineIds) {
+    const key = `${orgId}:${pipelineId}`;
+    const pending = pendingLakeWrites.get(key);
+    // Drop the buffered entry regardless of routing so a non-lake pipeline
+    // does not re-resolve its config every window.
+    pendingLakeWrites.delete(key);
+    if (!pending || !lakePipelineIds.has(pipelineId)) continue;
     try {
-      await upsertLakeDataset({ orgId, pipelineId: pipeline.id, environmentId });
-      if (totals.rows > BigInt(0) || totals.bytes > BigInt(0)) {
+      await upsertLakeDataset({ orgId, pipelineId, environmentId: pending.environmentId });
+      if (pending.rows > BigInt(0) || pending.bytes > BigInt(0)) {
         await recordLakeIngest({
           orgId,
-          pipelineId: pipeline.id,
-          rowsAdded: totals.rows,
-          bytesAdded: totals.bytes,
-          firstEventAt: now,
-          lastEventAt: now,
+          pipelineId,
+          rowsAdded: pending.rows,
+          bytesAdded: pending.bytes,
+          firstEventAt: pending.firstEventAt,
+          lastEventAt: pending.lastEventAt,
         });
       }
     } catch (err) {
-      errorLog("lake-catalog", `Failed to update lake catalog for pipeline ${pipeline.id}`, err);
+      errorLog("lake-catalog", `Failed to update lake catalog for pipeline ${pipelineId}`, err);
     }
   }
 }

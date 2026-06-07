@@ -38,6 +38,7 @@ import {
   recordLakeIngest,
   updateLakeCatalogFromHeartbeat,
   attachLakeSinkOutput,
+  __resetLakeCatalogBuffer,
 } from "../lake-catalog";
 
 const KEY = {
@@ -84,6 +85,10 @@ const NON_LAKE_YAML = "sinks:\n  out:\n    type: console\n    encoding:\n      c
 beforeEach(() => {
   vi.clearAllMocks();
   delete process.env.VF_LAKE_CLICKHOUSE_URL;
+  // Default: flush every heartbeat so the synchronous-write assertions hold.
+  // The debounce describe overrides this with a real window.
+  process.env.LAKE_CATALOG_FLUSH_MS = "0";
+  __resetLakeCatalogBuffer();
 });
 
 describe("upsertLakeDataset", () => {
@@ -326,6 +331,72 @@ describe("updateLakeCatalogFromHeartbeat", () => {
 
     expect(prismaMock.lakeDataset.upsert).not.toHaveBeenCalled();
     expect(prismaMock.lakeDataset.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateLakeCatalogFromHeartbeat debounce (SC-5)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-07T00:00:00.000Z"));
+    process.env.LAKE_CATALOG_FLUSH_MS = "60000";
+    process.env.VF_LAKE_CLICKHOUSE_URL = "http://clickhouse:8123";
+    __resetLakeCatalogBuffer();
+    prismaMock.pipeline.findMany.mockResolvedValue([
+      { id: "pipe-1", versions: [{ configYaml: LAKE_YAML }] },
+    ]);
+    prismaMock.lakeDataset.upsert.mockResolvedValue({});
+    prismaMock.lakeDataset.findUnique.mockResolvedValue({
+      rowCount: BigInt(0),
+      byteCount: BigInt(0),
+      firstEventAt: null,
+      lastEventAt: null,
+      schemaJson: null,
+    });
+    prismaMock.lakeDataset.update.mockResolvedValue({});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function beat() {
+    return updateLakeCatalogFromHeartbeat({
+      orgId: "org-1",
+      environmentId: "env-1",
+      dataPoints: [
+        dataPoint("pipe-1", {
+          eventsOut: BigInt(10),
+          bytesOut: BigInt(100),
+          lakeEventsOut: BigInt(10),
+          lakeBytesOut: BigInt(100),
+        }),
+      ],
+      // zero-baseline prev so each heartbeat is a real +10-row Lake delta
+      previousSnapshots: new Map([["node-1:pipe-1", snapshot()]]),
+    });
+  }
+
+  it("buffers writes within the window — no catalog I/O", async () => {
+    await beat();
+    expect(prismaMock.pipeline.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.lakeDataset.upsert).not.toHaveBeenCalled();
+
+    vi.setSystemTime(new Date("2026-06-07T00:00:30.000Z"));
+    await beat();
+    expect(prismaMock.lakeDataset.upsert).not.toHaveBeenCalled();
+  });
+
+  it("flushes once per window with the accumulated delta", async () => {
+    await beat(); // t=0
+    vi.setSystemTime(new Date("2026-06-07T00:00:30.000Z"));
+    await beat(); // +30s, still buffered
+    vi.setSystemTime(new Date("2026-06-07T00:01:05.000Z"));
+    await beat(); // +65s, past the 60s window -> flush
+
+    expect(prismaMock.lakeDataset.upsert).toHaveBeenCalledTimes(1);
+    expect(prismaMock.lakeDataset.update).toHaveBeenCalledTimes(1);
+    // three heartbeats of 10 Lake rows folded into one update
+    expect(updateData().rowCount).toBe(BigInt(30));
   });
 });
 
