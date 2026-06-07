@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import type { MetricUpdateEvent } from "@/lib/sse/types";
 import { warnLog } from "@/lib/logger";
+import { getRedis } from "@/lib/redis";
 
 export interface MetricSample {
   timestamp: number;
@@ -31,6 +32,13 @@ export type MetricStoreSubscriber = (events: MetricUpdateEvent[]) => void;
 const MAX_SAMPLES = 720; // 1 hour at 5s intervals
 const METRIC_STORE_MAX_KEYS = parseInt(process.env.METRIC_STORE_MAX_KEYS ?? "5000", 10);
 const BYTES_PER_SAMPLE = 160; // estimated: 9 numeric fields x ~17 bytes + overhead
+
+/** Redis hash holding the latest sample per metric key — the L2 cache that lets a
+ *  restarted/failover instance serve current metrics instead of zeros until the
+ *  next heartbeat. */
+const REDIS_LATEST_HASH = "vf:metric-store:latest";
+/** Samples older than this are ignored on hydrate and pruned from the L2 hash. */
+const REDIS_SAMPLE_TTL_MS = 10 * 60_000; // 10 minutes
 
 interface MetricStoreOptions {
   maxKeys?: number;
@@ -189,6 +197,7 @@ export class MetricStore {
     if (arr.length > MAX_SAMPLES) arr.shift();
     this.samples.set(key, arr);
     this.lastUpdated.set(key, now);
+    this.mirrorToRedis(key, sample);
 
     // Check capacity warning after insertion
     if (isNewKey && !this.hasWarnedCapacity && this.samples.size >= this.maxKeys * 0.8) {
@@ -217,6 +226,80 @@ export class MetricStore {
     if (arr.length > MAX_SAMPLES) arr.shift();
     this.samples.set(key, arr);
     this.lastUpdated.set(key, sample.timestamp);
+  }
+
+  /**
+   * Best-effort write of the latest sample for a key to the Redis L2 cache.
+   * Fire-and-forget: never blocks the heartbeat path and never throws. No-op
+   * when Redis is not configured (single-instance / graceful degradation).
+   */
+  private mirrorToRedis(key: string, sample: MetricSample): void {
+    const redis = getRedis();
+    if (!redis) return;
+    void redis
+      .hset(REDIS_LATEST_HASH, key, JSON.stringify(sample))
+      .catch((err: Error) =>
+        warnLog("metric-store", `L2 mirror failed: ${err.message}`),
+      );
+  }
+
+  /**
+   * Hydrate the in-memory L1 cache from the Redis L2 cache so a freshly
+   * started/restarted/failed-over instance serves current metrics immediately
+   * instead of zeros until the next heartbeat. Idempotent: only fills a key
+   * when L2 holds a sample strictly newer than L1 already has, so re-running
+   * (periodic refresh) never duplicates and never clobbers fresher local data.
+   * Stale L2 entries (older than REDIS_SAMPLE_TTL_MS) are skipped and pruned.
+   * No-op when Redis is not configured. Returns the number of samples merged.
+   */
+  async hydrateFromRedis(): Promise<number> {
+    const redis = getRedis();
+    if (!redis) return 0;
+
+    let all: Record<string, string>;
+    try {
+      all = await redis.hgetall(REDIS_LATEST_HASH);
+    } catch (err) {
+      warnLog("metric-store", `L2 hydrate failed: ${(err as Error).message}`);
+      return 0;
+    }
+
+    const cutoff = Date.now() - REDIS_SAMPLE_TTL_MS;
+    const stale: string[] = [];
+    let hydrated = 0;
+
+    for (const [key, json] of Object.entries(all)) {
+      let sample: MetricSample;
+      try {
+        sample = JSON.parse(json) as MetricSample;
+      } catch {
+        stale.push(key);
+        continue;
+      }
+      if (sample.timestamp < cutoff) {
+        stale.push(key);
+        continue;
+      }
+      // Idempotent: skip when L1 already holds a sample at least as new (this
+      // instance's own just-recorded samples, or an earlier hydrate cycle).
+      const existing = this.samples.get(key);
+      const latestTs =
+        existing && existing.length > 0
+          ? existing[existing.length - 1].timestamp
+          : 0;
+      if (sample.timestamp <= latestTs) continue;
+
+      const [nodeId, pipelineId, ...rest] = key.split(":");
+      if (!nodeId || !pipelineId || rest.length === 0) continue;
+      this.mergeSample(nodeId, pipelineId, rest.join(":"), sample);
+      hydrated++;
+    }
+
+    if (stale.length > 0) {
+      void redis.hdel(REDIS_LATEST_HASH, ...stale).catch(() => {});
+    }
+
+    return hydrated;
   }
 
   getSamples(nodeId: string, pipelineId: string, componentId: string, minutes = 60): MetricSample[] {
