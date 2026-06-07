@@ -5,6 +5,7 @@ import { router, protectedProcedure, withTeamAccess, roleLevel } from "@/trpc/in
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { isOrgWideAdmin } from "@/lib/org-admin";
+import { getCompliancePresets } from "@/server/services/dlp-templates/compliance-presets";
 
 const templateNodeSchema = z.object({
   id: z.string(),
@@ -51,6 +52,13 @@ export const templateRouter = router({
         createdAt: t.createdAt,
       }));
     }),
+
+  /**
+   * DLP compliance presets (PCI-DSS / HIPAA / GDPR), derived from the DLP
+   * template catalog's compliance tags. Static catalog data — safe for any
+   * authenticated user; no tenant-scoped input.
+   */
+  dlpCompliancePresets: protectedProcedure.query(() => getCompliancePresets()),
 
   /** Get a single template by ID */
   get: protectedProcedure
