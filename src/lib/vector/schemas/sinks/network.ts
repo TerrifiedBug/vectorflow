@@ -82,6 +82,7 @@ export const networkSinks: VectorComponentDef[] = [
           type: "object",
           description:
             "OTLP transport. Vector currently ships the HTTP protocol; uri, encoding, auth, tls, batch and request all live under it.",
+          default: { type: "http", encoding: { codec: "otlp" } },
           properties: {
             type: {
               type: "string",

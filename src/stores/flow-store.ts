@@ -405,6 +405,15 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
         for (const [key, prop] of Object.entries(schema.properties)) {
           if (prop.default !== undefined && typeof prop.default === "string") {
             config[key] = prop.default;
+          } else if (
+            prop.default !== undefined &&
+            typeof prop.default === "object" &&
+            prop.default !== null
+          ) {
+            // Object defaults (e.g. the OpenTelemetry sink's `protocol` block)
+            // seed nested config so deploy-time-required nested fields are
+            // emitted. Deep-cloned so the shared schema object is never mutated.
+            config[key] = structuredClone(prop.default);
           }
         }
       }
