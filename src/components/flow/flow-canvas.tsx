@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import {
   ReactFlow,
   Controls,
+  MiniMap,
+  Panel,
   useReactFlow,
   type ReactFlowInstance,
   type Edge,
@@ -100,6 +102,8 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
   const onEdgesChange = useFlowStore((s) => s.onEdgesChange);
   const onConnectStore = useFlowStore((s) => s.onConnect);
   const addNode = useFlowStore((s) => s.addNode);
+  const showMinimap = useFlowStore((s) => s.showMinimap);
+  const toggleMinimap = useFlowStore((s) => s.toggleMinimap);
   const hasFitRef = useRef(false);
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const [edgeContextMenu, setEdgeContextMenu] = useState<{ edgeId: string; x: number; y: number } | null>(null);
@@ -265,6 +269,25 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
         aria-roledescription="Pipeline editor canvas. Use arrow keys to navigate between nodes, Enter to select, Escape to deselect."
       >
         <Controls className="!bg-card !border-border !shadow-md [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-accent [&>button:focus-visible]:!ring-2 [&>button:focus-visible]:!ring-ring [&>button:focus-visible]:!outline-none" />
+        {showMinimap && (
+          <MiniMap
+            pannable
+            zoomable
+            ariaLabel="Pipeline minimap"
+            className="!bg-card !border-border !shadow-md"
+          />
+        )}
+        <Panel position="top-right">
+          <button
+            type="button"
+            onClick={toggleMinimap}
+            aria-pressed={showMinimap}
+            aria-label={showMinimap ? "Hide minimap" : "Show minimap"}
+            className="rounded border border-border bg-card px-2 py-1 text-xs text-foreground shadow-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            {showMinimap ? "Hide map" : "Show map"}
+          </button>
+        </Panel>
       </ReactFlow>
       {contextMenu && (
         <NodeContextMenu

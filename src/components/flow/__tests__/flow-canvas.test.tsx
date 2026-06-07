@@ -31,6 +31,8 @@ vi.mock("@xyflow/react", () => ({
   },
   Background: () => null,
   Controls: () => null,
+  MiniMap: () => null,
+  Panel: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
   useReactFlow: () => ({
     screenToFlowPosition: vi.fn(() => ({ x: 0, y: 0 })),
     fitView: vi.fn(),

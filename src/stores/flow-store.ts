@@ -72,6 +72,7 @@ export interface FlowState {
   selectedNodeIds: Set<string>;
   selectedEdgeId: string | null;
   clipboard: ClipboardData | null;
+  showMinimap: boolean;
   isDirty: boolean;
   isSystemPipeline: boolean;
 
@@ -91,6 +92,7 @@ export interface FlowState {
   setSelectedNodeIds: (ids: Set<string>) => void;
   toggleNodeSelection: (id: string) => void;
   clearSelection: () => void;
+  toggleMinimap: () => void;
   deselectAll: () => void;
   addNode: (
     componentDef: VectorComponentDef,
@@ -250,6 +252,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   selectedNodeIds: new Set<string>(),
   selectedEdgeId: null,
   clipboard: null,
+  showMinimap: false,
   isDirty: false,
   isSystemPipeline: false,
 
@@ -367,6 +370,10 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
 
   clearSelection: () => {
     set({ selectedNodeIds: new Set(), selectedNodeId: null });
+  },
+
+  toggleMinimap: () => {
+    set((state) => ({ showMinimap: !state.showMinimap }));
   },
 
   deselectAll: () => {
