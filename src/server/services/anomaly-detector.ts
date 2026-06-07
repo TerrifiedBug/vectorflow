@@ -561,12 +561,16 @@ async function fetchBaselineSql(
        WHERE "pipelineId" = $1
          AND "componentId" IS NULL
          AND "timestamp" >= $2
+        AND "timestamp" < $6
      ) t`,
     pipelineId,
     windowStart,
     bucketWeekend,
     bucketHour,
     hourTolerance,
+    // Exclude the row under evaluation (the latest row, == bucketTime) from its
+    // own baseline so a sparse seasonal bucket can't mask the very spike tested.
+    bucketTime,
   );
 
   const row = rows[0];
