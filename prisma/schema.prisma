@@ -692,6 +692,7 @@ model Environment {
   gitSyncJobs           GitSyncJob[]
   costPerGbCents        Int                     @default(0) // cents per GB processed (0 = volume-only)
   costBudgetCents       Int? // monthly budget in cents (null = no budget)
+  volumeBudgetGb        Int? // monthly volume budget in GB (null = no budget); evaluated even when costPerGbCents = 0
   costRecommendations   CostRecommendation[]
   anomalyEvents         AnomalyEvent[]
   correlationGroups     AlertCorrelationGroup[]

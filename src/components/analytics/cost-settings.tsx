@@ -25,6 +25,7 @@ export function CostSettings() {
 
   const [costRate, setCostRate] = useState<string>("");
   const [budget, setBudget] = useState<string>("");
+  const [volumeBudget, setVolumeBudget] = useState<string>("");
   const [initialized, setInitialized] = useState(false);
 
   // Initialize form values from server data
@@ -32,6 +33,7 @@ export function CostSettings() {
     const env = envQuery.data;
     setCostRate(env.costPerGbCents > 0 ? (env.costPerGbCents / 100).toString() : "");
     setBudget(env.costBudgetCents != null ? (env.costBudgetCents / 100).toString() : "");
+    setVolumeBudget(env.volumeBudgetGb != null ? env.volumeBudgetGb.toString() : "");
     setInitialized(true);
   }
 
@@ -51,6 +53,7 @@ export function CostSettings() {
 
     const costPerGbCents = costRate ? Math.round(parseFloat(costRate) * 100) : 0;
     const costBudgetCents = budget ? Math.round(parseFloat(budget) * 100) : null;
+    const volumeBudgetGb = volumeBudget ? Math.round(parseFloat(volumeBudget)) : null;
 
     if (isNaN(costPerGbCents) || costPerGbCents < 0) {
       toast.error("Cost rate must be a positive number");
@@ -62,10 +65,16 @@ export function CostSettings() {
       return;
     }
 
+    if (volumeBudgetGb !== null && (isNaN(volumeBudgetGb) || volumeBudgetGb < 0)) {
+      toast.error("Volume budget must be a positive number");
+      return;
+    }
+
     updateMutation.mutate({
       id: selectedEnvironmentId,
       costPerGbCents,
       costBudgetCents,
+      volumeBudgetGb,
     });
   };
 
@@ -109,6 +118,22 @@ export function CostSettings() {
             />
             <p className="text-xs text-muted-foreground">
               Alert when monthly cost exceeds this amount. Leave empty to disable.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="volume-budget">Monthly Volume Budget (GB)</Label>
+            <Input
+              id="volume-budget"
+              type="number"
+              step="1"
+              min="0"
+              placeholder="No volume limit"
+              value={volumeBudget}
+              onChange={(e) => setVolumeBudget(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Alert when monthly processed volume exceeds this many GB. Works even with no cost rate set.
             </p>
           </div>
         </div>

@@ -254,6 +254,7 @@ export const environmentRouter = router({
         requireDeployApproval: z.boolean().optional(),
         costPerGbCents: z.number().int().min(0).max(100_000).optional(), // cents per GB, max $1000/GB
         costBudgetCents: z.number().int().min(0).max(1_000_000_00).nullable().optional(), // monthly budget in cents, null to disable
+        volumeBudgetGb: z.number().int().min(0).max(100_000_000).nullable().optional(), // monthly volume budget in GB, null to disable
       })
     )
     .use(denyInDemo())

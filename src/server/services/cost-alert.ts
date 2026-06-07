@@ -1,7 +1,7 @@
 // src/server/services/cost-alert.ts
 import { prisma } from "@/lib/prisma";
 import type { AlertEvent } from "@/generated/prisma";
-import { getCurrentMonthCostCents } from "@/server/services/cost-attribution";
+import { getCurrentMonthCostCents, getCurrentMonthGb } from "@/server/services/cost-attribution";
 import { deliverToChannels } from "@/server/services/channels";
 import type { ChannelPayload } from "@/server/services/channels/types";
 
@@ -38,6 +38,7 @@ export async function evaluateCostAlerts(): Promise<CostAlertResult[]> {
           name: true,
           costPerGbCents: true,
           costBudgetCents: true,
+          volumeBudgetGb: true,
           team: { select: { name: true } },
         },
       },
@@ -47,16 +48,36 @@ export async function evaluateCostAlerts(): Promise<CostAlertResult[]> {
   for (const rule of rules) {
     const env = rule.environment;
 
-    // Skip if no budget is configured
-    if (env.costBudgetCents == null || env.costBudgetCents <= 0) continue;
-    if (env.costPerGbCents === 0) continue;
+    const hasCostBudget =
+      env.costBudgetCents != null && env.costBudgetCents > 0 && env.costPerGbCents > 0;
+    const hasVolumeBudget = env.volumeBudgetGb != null && env.volumeBudgetGb > 0;
 
-    const currentCostCents = await getCurrentMonthCostCents(
-      env.id,
-      env.costPerGbCents
-    );
+    // Skip if neither a cost nor a volume budget is configured
+    if (!hasCostBudget && !hasVolumeBudget) continue;
 
-    const exceeded = currentCostCents > env.costBudgetCents;
+    let exceeded = false;
+    let value = 0;
+    let message = "";
+
+    if (hasCostBudget && env.costBudgetCents != null) {
+      const currentCostCents = await getCurrentMonthCostCents(env.id, env.costPerGbCents);
+      if (currentCostCents > env.costBudgetCents) {
+        exceeded = true;
+        value = currentCostCents;
+        message = `Monthly cost $${(currentCostCents / 100).toFixed(2)} exceeds budget $${(env.costBudgetCents / 100).toFixed(2)}`;
+      }
+    }
+
+    // Volume budget is evaluated independently and fires even when no $-rate is
+    // configured (the cost branch above is skipped when costPerGbCents = 0).
+    if (!exceeded && hasVolumeBudget && env.volumeBudgetGb != null) {
+      const currentGb = await getCurrentMonthGb(env.id);
+      if (currentGb > env.volumeBudgetGb) {
+        exceeded = true;
+        value = currentGb; // AlertEvent.value is Float — keep the exact GB so it always reflects the breach
+        message = `Monthly volume ${currentGb.toFixed(1)} GB exceeds budget ${env.volumeBudgetGb} GB`;
+      }
+    }
 
     // Check for existing firing alert
     const existingEvent = await prisma.alertEvent.findFirst({
@@ -68,16 +89,11 @@ export async function evaluateCostAlerts(): Promise<CostAlertResult[]> {
     });
 
     if (exceeded && !existingEvent) {
-      // Fire new alert
-      const costDollars = (currentCostCents / 100).toFixed(2);
-      const budgetDollars = (env.costBudgetCents / 100).toFixed(2);
-      const message = `Monthly cost $${costDollars} exceeds budget $${budgetDollars}`;
-
       const event = await prisma.alertEvent.create({
         data: {
           alertRuleId: rule.id,
           status: "firing",
-          value: currentCostCents,
+          value,
           message,
           firedAt: new Date(),
         },
