@@ -492,23 +492,23 @@ async function fetchBaselineSql(
   pipelineId: string,
   windowStart: Date,
   minBaselinePoints: number,
-  now: Date,
+  bucketTime: Date,
   seasonalityEnabled: boolean,
   hourTolerance: number,
   minSeasonalPoints: number,
 ): Promise<Map<string, Baseline | null>> {
   const fetchTime = Date.now();
 
-  // Seasonal bucket parameters for the current evaluation time (UTC, to match
+  // Seasonal bucket parameters from the metric's own timestamp (UTC, to match
   // how Prisma stores DateTime and the JS getUTC* helpers).
-  const nowHour = now.getUTCHours();
-  const nowWeekend = isWeekendDay(now.getUTCDay());
+  const bucketHour = bucketTime.getUTCHours();
+  const bucketWeekend = isWeekendDay(bucketTime.getUTCDay());
 
   // A cached baseline is only valid for the same seasonal bucket; a different
   // hour/weekday (or seasonality disabled) must re-fetch rather than reuse a
   // stale profile. "global" keeps full caching when seasonality is off.
   const bucketKey = seasonalityEnabled
-    ? `${nowHour}:${nowWeekend ? "we" : "wd"}:${hourTolerance}:${minSeasonalPoints}`
+    ? `${bucketHour}:${bucketWeekend ? "we" : "wd"}:${hourTolerance}:${minSeasonalPoints}`
     : "global";
 
   const cached = baselineCache.get(pipelineId);
@@ -564,8 +564,8 @@ async function fetchBaselineSql(
      ) t`,
     pipelineId,
     windowStart,
-    nowWeekend,
-    nowHour,
+    bucketWeekend,
+    bucketHour,
     hourTolerance,
   );
 
@@ -734,9 +734,11 @@ export async function evaluatePipeline(
   if (!snapshot) return [];
 
   const current = snapshot.values;
-  // Seasonal bucket + baseline window key off the metric's own timestamp, so a
-  // delayed/stale latest row is compared against its own hour, not wall-clock.
-  const now = snapshot.timestamp;
+  // The baseline window tracks wall-clock so a cached baseline stays valid
+  // within its TTL (the window barely moves in 15 min). The seasonal bucket
+  // keys off the metric's own timestamp, so a delayed/stale latest row is
+  // compared against its own time-of-day rather than wall-clock.
+  const now = new Date();
   const windowStart = new Date(
     now.getTime() - cfg.baselineWindowDays * 24 * 3600_000,
   );
@@ -744,7 +746,7 @@ export async function evaluatePipeline(
     pipeline.id,
     windowStart,
     cfg.minBaselinePoints,
-    now,
+    snapshot.timestamp,
     cfg.seasonalityEnabled,
     cfg.seasonalHourTolerance,
     cfg.minSeasonalPoints,
