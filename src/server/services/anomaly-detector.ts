@@ -26,6 +26,12 @@ export const ANOMALY_CONFIG = {
   POLL_INTERVAL_MS: 300_000,
   /** Cooldown: don't create a new anomaly if one exists for the same pipeline+type within this window */
   DEDUP_WINDOW_HOURS: 4,
+  /** Use seasonal (hour-of-day + weekday/weekend) baselines so daily/weekly traffic cycles don't read as anomalies. */
+  SEASONALITY_ENABLED: true,
+  /** Slack (in hours) around the current hour-of-day when selecting the seasonal bucket (±N). */
+  SEASONAL_HOUR_TOLERANCE: 1,
+  /** Minimum samples in the seasonal bucket before trusting it; below this, fall back to the global z-score baseline. */
+  MIN_SEASONAL_POINTS: 8,
 } as const;
 
 // ─── Runtime config (DB-backed with in-memory cache) ────────────────────────
@@ -38,6 +44,9 @@ export interface RuntimeAnomalyConfig {
   pollIntervalMs: number;
   dedupWindowHours: number;
   enabledMetrics: readonly string[];
+  seasonalityEnabled: boolean;
+  seasonalHourTolerance: number;
+  minSeasonalPoints: number;
 }
 
 let cachedConfig: RuntimeAnomalyConfig | null = null;
@@ -67,6 +76,9 @@ export async function getAnomalyConfig(): Promise<RuntimeAnomalyConfig> {
       enabledMetrics: settings.anomalyEnabledMetrics
         ? settings.anomalyEnabledMetrics.split(",").map((s) => s.trim()).filter(Boolean)
         : ["eventsIn", "errorsTotal", "latencyMeanMs"],
+      seasonalityEnabled: ANOMALY_CONFIG.SEASONALITY_ENABLED,
+      seasonalHourTolerance: ANOMALY_CONFIG.SEASONAL_HOUR_TOLERANCE,
+      minSeasonalPoints: ANOMALY_CONFIG.MIN_SEASONAL_POINTS,
     };
   } catch {
     // DB failure: fall back to hardcoded defaults
@@ -78,6 +90,9 @@ export async function getAnomalyConfig(): Promise<RuntimeAnomalyConfig> {
       pollIntervalMs: ANOMALY_CONFIG.POLL_INTERVAL_MS,
       dedupWindowHours: ANOMALY_CONFIG.DEDUP_WINDOW_HOURS,
       enabledMetrics: ["eventsIn", "errorsTotal", "latencyMeanMs"],
+      seasonalityEnabled: ANOMALY_CONFIG.SEASONALITY_ENABLED,
+      seasonalHourTolerance: ANOMALY_CONFIG.SEASONAL_HOUR_TOLERANCE,
+      minSeasonalPoints: ANOMALY_CONFIG.MIN_SEASONAL_POINTS,
     };
   }
 
@@ -178,6 +193,67 @@ export function computeBaseline(points: MetricDataPoint[]): Baseline | null {
 }
 
 /**
+ * Circular distance between two hours-of-day (0–23), accounting for the
+ * midnight wraparound (hour 23 and hour 1 are 2 apart, not 22).
+ */
+export function hourCircularDistance(a: number, b: number): number {
+  const d = Math.abs(a - b);
+  return Math.min(d, 24 - d);
+}
+
+/** True when a UTC weekday index (0=Sun … 6=Sat) is a weekend day. */
+function isWeekendDay(dayOfWeek: number): boolean {
+  return dayOfWeek === 0 || dayOfWeek === 6;
+}
+
+/**
+ * Whether a historical point shares `now`'s seasonal bucket: the same
+ * weekday/weekend half of the week AND an hour-of-day within
+ * [nowHour ± hourTolerance] (UTC, wraparound-aware).
+ */
+export function inSeasonalBucket(
+  pointTimestamp: Date,
+  now: Date,
+  hourTolerance: number,
+): boolean {
+  if (
+    isWeekendDay(pointTimestamp.getUTCDay()) !== isWeekendDay(now.getUTCDay())
+  ) {
+    return false;
+  }
+  return (
+    hourCircularDistance(pointTimestamp.getUTCHours(), now.getUTCHours()) <=
+    hourTolerance
+  );
+}
+
+/**
+ * Seasonality-aware baseline. Restricts the baseline to points sharing `now`'s
+ * seasonal bucket so a metric that is high every afternoon is compared against
+ * past afternoons, not the flat 24h mean — the dominant source of false-positive
+ * anomalies on cyclic traffic.
+ *
+ * Falls back to the global baseline (z-score over all points) when the seasonal
+ * bucket holds fewer than `minSeasonalPoints` samples, so sparse history never
+ * makes detection worse than the non-seasonal path.
+ */
+export function computeSeasonalBaseline(
+  points: MetricDataPoint[],
+  now: Date,
+  hourTolerance: number,
+  minSeasonalPoints: number,
+): { baseline: Baseline | null; seasonal: boolean } {
+  const seasonalPoints = points.filter((p) =>
+    inSeasonalBucket(p.timestamp, now, hourTolerance),
+  );
+  if (seasonalPoints.length >= minSeasonalPoints) {
+    const baseline = computeBaseline(seasonalPoints);
+    if (baseline) return { baseline, seasonal: true };
+  }
+  return { baseline: computeBaseline(points), seasonal: false };
+}
+
+/**
  * Determine anomaly severity based on how many standard deviations the
  * current value is from the baseline mean.
  */
@@ -245,7 +321,11 @@ export function detectAnomalies(
     pollIntervalMs: ANOMALY_CONFIG.POLL_INTERVAL_MS,
     dedupWindowHours: ANOMALY_CONFIG.DEDUP_WINDOW_HOURS,
     enabledMetrics: ["eventsIn", "errorsTotal", "latencyMeanMs"],
+    seasonalityEnabled: ANOMALY_CONFIG.SEASONALITY_ENABLED,
+    seasonalHourTolerance: ANOMALY_CONFIG.SEASONAL_HOUR_TOLERANCE,
+    minSeasonalPoints: ANOMALY_CONFIG.MIN_SEASONAL_POINTS,
   },
+  now?: Date,
 ): AnomalyDetectionResult[] {
   const results: AnomalyDetectionResult[] = [];
 
@@ -254,7 +334,19 @@ export function detectAnomalies(
     return results;
   }
 
-  const baseline = computeBaseline(baselinePoints);
+  // Seasonal baseline (when an evaluation time is supplied) compares the current
+  // value against the same time-of-day + weekday/weekend history, falling back
+  // to the global z-score baseline when the seasonal bucket is too sparse.
+  // Without `now`, this is the plain global baseline (deterministic).
+  const baseline =
+    config.seasonalityEnabled && now
+      ? computeSeasonalBaseline(
+          baselinePoints,
+          now,
+          config.seasonalHourTolerance,
+          config.minSeasonalPoints,
+        ).baseline
+      : computeBaseline(baselinePoints);
   if (!baseline) return results;
 
   return detectAnomalyFromBaseline(pipelineId, metricName, currentValue, baseline, config);
@@ -334,6 +426,8 @@ interface BaselineCacheEntry {
   /** Baselines keyed by metricName — null when sampleCount < minBaselinePoints */
   baselines: Map<string, Baseline | null>;
   fetchedAt: number;
+  /** Seasonal bucket identity this entry was computed for; a mismatch is a cache miss. */
+  bucketKey: string;
 }
 
 /** Module-level cache keyed by pipelineId */
@@ -358,6 +452,21 @@ interface BaselineRow {
   tracesInMean: number | null;
   tracesInStddev: number | null;
   sampleCount: number;
+  eventsInSeasonalMean: number | null;
+  eventsInSeasonalStddev: number | null;
+  errorsTotalSeasonalMean: number | null;
+  errorsTotalSeasonalStddev: number | null;
+  latencyMeanMsSeasonalMean: number | null;
+  latencyMeanMsSeasonalStddev: number | null;
+  spansInSeasonalMean: number | null;
+  spansInSeasonalStddev: number | null;
+  tracesInSeasonalMean: number | null;
+  tracesInSeasonalStddev: number | null;
+  eventsInSeasonalCount: number;
+  errorsTotalSeasonalCount: number;
+  latencyMeanMsSeasonalCount: number;
+  spansInSeasonalCount: number;
+  tracesInSeasonalCount: number;
 }
 
 // ─── SQL-optimized data fetching ─────────────────────────────────────────────
@@ -383,10 +492,31 @@ async function fetchBaselineSql(
   pipelineId: string,
   windowStart: Date,
   minBaselinePoints: number,
+  bucketTime: Date,
+  seasonalityEnabled: boolean,
+  hourTolerance: number,
+  minSeasonalPoints: number,
 ): Promise<Map<string, Baseline | null>> {
-  const now = Date.now();
+  const fetchTime = Date.now();
+
+  // Seasonal bucket parameters from the metric's own timestamp (UTC, to match
+  // how Prisma stores DateTime and the JS getUTC* helpers).
+  const bucketHour = bucketTime.getUTCHours();
+  const bucketWeekend = isWeekendDay(bucketTime.getUTCDay());
+
+  // A cached baseline is only valid for the same seasonal bucket; a different
+  // hour/weekday (or seasonality disabled) must re-fetch rather than reuse a
+  // stale profile. "global" keeps full caching when seasonality is off.
+  const bucketKey = seasonalityEnabled
+    ? `${bucketHour}:${bucketWeekend ? "we" : "wd"}:${hourTolerance}:${minSeasonalPoints}`
+    : "global";
+
   const cached = baselineCache.get(pipelineId);
-  if (cached && now - cached.fetchedAt < BASELINE_CACHE_TTL_MS) {
+  if (
+    cached &&
+    cached.bucketKey === bucketKey &&
+    fetchTime - cached.fetchedAt < BASELINE_CACHE_TTL_MS
+  ) {
     return cached.baselines;
   }
 
@@ -402,13 +532,45 @@ async function fetchBaselineSql(
        STDDEV_POP("spansIn"::float8)     AS "spansInStddev",
        AVG("tracesIn"::float8)           AS "tracesInMean",
        STDDEV_POP("tracesIn"::float8)    AS "tracesInStddev",
-       COUNT(*)::int                     AS "sampleCount"
-     FROM "PipelineMetric"
-     WHERE "pipelineId" = $1
-       AND "componentId" IS NULL
-       AND "timestamp" >= $2`,
+       COUNT(*)::int                     AS "sampleCount",
+       AVG("eventsIn"::float8)           FILTER (WHERE seasonal) AS "eventsInSeasonalMean",
+       STDDEV_POP("eventsIn"::float8)    FILTER (WHERE seasonal) AS "eventsInSeasonalStddev",
+       AVG("errorsTotal"::float8)        FILTER (WHERE seasonal) AS "errorsTotalSeasonalMean",
+       STDDEV_POP("errorsTotal"::float8) FILTER (WHERE seasonal) AS "errorsTotalSeasonalStddev",
+       AVG("latencyMeanMs")              FILTER (WHERE seasonal) AS "latencyMeanMsSeasonalMean",
+       STDDEV_POP("latencyMeanMs")       FILTER (WHERE seasonal) AS "latencyMeanMsSeasonalStddev",
+       AVG("spansIn"::float8)            FILTER (WHERE seasonal) AS "spansInSeasonalMean",
+       STDDEV_POP("spansIn"::float8)     FILTER (WHERE seasonal) AS "spansInSeasonalStddev",
+       AVG("tracesIn"::float8)           FILTER (WHERE seasonal) AS "tracesInSeasonalMean",
+       STDDEV_POP("tracesIn"::float8)    FILTER (WHERE seasonal) AS "tracesInSeasonalStddev",
+       COUNT("eventsIn") FILTER (WHERE seasonal)::int      AS "eventsInSeasonalCount",
+       COUNT("errorsTotal") FILTER (WHERE seasonal)::int   AS "errorsTotalSeasonalCount",
+       COUNT("latencyMeanMs") FILTER (WHERE seasonal)::int AS "latencyMeanMsSeasonalCount",
+       COUNT("spansIn") FILTER (WHERE seasonal)::int       AS "spansInSeasonalCount",
+       COUNT("tracesIn") FILTER (WHERE seasonal)::int      AS "tracesInSeasonalCount"
+     FROM (
+       SELECT "eventsIn", "errorsTotal", "latencyMeanMs", "spansIn", "tracesIn",
+         (
+           (EXTRACT(DOW FROM "timestamp") IN (0, 6)) = $3
+           AND LEAST(
+                 ABS(EXTRACT(HOUR FROM "timestamp") - $4),
+                 24 - ABS(EXTRACT(HOUR FROM "timestamp") - $4)
+               ) <= $5
+         ) AS seasonal
+       FROM "PipelineMetric"
+       WHERE "pipelineId" = $1
+         AND "componentId" IS NULL
+         AND "timestamp" >= $2
+        AND "timestamp" < $6
+     ) t`,
     pipelineId,
     windowStart,
+    bucketWeekend,
+    bucketHour,
+    hourTolerance,
+    // Exclude the row under evaluation (the latest row, == bucketTime) from its
+    // own baseline so a sparse seasonal bucket can't mask the very spike tested.
+    bucketTime,
   );
 
   const row = rows[0];
@@ -420,33 +582,45 @@ async function fetchBaselineSql(
       baselines.set(metric, null);
     }
   } else {
-    // Build a Baseline for each metric (null if aggregate produced no non-null values)
+    // Prefer the seasonal bucket per metric when it holds enough non-null
+    // samples; otherwise the global baseline (z-score over the whole window) is
+    // the fallback. Per-metric counts matter because a nullable metric
+    // (latencyMeanMs) can be sparse inside an otherwise-dense time bucket.
     const metricDefs: Array<{
       name: string;
       mean: number | null;
       stddev: number | null;
+      seasonalMean: number | null;
+      seasonalStddev: number | null;
+      seasonalCount: number;
     }> = [
-      { name: "eventsIn", mean: row.eventsInMean, stddev: row.eventsInStddev },
-      { name: "errorsTotal", mean: row.errorsTotalMean, stddev: row.errorsTotalStddev },
-      { name: "latencyMeanMs", mean: row.latencyMeanMsMean, stddev: row.latencyMeanMsStddev },
-      { name: "spansIn", mean: row.spansInMean, stddev: row.spansInStddev },
-      { name: "tracesIn", mean: row.tracesInMean, stddev: row.tracesInStddev },
+      { name: "eventsIn", mean: row.eventsInMean, stddev: row.eventsInStddev, seasonalMean: row.eventsInSeasonalMean, seasonalStddev: row.eventsInSeasonalStddev, seasonalCount: row.eventsInSeasonalCount },
+      { name: "errorsTotal", mean: row.errorsTotalMean, stddev: row.errorsTotalStddev, seasonalMean: row.errorsTotalSeasonalMean, seasonalStddev: row.errorsTotalSeasonalStddev, seasonalCount: row.errorsTotalSeasonalCount },
+      { name: "latencyMeanMs", mean: row.latencyMeanMsMean, stddev: row.latencyMeanMsStddev, seasonalMean: row.latencyMeanMsSeasonalMean, seasonalStddev: row.latencyMeanMsSeasonalStddev, seasonalCount: row.latencyMeanMsSeasonalCount },
+      { name: "spansIn", mean: row.spansInMean, stddev: row.spansInStddev, seasonalMean: row.spansInSeasonalMean, seasonalStddev: row.spansInSeasonalStddev, seasonalCount: row.spansInSeasonalCount },
+      { name: "tracesIn", mean: row.tracesInMean, stddev: row.tracesInStddev, seasonalMean: row.tracesInSeasonalMean, seasonalStddev: row.tracesInSeasonalStddev, seasonalCount: row.tracesInSeasonalCount },
     ];
 
     for (const def of metricDefs) {
-      if (def.mean === null || def.mean === undefined) {
+      const useSeasonal =
+        seasonalityEnabled &&
+        def.seasonalCount >= minSeasonalPoints &&
+        def.seasonalMean != null;
+      const mean = useSeasonal ? def.seasonalMean : def.mean;
+      const stddev = useSeasonal ? def.seasonalStddev : def.stddev;
+      if (mean === null || mean === undefined) {
         baselines.set(def.name, null);
       } else {
         baselines.set(def.name, {
-          mean: def.mean,
-          stddev: def.stddev ?? 0,
-          sampleCount: row.sampleCount,
+          mean,
+          stddev: stddev ?? 0,
+          sampleCount: useSeasonal ? def.seasonalCount : row.sampleCount,
         });
       }
     }
   }
 
-  baselineCache.set(pipelineId, { baselines, fetchedAt: now });
+  baselineCache.set(pipelineId, { baselines, fetchedAt: fetchTime, bucketKey });
   return baselines;
 }
 
@@ -459,6 +633,13 @@ interface CurrentMetricRow {
   spansIn: bigint;
   tracesIn: bigint;
   latencyMeanMs: number | null;
+  timestamp: Date;
+}
+
+/** Latest metric values for a pipeline plus the timestamp of that row. */
+export interface CurrentMetricSnapshot {
+  values: Record<string, number>;
+  timestamp: Date;
 }
 
 /**
@@ -468,7 +649,7 @@ interface CurrentMetricRow {
  */
 async function fetchAllCurrentMetrics(
   pipelineIds: string[],
-): Promise<Map<string, Record<string, number>>> {
+): Promise<Map<string, CurrentMetricSnapshot>> {
   if (pipelineIds.length === 0) {
     return new Map();
   }
@@ -480,7 +661,8 @@ async function fetchAllCurrentMetrics(
        "errorsTotal",
        "spansIn",
        "tracesIn",
-       "latencyMeanMs"
+       "latencyMeanMs",
+       "timestamp"
      FROM "PipelineMetric"
      WHERE "pipelineId" = ANY($1::text[])
        AND "componentId" IS NULL
@@ -488,14 +670,17 @@ async function fetchAllCurrentMetrics(
     pipelineIds,
   );
 
-  const result = new Map<string, Record<string, number>>();
+  const result = new Map<string, CurrentMetricSnapshot>();
   for (const row of rows) {
     result.set(row.pipelineId, {
-      eventsIn: Number(row.eventsIn),
-      errorsTotal: Number(row.errorsTotal),
-      spansIn: Number(row.spansIn),
-      tracesIn: Number(row.tracesIn),
-      latencyMeanMs: row.latencyMeanMs ?? 0,
+      values: {
+        eventsIn: Number(row.eventsIn),
+        errorsTotal: Number(row.errorsTotal),
+        spansIn: Number(row.spansIn),
+        tracesIn: Number(row.tracesIn),
+        latencyMeanMs: row.latencyMeanMs ?? 0,
+      },
+      timestamp: row.timestamp ?? new Date(),
     });
   }
   return result;
@@ -540,22 +725,36 @@ export async function evaluatePipeline(
     environment: { teamId: string | null };
   },
   config?: RuntimeAnomalyConfig,
-  currentMetricsMap?: Map<string, Record<string, number>>,
+  currentMetricsMap?: Map<string, CurrentMetricSnapshot>,
 ): Promise<AnomalyDetectionResult[]> {
   const cfg = config ?? await getAnomalyConfig();
 
   // Use pre-fetched batch map when available (evaluateAllPipelines path),
   // otherwise fetch for this single pipeline (standalone evaluatePipeline call)
-  const current = currentMetricsMap
+  const snapshot = currentMetricsMap
     ? (currentMetricsMap.get(pipeline.id) ?? null)
     : ((await fetchAllCurrentMetrics([pipeline.id])).get(pipeline.id) ?? null);
 
-  if (!current) return [];
+  if (!snapshot) return [];
 
+  const current = snapshot.values;
+  // The baseline window tracks wall-clock so a cached baseline stays valid
+  // within its TTL (the window barely moves in 15 min). The seasonal bucket
+  // keys off the metric's own timestamp, so a delayed/stale latest row is
+  // compared against its own time-of-day rather than wall-clock.
+  const now = new Date();
   const windowStart = new Date(
-    Date.now() - cfg.baselineWindowDays * 24 * 3600_000,
+    now.getTime() - cfg.baselineWindowDays * 24 * 3600_000,
   );
-  const baselines = await fetchBaselineSql(pipeline.id, windowStart, cfg.minBaselinePoints);
+  const baselines = await fetchBaselineSql(
+    pipeline.id,
+    windowStart,
+    cfg.minBaselinePoints,
+    snapshot.timestamp,
+    cfg.seasonalityEnabled,
+    cfg.seasonalHourTolerance,
+    cfg.minSeasonalPoints,
+  );
   const allResults: AnomalyDetectionResult[] = [];
 
   const enabledMetrics = MONITORED_METRICS.filter((m) =>
