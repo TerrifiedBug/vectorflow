@@ -124,4 +124,30 @@ describe("validateNodeConfig", () => {
     // "bootstrap_servers" comes first alphabetically
     expect(result.firstErrorMessage).toBe("Bootstrap Servers is required");
   });
+
+  it("recurses into nested required (e.g. OpenTelemetry sink protocol.uri)", () => {
+    const schema = {
+      properties: {
+        protocol: {
+          type: "object",
+          properties: { uri: { type: "string" } },
+          required: ["uri"],
+        },
+      },
+      required: ["protocol"],
+    };
+    // protocol present but its nested-required uri missing → error.
+    const missingUri = validateNodeConfig({ protocol: { type: "http" } }, schema);
+    expect(missingUri.hasError).toBe(true);
+    expect(missingUri.firstErrorMessage).toBe("Protocol Uri is required");
+    // protocol entirely absent → error.
+    expect(validateNodeConfig({}, schema).hasError).toBe(true);
+    // nested-required satisfied → no error.
+    expect(
+      validateNodeConfig(
+        { protocol: { type: "http", uri: "https://c:4318/v1/logs" } },
+        schema,
+      ).hasError,
+    ).toBe(false);
+  });
 });

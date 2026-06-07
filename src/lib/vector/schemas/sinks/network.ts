@@ -66,6 +66,61 @@ export const networkSinks: VectorComponentDef[] = [
     },
   },
   {
+    type: "opentelemetry",
+    kind: "sink",
+    displayName: "OpenTelemetry",
+    description:
+      "Send logs, metrics, and traces via OTLP over HTTP. Pairs with the OpenTelemetry source for OTEL → Vector → OTEL pipelines.",
+    category: "Network",
+    inputTypes: ["log", "metric", "trace"],
+    outputTypes: ["log", "metric", "trace"],
+    icon: "Webhook",
+    configSchema: {
+      type: "object",
+      properties: {
+        protocol: {
+          type: "object",
+          description:
+            "OTLP transport. Vector currently ships the HTTP protocol; uri, encoding, compression, batch and request live under it. (Auth / mTLS for the OTLP sink is a follow-up — see PR notes.)",
+          default: { type: "http", encoding: { codec: "otlp" } },
+          properties: {
+            type: {
+              type: "string",
+              enum: ["http"],
+              default: "http",
+              description: "Transport protocol (OTLP/HTTP)",
+            },
+            uri: {
+              type: "string",
+              description:
+                "OTLP/HTTP endpoint, e.g. https://collector.example.com:4318/v1/logs",
+            },
+            encoding: {
+              type: "object",
+              description:
+                "OTLP protobuf encoding (required by Vector for OpenTelemetry export and native batching).",
+              properties: {
+                codec: {
+                  type: "string",
+                  enum: ["otlp"],
+                  default: "otlp",
+                  description: "OTLP protobuf codec",
+                },
+              },
+              required: ["codec"],
+            },
+            ...compressionSchema(["none", "gzip", "zstd"]),
+            ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
+            ...requestSchema(),
+          },
+          required: ["type", "uri", "encoding"],
+        },
+        ...bufferSchema(),
+      },
+      required: ["protocol"],
+    },
+  },
+  {
     type: "socket",
     kind: "sink",
     displayName: "Socket",

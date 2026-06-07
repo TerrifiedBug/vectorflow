@@ -12,6 +12,8 @@ interface FieldSchema {
   type?: string;
   format?: string;
   description?: string;
+  properties?: Record<string, FieldSchema>;
+  required?: string[];
 }
 
 interface ConfigSchema {
@@ -28,34 +30,35 @@ function toTitleCase(str: string): string {
 }
 
 /**
- * Validate a node's config object against the configSchema required fields.
- * Returns { hasError, firstErrorMessage } — pure function, no side effects.
+ * Collect "required field missing/invalid" errors for one object level, then
+ * recurse into any required field that is itself an object declaring its own
+ * `required` (e.g. the OpenTelemetry sink's nested `protocol.uri`). Without the
+ * recursion, nested-only required fields pass the editor guard but Vector
+ * rejects the generated config at deploy with `missing field ...`.
  */
-export function validateNodeConfig(
+function collectRequiredErrors(
   config: Record<string, unknown>,
-  configSchema: object,
-): NodeValidationResult {
-  const schema = configSchema as ConfigSchema;
-
+  schema: { properties?: Record<string, FieldSchema>; required?: string[] },
+  labelPrefix: string,
+  errors: { message: string }[],
+): void {
   if (!schema.properties || !schema.required || schema.required.length === 0) {
-    return { hasError: false, firstErrorMessage: undefined };
+    return;
   }
 
-  const errors: { fieldName: string; message: string }[] = [];
-
-  // Sort required fields alphabetically for deterministic ordering
+  // Sort required fields alphabetically for deterministic ordering.
   const sortedRequired = [...schema.required].sort();
 
   for (const fieldName of sortedRequired) {
     const fieldSchema = schema.properties[fieldName] ?? {};
     const value = config[fieldName];
+    const label = labelPrefix
+      ? `${labelPrefix} ${toTitleCase(fieldName)}`
+      : toTitleCase(fieldName);
     const isEmpty = value === undefined || value === null || value === "";
 
     if (isEmpty) {
-      errors.push({
-        fieldName,
-        message: `${toTitleCase(fieldName)} is required`,
-      });
+      errors.push({ message: `${label} is required` });
       continue;
     }
 
@@ -64,27 +67,49 @@ export function validateNodeConfig(
       continue;
     }
 
-    // Format validation for non-empty values
+    // Format validation for non-empty string values.
     if (typeof value === "string" && value) {
       if (fieldSchema.format === "uri") {
         try {
           new URL(value);
         } catch {
-          errors.push({
-            fieldName,
-            message: "Must be a valid URL (e.g. https://...)",
-          });
+          errors.push({ message: "Must be a valid URL (e.g. https://...)" });
         }
       } else if (fieldSchema.format === "email") {
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-          errors.push({
-            fieldName,
-            message: "Must be a valid email address",
-          });
+          errors.push({ message: "Must be a valid email address" });
         }
       }
     }
+
+    // Recurse into nested objects that declare their own required fields.
+    if (
+      fieldSchema.properties &&
+      fieldSchema.required &&
+      fieldSchema.required.length > 0 &&
+      typeof value === "object" &&
+      !Array.isArray(value)
+    ) {
+      collectRequiredErrors(
+        value as Record<string, unknown>,
+        { properties: fieldSchema.properties, required: fieldSchema.required },
+        label,
+        errors,
+      );
+    }
   }
+}
+
+/**
+ * Validate a node's config object against the configSchema required fields
+ * (recursing into nested required). Pure function, no side effects.
+ */
+export function validateNodeConfig(
+  config: Record<string, unknown>,
+  configSchema: object,
+): NodeValidationResult {
+  const errors: { message: string }[] = [];
+  collectRequiredErrors(config, configSchema as ConfigSchema, "", errors);
 
   return {
     hasError: errors.length > 0,
