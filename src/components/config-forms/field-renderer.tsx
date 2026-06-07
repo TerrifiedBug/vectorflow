@@ -405,6 +405,7 @@ export function FieldRenderer({
               required={requiredFields.includes(key)}
               parentValues={objValue}
               environmentId={environmentId}
+              pipelineId={pipelineId}
             />
           ))}
         </div>
