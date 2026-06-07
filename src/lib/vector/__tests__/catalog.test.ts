@@ -24,4 +24,20 @@ describe("Vector Catalog (PERF-04)", () => {
     const result = findComponentDef("nonexistent_component_xyz");
     expect(result).toBeUndefined();
   });
+
+  it("ships both OpenTelemetry source and sink (NF-5: OTEL → Vector → OTEL)", () => {
+    expect(findComponentDef("opentelemetry", "source")?.kind).toBe("source");
+    const sink = findComponentDef("opentelemetry", "sink");
+    expect(sink?.kind).toBe("sink");
+    // Pairs with the source across all three signal types.
+    expect(sink?.inputTypes).toEqual(
+      expect.arrayContaining(["log", "metric", "trace"]),
+    );
+    // OTLP/HTTP shape: uri + encoding live under `protocol`.
+    const protocol = sink?.configSchema?.properties?.protocol as
+      | { properties?: Record<string, unknown> }
+      | undefined;
+    expect(protocol?.properties).toHaveProperty("uri");
+    expect(protocol?.properties).toHaveProperty("encoding");
+  });
 });

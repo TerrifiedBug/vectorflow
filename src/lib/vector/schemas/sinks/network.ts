@@ -66,6 +66,49 @@ export const networkSinks: VectorComponentDef[] = [
     },
   },
   {
+    type: "opentelemetry",
+    kind: "sink",
+    displayName: "OpenTelemetry",
+    description:
+      "Send logs, metrics, and traces via OTLP over HTTP. Pairs with the OpenTelemetry source for OTEL → Vector → OTEL pipelines.",
+    category: "Network",
+    inputTypes: ["log", "metric", "trace"],
+    outputTypes: ["log", "metric", "trace"],
+    icon: "Webhook",
+    configSchema: {
+      type: "object",
+      properties: {
+        protocol: {
+          type: "object",
+          description:
+            "OTLP transport. Vector currently ships the HTTP protocol; uri, encoding, auth, tls, batch and request all live under it.",
+          properties: {
+            type: {
+              type: "string",
+              enum: ["http"],
+              default: "http",
+              description: "Transport protocol (OTLP/HTTP)",
+            },
+            uri: {
+              type: "string",
+              description:
+                "OTLP/HTTP endpoint, e.g. https://collector.example.com:4318/v1/logs",
+            },
+            ...authBasicBearerSchema(),
+            ...encodingSchema(["otlp"]),
+            ...compressionSchema(["none", "gzip", "zstd"]),
+            ...tlsSchema(),
+            ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
+            ...requestSchema(),
+          },
+          required: ["type", "uri", "encoding"],
+        },
+        ...bufferSchema(),
+      },
+      required: ["protocol"],
+    },
+  },
+  {
     type: "socket",
     kind: "sink",
     displayName: "Socket",
