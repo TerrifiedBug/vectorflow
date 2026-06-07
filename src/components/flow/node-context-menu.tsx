@@ -9,6 +9,14 @@ import {
   Share2,
   Power,
   Replace,
+  AlignStartVertical,
+  AlignCenterVertical,
+  AlignEndVertical,
+  AlignStartHorizontal,
+  AlignCenterHorizontal,
+  AlignEndHorizontal,
+  AlignHorizontalDistributeCenter,
+  AlignVerticalDistributeCenter,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -52,6 +60,8 @@ export function NodeContextMenu({
   const copySelectedNodes = useFlowStore((s) => s.copySelectedNodes);
   const pasteFromSession = useFlowStore((s) => s.pasteFromSession);
   const nodes = useFlowStore((s) => s.nodes);
+  const alignSelectedNodes = useFlowStore((s) => s.alignSelectedNodes);
+  const distributeSelectedNodes = useFlowStore((s) => s.distributeSelectedNodes);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const targetNode = nodes.find((n) => n.id === nodeId);
@@ -143,6 +153,79 @@ export function NodeContextMenu({
             },
           },
         ] as MenuAction[])
+      : []),
+    ...(isMulti
+      ? ([
+          { separator: true },
+          {
+            label: "Align left",
+            icon: AlignStartVertical,
+            onClick: () => {
+              alignSelectedNodes("left");
+              onClose();
+            },
+          },
+          {
+            label: "Align center",
+            icon: AlignCenterVertical,
+            onClick: () => {
+              alignSelectedNodes("center-x");
+              onClose();
+            },
+          },
+          {
+            label: "Align right",
+            icon: AlignEndVertical,
+            onClick: () => {
+              alignSelectedNodes("right");
+              onClose();
+            },
+          },
+          {
+            label: "Align top",
+            icon: AlignStartHorizontal,
+            onClick: () => {
+              alignSelectedNodes("top");
+              onClose();
+            },
+          },
+          {
+            label: "Align middle",
+            icon: AlignCenterHorizontal,
+            onClick: () => {
+              alignSelectedNodes("center-y");
+              onClose();
+            },
+          },
+          {
+            label: "Align bottom",
+            icon: AlignEndHorizontal,
+            onClick: () => {
+              alignSelectedNodes("bottom");
+              onClose();
+            },
+          },
+          {
+            label: "Distribute horizontally",
+            icon: AlignHorizontalDistributeCenter,
+            disabled: multiCount < 3,
+            onClick: () => {
+              if (multiCount < 3) return;
+              distributeSelectedNodes("horizontal");
+              onClose();
+            },
+          },
+          {
+            label: "Distribute vertically",
+            icon: AlignVerticalDistributeCenter,
+            disabled: multiCount < 3,
+            onClick: () => {
+              if (multiCount < 3) return;
+              distributeSelectedNodes("vertical");
+              onClose();
+            },
+          },
+        ] as MenuItem[])
       : []),
     { separator: true },
     {
