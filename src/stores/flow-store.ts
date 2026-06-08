@@ -487,7 +487,10 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
                 data: {
                   ...data,
                   componentDef,
-                  componentKey: generateComponentKey(componentDef.type),
+                  // Keep the existing componentKey: the swap is in-place (same id
+                  // and edges), so node-scoped state keyed by componentKey (live
+                  // tail/sample, AI conversations, metric lookups) stays attached
+                  // and the Vector component name doesn't churn.
                   displayName: keepName ? data.displayName : componentDef.displayName,
                   config,
                   hasError: validation.hasError || undefined,

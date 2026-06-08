@@ -39,6 +39,8 @@ describe("flow-store replaceNodeComponent", () => {
     const srcId = addAndGetId(def("demo_logs", "source", "Demo Logs"), 0, 0);
     const sinkId = addAndGetId(def("http", "sink", "HTTP", { uri: { default: "http://x" } }), 200, 0);
     const sinkPos = useFlowStore.getState().nodes.find((n) => n.id === sinkId)!.position;
+    const sinkKey = useFlowStore.getState().nodes.find((n) => n.id === sinkId)!.data
+      .componentKey;
     useFlowStore.setState({ edges: [{ id: "e1", source: srcId, target: sinkId }] });
 
     useFlowStore
@@ -53,6 +55,7 @@ describe("flow-store replaceNodeComponent", () => {
     expect(replaced.data.config).toEqual({ topic: "events" }); // config reset to new defaults
     expect(state.edges).toHaveLength(1); // edge preserved
     expect(state.edges[0].target).toBe(sinkId);
+    expect(replaced.data.componentKey).toBe(sinkKey); // identity (Vector name) preserved
     expect(state.isDirty).toBe(true);
   });
 
