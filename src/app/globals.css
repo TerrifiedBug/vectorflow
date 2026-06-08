@@ -115,7 +115,7 @@
 }
 
 /* ─────────────────────────────────────────────────────────────
- * v2 Console — dark theme (default product experience)
+ * v2 Console — light theme (:root base). Dark stays the product default (.dark, below).
  * Source: VectorFlow 2.0/screens/tokens.jsx (console)
  * ───────────────────────────────────────────────────────────── */
 :root {
@@ -126,31 +126,31 @@
   --font-mono: var(--font-jetbrains-mono), "SF Mono", Menlo, monospace;
   --font-display: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
-  /* surfaces */
-  --bg: #0a0b0d;
-  --bg-1: #0e1013;
-  --bg-2: #14171c;
-  --bg-3: #1a1e25;
-  --bg-4: #252a32;
+  /* surfaces (light) */
+  --bg: #f5f6f8;
+  --bg-1: #fafbfc;
+  --bg-2: #ffffff;
+  --bg-3: #eceef2;
+  --bg-4: #e1e4ea;
 
-  /* hairlines */
-  --line: #1f2329;
-  --line-2: #2a2f37;
-  --line-3: #3a4049;
+  /* hairlines (darker = more prominent on light) */
+  --line: #e3e6eb;
+  --line-2: #d3d8e0;
+  --line-3: #bcc3ce;
 
-  /* foreground */
-  --fg: #e6e8ec;
-  --fg-1: #a8adb6;
-  --fg-2: #6b727d;
-  --fg-3: #454b54;
+  /* foreground (dark text on light surfaces) */
+  --fg: #14171c;
+  --fg-1: #3d434d;
+  --fg-2: #585f6a;
+  --fg-3: #868d99;
 
-  /* accent (electric green — Vector flow) */
+  /* accent (electric green — Vector flow; bright fills, deep variant for thin/on-white) */
   --accent-brand: #7dd957;
   --accent-brand-2: #5fb83a;
-  --accent-soft: rgba(125, 217, 87, 0.12);
-  --accent-line: rgba(125, 217, 87, 0.35);
+  --accent-soft: rgba(125, 217, 87, 0.16);
+  --accent-line: rgba(125, 217, 87, 0.45);
 
-  /* node-type semantics */
+  /* node-type semantics (bright canvas chips w/ dark text — shared across themes) */
   --node-source: #7dd957;
   --node-source-glow: rgba(125, 217, 87, 0.30);
   --node-source-foreground: #0a0b0d;
@@ -163,30 +163,30 @@
   --node-shared: #f59e0b;
   --node-shared-foreground: #0a0b0d;
 
-  /* status */
-  --status-healthy: #4ade80;
-  --status-healthy-bg: rgba(74, 222, 128, 0.12);
-  --status-healthy-foreground: #86efac;
-  --status-degraded: #fbbf24;
-  --status-degraded-bg: rgba(251, 191, 36, 0.12);
-  --status-degraded-foreground: #fcd34d;
-  --status-error: #f87171;
-  --status-error-bg: rgba(248, 113, 113, 0.12);
-  --status-error-foreground: #fca5a5;
-  --status-neutral: #6b727d;
-  --status-neutral-bg: rgba(107, 114, 125, 0.12);
-  --status-neutral-foreground: #a8adb6;
-  --status-info: #60a5fa;
-  --status-info-bg: rgba(96, 165, 250, 0.12);
-  --status-info-foreground: #93c5fd;
+  /* status (deeper hues + dark text foregrounds for light tints) */
+  --status-healthy: #16a34a;
+  --status-healthy-bg: rgba(22, 163, 74, 0.12);
+  --status-healthy-foreground: #166534;
+  --status-degraded: #d97706;
+  --status-degraded-bg: rgba(217, 119, 6, 0.12);
+  --status-degraded-foreground: #92600a;
+  --status-error: #dc2626;
+  --status-error-bg: rgba(220, 38, 38, 0.12);
+  --status-error-foreground: #b42318;
+  --status-neutral: #6b7280;
+  --status-neutral-bg: rgba(107, 114, 128, 0.12);
+  --status-neutral-foreground: #4b5563;
+  --status-info: #2563eb;
+  --status-info-bg: rgba(37, 99, 235, 0.12);
+  --status-info-foreground: #1d4ed8;
 
-  /* charts */
-  --chart-1: #7dd957;
-  --chart-2: #5b9cff;
-  --chart-3: #c084fc;
-  --chart-4: #fbbf24;
-  --chart-5: #f87171;
-  --chart-6: #22d3ee;
+  /* charts (deepened for visibility on light surfaces) */
+  --chart-1: #4d9d2a;
+  --chart-2: #3b82f6;
+  --chart-3: #9333ea;
+  --chart-4: #b45309;
+  --chart-5: #ef4444;
+  --chart-6: #0891b2;
 
   /* shadcn semantic mapping */
   --background: var(--bg);
@@ -206,7 +206,7 @@
   --destructive: var(--status-error);
   --border: var(--line);
   --input: var(--line-2);
-  --ring: var(--accent-brand);
+  --ring: #2f7d10;
 
   /* sidebar */
   --sidebar: var(--bg-1);
@@ -214,9 +214,9 @@
   --sidebar-primary: var(--accent-brand);
   --sidebar-primary-foreground: #0a0b0d;
   --sidebar-accent: var(--accent-soft);
-  --sidebar-accent-foreground: var(--accent-brand);
+  --sidebar-accent-foreground: #2f7d10;
   --sidebar-border: var(--line);
-  --sidebar-ring: var(--accent-brand);
+  --sidebar-ring: #2f7d10;
 } 
 
 /* ─────────────────────────────────────────────────────────────
