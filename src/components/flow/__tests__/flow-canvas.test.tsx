@@ -16,6 +16,7 @@ type CapturedProps = {
   onConnect?: (connection: Connection) => void;
   "aria-roledescription"?: string;
   edgeTypes?: Record<string, unknown>;
+  onlyRenderVisibleElements?: boolean;
 };
 
 let capturedReactFlowProps: CapturedProps = {};
@@ -155,6 +156,28 @@ describe("FlowCanvas", () => {
 
       expect(capturedReactFlowProps.edgeTypes?.metric).toBe(metricEdgeMock);
     });
+
+  describe("canvas virtualization (onlyRenderVisibleElements)", () => {
+    it("enables viewport culling so large graphs only mount visible elements", () => {
+      // Simulate a large pipeline; React Flow must be told to cull off-screen
+      // nodes/edges rather than mount all of them.
+      for (let i = 0; i < 200; i++) {
+        mockNodes.push(makeNode(`n${i}`, ["log"], ["log"]));
+      }
+      render(<FlowCanvas />);
+
+      expect(capturedReactFlowProps.onlyRenderVisibleElements).toBe(true);
+    });
+
+    it("keeps culling enabled for small graphs (no-op when everything is in view)", () => {
+      // A handful of nodes: the prop is still set; React Flow leaves in-view
+      // nodes mounted, so small graphs are unaffected.
+      mockNodes.push(makeNode("n1", ["log"], ["log"]));
+      render(<FlowCanvas />);
+
+      expect(capturedReactFlowProps.onlyRenderVisibleElements).toBe(true);
+    });
+  });
 
   describe("isValidConnection — DataType compatibility", () => {
     it("returns false for a self-connection", () => {

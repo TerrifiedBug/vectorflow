@@ -259,6 +259,11 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         proOptions={{ hideAttribution: true }}
+        // Virtualize the canvas: only mount nodes/edges inside the viewport so
+        // large pipelines stay responsive. @xyflow/react v12 auto-measures node
+        // dimensions, so culling is accurate once nodes mount. Effectively a
+        // no-op for small graphs (every node is already in view).
+        onlyRenderVisibleElements
         deleteKeyCode={null}
         selectionKeyCode="Shift"
         multiSelectionKeyCode="Meta"
