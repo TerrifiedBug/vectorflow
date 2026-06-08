@@ -830,9 +830,14 @@ export function FlowToolbar({
                   value={importText}
                   onChange={(e) => {
                     setImportText(e.target.value);
-                    // The staged preview no longer matches edited text.
+                    // The staged preview no longer matches edited text. Drop it
+                    // and invalidate any in-flight validation (bump the request id
+                    // so its async callback is ignored) to avoid stale feedback.
+                    importRequestIdRef.current += 1;
                     setPendingImport(null);
                     setImportDiff(null);
+                    setImportWarnings([]);
+                    setImportValidation({ status: "idle" });
                   }}
                   placeholder="sources:\n  demo:\n    type: demo_logs"
                   className="min-h-[180px] font-mono text-xs"
