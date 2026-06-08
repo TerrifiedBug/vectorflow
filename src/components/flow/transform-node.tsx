@@ -22,6 +22,7 @@ type TransformNodeData = {
   config: Record<string, unknown>;
   metrics?: NodeMetricsData;
   disabled?: boolean;
+  groupId?: string;
   hasError?: boolean;
   firstErrorMessage?: string;
   sharedComponentId?: string | null;
@@ -80,6 +81,7 @@ function TransformNodeComponent({
       fadedForSearch={isSearching && !isSearchMatch}
       searchMatch={isSearchMatch}
       badge={badge}
+      groupId={data.groupId}
     />
   );
 }

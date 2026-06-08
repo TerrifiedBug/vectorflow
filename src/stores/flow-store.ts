@@ -26,6 +26,8 @@ interface FlowNodeData {
   displayName?: string;
   config: Record<string, unknown>;
   disabled?: boolean;
+  /** UX-1: nodes sharing a groupId are visually grouped; survives reload via PipelineNode.groupId. */
+  groupId?: string;
   metrics?: NodeMetricsData;
   isSystemLocked?: boolean;
   hasError?: boolean;
@@ -160,6 +162,11 @@ export interface FlowState {
     mode: "left" | "center-x" | "right" | "top" | "center-y" | "bottom",
   ) => void;
   distributeSelectedNodes: (axis: "horizontal" | "vertical") => void;
+
+  // Grouping (multi-select) — a group is a shared groupId on node.data, persisted
+  // to PipelineNode.groupId so it survives reload. No collapsible subflow.
+  groupSelectedNodes: () => void;
+  ungroupNodes: (groupId: string) => void;
 
   // Undo / Redo
   undo: () => void;
@@ -1239,6 +1246,38 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
         ? { ...n, position: { ...n.position, [axisKey]: targets.get(n.id)! } }
         : n,
     );
+    set({ ...history, nodes, isDirty: true });
+  },
+
+  /* ---- Grouping ---- */
+
+  groupSelectedNodes: () => {
+    const state = get();
+    const ids = state.selectedNodeIds;
+    // A group needs at least two members; anything less is a no-op.
+    if (ids.size < 2) return;
+    const groupId = generateId();
+    const history = pushSnapshot(state as InternalState);
+    const nodes = state.nodes.map((n) =>
+      ids.has(n.id) ? { ...n, data: { ...n.data, groupId } } : n,
+    );
+    set({ ...history, nodes, isDirty: true });
+  },
+
+  ungroupNodes: (groupId) => {
+    const state = get();
+    const members = state.nodes.filter(
+      (n) => (n.data as Partial<FlowNodeData> | undefined)?.groupId === groupId,
+    );
+    if (members.length === 0) return;
+    const history = pushSnapshot(state as InternalState);
+    const nodes = state.nodes.map((n) => {
+      if ((n.data as Partial<FlowNodeData> | undefined)?.groupId !== groupId) return n;
+      // Drop the groupId key entirely so it leaves the dirty fingerprint clean.
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { groupId: _drop, ...rest } = n.data as Record<string, unknown>;
+      return { ...n, data: rest };
+    });
     set({ ...history, nodes, isDirty: true });
   },
 

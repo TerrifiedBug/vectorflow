@@ -24,6 +24,7 @@ export const nodeSchema = z.object({
   positionX: z.number(),
   positionY: z.number(),
   disabled: z.boolean().default(false),
+  groupId: z.string().nullable().optional(),
   sharedComponentId: z.string().nullable().optional(),
   sharedComponentVersion: z.number().nullable().optional(),
 });

@@ -38,6 +38,7 @@ interface SaveGraphNode {
   positionX: number;
   positionY: number;
   disabled: boolean;
+  groupId?: string | null;
   sharedComponentId?: string | null;
   sharedComponentVersion?: number | null;
 }
@@ -150,6 +151,7 @@ export async function saveGraphComponents(
           positionX: node.positionX,
           positionY: node.positionY,
           disabled: node.disabled,
+          groupId: node.groupId ?? null,
           sharedComponentId: node.sharedComponentId ?? null,
           sharedComponentVersion: node.sharedComponentVersion ?? null,
         },

@@ -22,6 +22,7 @@ type SourceNodeData = {
   config: Record<string, unknown>;
   metrics?: NodeMetricsData;
   disabled?: boolean;
+  groupId?: string;
   isSystemLocked?: boolean;
   hasError?: boolean;
   firstErrorMessage?: string;
@@ -82,6 +83,7 @@ function SourceNodeComponent({ id, data, selected }: NodeProps<SourceNodeType>) 
       fadedForSearch={isSearching && !isSearchMatch}
       searchMatch={isSearchMatch}
       badge={badge}
+      groupId={data.groupId}
     />
   );
 }

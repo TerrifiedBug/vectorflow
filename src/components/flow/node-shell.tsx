@@ -26,6 +26,8 @@ interface NodeShellProps {
   searchMatch?: boolean;
   /** Top-right corner badge (validation error, lock, etc.) */
   badge?: ReactNode;
+  /** UX-1: when set, draws a shared colored ring (hue hashed from the id) around all group members. */
+  groupId?: string;
 }
 
 const NODE_W = 180;
@@ -42,6 +44,18 @@ const GLOW_VAR: Record<NodeKind, string> = {
   transform: "var(--node-transform-glow)",
   sink: "var(--node-sink-glow)",
 };
+
+/**
+ * Deterministic hue (0-359) hashed from a groupId so every node in the same
+ * group gets the same ring color, while different groups get different hues.
+ */
+function groupHue(groupId: string): number {
+  let h = 0;
+  for (let i = 0; i < groupId.length; i++) {
+    h = (Math.imul(h, 31) + groupId.charCodeAt(i)) >>> 0;
+  }
+  return h % 360;
+}
 
 /**
  * NodeShell — shared visual chrome for the v2 source/transform/sink node cards.
@@ -61,9 +75,11 @@ export function NodeShell({
   fadedForSearch,
   searchMatch,
   badge,
+  groupId,
 }: NodeShellProps) {
   const color = COLOR_VAR[kind];
   const glow = GLOW_VAR[kind];
+  const groupColor = groupId ? `hsl(${groupHue(groupId)} 65% 55%)` : undefined;
 
   return (
     <div
@@ -89,6 +105,10 @@ export function NodeShell({
           boxShadow: selected
             ? `0 0 0 3px color-mix(in srgb, ${color} 25%, transparent), 0 0 12px ${glow}`
             : undefined,
+          // UX-1 group ring: an outline sits outside the border and composes
+          // with the selected glow / search ring without being clipped.
+          outline: groupColor ? `2px solid ${groupColor}` : undefined,
+          outlineOffset: groupColor ? 2 : undefined,
         }}
       >
         {/* Left accent stripe */}
