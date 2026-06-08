@@ -166,6 +166,33 @@ describe("fleet.configDriftReport — classification", () => {
     expect(olderAgent.hasDesired).toBe(true);
   });
 
+  it("drops stale statuses whose node no longer matches the pipeline selector", async () => {
+    prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
+      statusRow({
+        nodeId: "node-1",
+        node: { name: "alpha", labels: { tier: "edge" } },
+        pipeline: { name: "ingest", nodeSelector: { tier: "edge" } },
+        configChecksum: "sum-1",
+      }),
+      // node labels no longer satisfy the pipeline's selector → stale, excluded
+      statusRow({
+        nodeId: "node-2",
+        pipelineId: "pipe-2",
+        node: { name: "bravo", labels: { tier: "core" } },
+        pipeline: { name: "egress", nodeSelector: { tier: "edge" } },
+        configChecksum: "sum-2",
+      }),
+    ] as never);
+    prismaMock.pipeline.findMany.mockResolvedValue([
+      { id: "pipe-1", desiredConfigChecksum: "sum-1" },
+      { id: "pipe-2", desiredConfigChecksum: "sum-2" },
+    ] as never);
+
+    const result = await caller.configDriftReport({ environmentId: "env-1" });
+    expect(result.summary.total).toBe(1);
+    expect(result.nodes.map((n) => n.nodeId)).toEqual(["node-1"]);
+  });
+
   it("scopes the query to the caller's organization and environment", async () => {
     prismaMock.nodePipelineStatus.findMany.mockResolvedValue([] as never);
 

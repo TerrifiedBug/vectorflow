@@ -930,21 +930,33 @@ export const fleetRouter = router({
           status: true,
           configChecksum: true,
           lastUpdated: true,
-          node: { select: { name: true } },
-          pipeline: { select: { name: true } },
+          node: { select: { name: true, labels: true } },
+          pipeline: { select: { name: true, nodeSelector: true } },
         },
         orderBy: [{ node: { name: "asc" } }, { pipeline: { name: "asc" } }],
+      });
+
+      // Mirror the agent config endpoint's per-node selector match: a pipeline
+      // targets a node only when every nodeSelector entry matches the node's
+      // labels (an empty selector targets all nodes). This drops stale rows for
+      // pipelines that no longer target the node (e.g. after a selector/label
+      // change the agent hasn't reconciled yet) so they aren't phantom drift.
+      const activeStatuses = statuses.filter((s) => {
+        const selector =
+          (s.pipeline.nodeSelector as Record<string, string> | null) ?? {};
+        const labels = (s.node.labels as Record<string, string> | null) ?? {};
+        return Object.entries(selector).every(([k, v]) => labels[k] === v);
       });
 
       // Desired checksums for every reported pipeline — surfaced even when the
       // agent reports no running checksum (older agents), so the table shows
       // "— / <desired>" rather than "— / —".
-      const pipelineIds = [...new Set(statuses.map((s) => s.pipelineId))];
+      const pipelineIds = [...new Set(activeStatuses.map((s) => s.pipelineId))];
       const desiredChecksums = await getExpectedChecksums(pipelineIds);
 
-      const summary = { total: statuses.length, inSync: 0, drifted: 0, unknown: 0 };
+      const summary = { total: activeStatuses.length, inSync: 0, drifted: 0, unknown: 0 };
 
-      const nodes = statuses.map((s) => {
+      const nodes = activeStatuses.map((s) => {
         const running = s.configChecksum;
         const desired = desiredChecksums.get(s.pipelineId) ?? null;
 
