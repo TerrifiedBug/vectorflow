@@ -33,6 +33,15 @@ import { Switch } from "@/components/ui/switch";
 import { Pill } from "@/components/ui/pill";
 import { StatusDot } from "@/components/ui/status-dot";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { getVectorCatalog } from "@/lib/vector/catalog";
+import { componentDataTypes, isReplacementCompatible } from "@/lib/vector/edge-compat";
 import { getIcon } from "@/components/flow/node-icon";
 import type { VectorComponentDef } from "@/lib/vector/types";
 import type { Node, Edge } from "@xyflow/react";
@@ -397,6 +406,7 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
   const updateDisplayName = useFlowStore((s) => s.updateDisplayName);
   const toggleNodeDisabled = useFlowStore((s) => s.toggleNodeDisabled);
   const removeNode = useFlowStore((s) => s.removeNode);
+  const replaceNodeComponent = useFlowStore((s) => s.replaceNodeComponent);
   const acceptNodeSharedUpdate = useFlowStore((s) => s.acceptNodeSharedUpdate);
   const unlinkNodeStore = useFlowStore((s) => s.unlinkNode);
   const detailPanelCollapsed = useFlowStore((s) => s.detailPanelCollapsed);
@@ -648,6 +658,28 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
   };
 
   const isReadOnly = isSystemLocked || isShared;
+  // UX-1: same-kind components this node can be swapped to, restricted to types
+  // compatible with the node's current edges (same rule as the canvas connection
+  // gate) so a swap can never leave an invalid, un-deployable graph.
+  // getVectorCatalog() is a cached singleton, so this is cheap per render.
+  const replacementOptions = (() => {
+    // Exclude the managed Lake preset — it's a configless palette-only destination
+    // (gated on the server lake being enabled), never a valid in-place swap target.
+    const sameKind = getVectorCatalog().filter(
+      (c) => c.kind === componentDef.kind && c.type !== LAKE_SINK_TYPE,
+    );
+    const nodeData = (n: Node | undefined) =>
+      (n?.data as { componentDef?: VectorComponentDef } | undefined)?.componentDef;
+    const constraints = {
+      incomingOutputs: edges
+        .filter((e) => e.target === selectedNodeId)
+        .map((e) => componentDataTypes(nodeData(nodes.find((n) => n.id === e.source)), "output")),
+      outgoingInputs: edges
+        .filter((e) => e.source === selectedNodeId)
+        .map((e) => componentDataTypes(nodeData(nodes.find((n) => n.id === e.target)), "input")),
+    };
+    return sameKind.filter((c) => isReplacementCompatible(c, constraints));
+  })();
   const statusPill = (() => {
     switch (nodeMetrics?.status) {
       case "healthy":
@@ -720,6 +752,38 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
                 <span>This source is managed by VectorFlow and cannot be edited.</span>
               </div>
             )}
+
+            {/* ---- Component type switcher (UX-1 replace-kind) ---- */}
+            {!isReadOnly &&
+              componentDef.type !== LAKE_SINK_TYPE &&
+              replacementOptions.length > 1 && (
+                <div className="space-y-1.5">
+                  <Label className="text-[12px] text-fg-1">Component type</Label>
+                  <Select
+                    value={componentDef.type}
+                    onValueChange={(type) => {
+                      if (!selectedNodeId || type === componentDef.type) return;
+                      const next = replacementOptions.find((c) => c.type === type);
+                      if (next) replaceNodeComponent(selectedNodeId, next);
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {replacementOptions.map((c) => (
+                        <SelectItem key={c.type} value={c.type}>
+                          {c.displayName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-fg-1">
+                    Switching type keeps connections but resets this node&apos;s
+                    configuration.
+                  </p>
+                </div>
+              )}
 
             {/* ---- Managed Lake sink info banner ---- */}
             {componentDef.type === LAKE_SINK_TYPE && (

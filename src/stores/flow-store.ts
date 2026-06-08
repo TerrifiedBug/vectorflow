@@ -16,6 +16,7 @@ import {
 import type { VectorComponentDef } from "@/lib/vector/types";
 import { findComponentDef } from "@/lib/vector/catalog";
 import { validateNodeConfig } from "@/lib/vector/validate-node-config";
+import { DLP_VRL_SOURCES } from "@/lib/vector/dlp-vrl-sources";
 import { applyAutoLayout } from "@/lib/auto-layout";
 
 /** Shape of node.data used throughout the flow editor */
@@ -98,6 +99,8 @@ export interface FlowState {
     componentDef: VectorComponentDef,
     position: { x: number; y: number },
   ) => void;
+  /** Swap a node's component type in place (same kind), preserving id, position and edges. */
+  replaceNodeComponent: (id: string, componentDef: VectorComponentDef) => void;
   removeNode: (id: string) => void;
   removeEdge: (id: string) => void;
   updateNodeConfig: (id: string, config: Record<string, unknown>, configSchema?: object) => void;
@@ -178,6 +181,33 @@ interface InternalState extends FlowState {
 function getNodeKind(nodes: Node[], id: string): VectorComponentDef["kind"] | undefined {
   const node = nodes.find((n) => n.id === id);
   return ((node?.data as Partial<FlowNodeData> | undefined)?.componentDef as VectorComponentDef | undefined)?.kind;
+}
+
+/**
+ * Build the initial config for a component from its schema defaults. String
+ * defaults are copied; object defaults (e.g. the OpenTelemetry sink's `protocol`
+ * block) are deep-cloned so deploy-time-required nested fields are seeded without
+ * mutating the shared schema object. Shared by `addNode` and `replaceNodeComponent`.
+ */
+function seedConfigDefaults(componentDef: VectorComponentDef): Record<string, unknown> {
+  const schema = componentDef.configSchema as {
+    properties?: Record<string, { default?: unknown }>;
+  };
+  const config: Record<string, unknown> = {};
+  if (schema?.properties) {
+    for (const [key, prop] of Object.entries(schema.properties)) {
+      if (prop.default !== undefined && typeof prop.default === "string") {
+        config[key] = prop.default;
+      } else if (
+        prop.default !== undefined &&
+        typeof prop.default === "object" &&
+        prop.default !== null
+      ) {
+        config[key] = structuredClone(prop.default);
+      }
+    }
+  }
+  return config;
 }
 
 function toMetricEdge(edge: Edge, nodes: Node[]): Edge {
@@ -396,27 +426,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   addNode: (componentDef, position) => {
     set((state) => {
       const history = pushSnapshot(state);
-      // Populate initial config from schema defaults (e.g. remap source: ".")
-      const schema = componentDef.configSchema as {
-        properties?: Record<string, { default?: unknown }>;
-      };
-      const config: Record<string, unknown> = {};
-      if (schema?.properties) {
-        for (const [key, prop] of Object.entries(schema.properties)) {
-          if (prop.default !== undefined && typeof prop.default === "string") {
-            config[key] = prop.default;
-          } else if (
-            prop.default !== undefined &&
-            typeof prop.default === "object" &&
-            prop.default !== null
-          ) {
-            // Object defaults (e.g. the OpenTelemetry sink's `protocol` block)
-            // seed nested config so deploy-time-required nested fields are
-            // emitted. Deep-cloned so the shared schema object is never mutated.
-            config[key] = structuredClone(prop.default);
-          }
-        }
-      }
+      const config = seedConfigDefaults(componentDef);
       const newNode: Node = {
         id: generateId(),
         type: componentDef.kind,
@@ -431,6 +441,65 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       return {
         ...history,
         nodes: [...state.nodes, newNode],
+        isDirty: true,
+      };
+    });
+  },
+
+  replaceNodeComponent: (id, componentDef) => {
+    set((state) => {
+      const node = state.nodes.find((n) => n.id === id);
+      const data = node?.data as Partial<FlowNodeData> | undefined;
+      // Can't replace a missing, system-locked, or shared-linked node.
+      if (!node || data?.isSystemLocked || data?.sharedComponentId) return {};
+      const currentDef = data?.componentDef;
+      // Only swap the component *type* within the same kind — a cross-kind change
+      // (e.g. sink → source) would orphan the node's edges. No-op if unchanged.
+      if (
+        !currentDef ||
+        currentDef.kind !== componentDef.kind ||
+        currentDef.type === componentDef.type
+      ) {
+        return {};
+      }
+      const history = pushSnapshot(state);
+      // Preserve a user-customized display name; reset only the untouched default.
+      const keepName =
+        Boolean(data.displayName) && data.displayName !== currentDef.displayName;
+      // Reset config to the new type's defaults and recompute validation so the
+      // node's error badge reflects the replacement, not the old component.
+      const config = seedConfigDefaults(componentDef);
+      // DLP transforms require a `source` the palette/canvas prefill from a
+      // template; mirror that here so swapping to a dlp_* type yields a valid,
+      // ready-to-use node rather than one that immediately blocks deploy.
+      if (componentDef.type.startsWith("dlp_")) {
+        const dlpSource = DLP_VRL_SOURCES[componentDef.type];
+        if (dlpSource) config.source = dlpSource;
+      }
+      const validation = validateNodeConfig(config, componentDef.configSchema);
+      return {
+        ...history,
+        nodes: state.nodes.map((n) =>
+          n.id === id
+            ? {
+                ...n,
+                type: componentDef.kind,
+                data: {
+                  ...data,
+                  componentDef,
+                  // Keep the existing componentKey: the swap is in-place (same id
+                  // and edges), so node-scoped state keyed by componentKey (live
+                  // tail/sample, AI conversations, metric lookups) stays attached
+                  // and the Vector component name doesn't churn.
+                  displayName: keepName ? data.displayName : componentDef.displayName,
+                  config,
+                  hasError: validation.hasError || undefined,
+                  firstErrorMessage: validation.firstErrorMessage,
+                },
+              }
+            : n,
+        ),
+        // Edges reference node ids, which are unchanged, so wiring is preserved.
         isDirty: true,
       };
     });
