@@ -63,6 +63,12 @@ const runtimeEnvSchema = z
     METRICS_COMPRESS_AFTER: z.string().default("24 hours"),
     PORT: z.coerce.number().int().default(3000),
 
+    // SLO gate for canary broadening (IF-7): the aggregate canary error ratio
+    // (0..1) above which `broadenRollout` refuses to advance the canary and
+    // holds it in HEALTH_CHECK with a recorded reason. Conservative — only a
+    // clearly-burned budget blocks; this never triggers an auto-rollback.
+    VF_ROLLOUT_ERROR_BUDGET: z.coerce.number().min(0).max(1).default(0.05),
+
     VF_DISABLE_LOCAL_AUTH: z.string().optional(),
     DEV_AUTH_BYPASS: z.string().optional(),
     DEV_AUTH_BYPASS_ALLOW_NETWORK: z.string().optional(),

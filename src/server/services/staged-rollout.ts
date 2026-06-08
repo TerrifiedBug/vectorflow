@@ -8,12 +8,13 @@ import { relayPush } from "@/server/services/push-broadcast";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { parseDeploymentStrategy } from "@/lib/deployment-strategy";
+import { env } from "@/lib/env";
 import {
   getAggregateErrorRate,
   getRecentMeanLatency,
 } from "@/server/services/auto-rollback";
 import { TRPCError } from "@trpc/server";
-import { infoLog, errorLog } from "@/lib/logger";
+import { infoLog, warnLog, errorLog } from "@/lib/logger";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -412,6 +413,28 @@ export class StagedRolloutService {
   }
 
   /**
+   * SLO error-budget gate for broadening. Computes the canary's aggregate
+   * error ratio from the SAME signal the health-check uses
+   * (`getAggregateErrorRate`, NodePipelineStatus rows) and reports whether the
+   * configured budget (`VF_ROLLOUT_ERROR_BUDGET`, a 0..1 ratio) is clearly
+   * burned. Conservative: when no metric data exists yet (`errorRate === null`)
+   * the budget is treated as NOT burned, so broadening is never blocked on an
+   * absent signal — only on an observed, over-budget error ratio. Never
+   * triggers a rollback (out of scope); callers only hold the canary.
+   */
+  private async evaluateErrorBudget(
+    pipelineId: string,
+  ): Promise<{ burned: boolean; errorRatio: number | null; budget: number }> {
+    const budget = env.VF_ROLLOUT_ERROR_BUDGET;
+    const errorRatePercent = await getAggregateErrorRate(pipelineId);
+    if (errorRatePercent === null) {
+      return { burned: false, errorRatio: null, budget };
+    }
+    const errorRatio = errorRatePercent / 100;
+    return { burned: errorRatio > budget, errorRatio, budget };
+  }
+
+  /**
    * Broaden a canary rollout to all remaining nodes.
    * Only allowed when status is HEALTH_CHECK (health-check window has expired).
    */
@@ -435,6 +458,26 @@ export class StagedRolloutService {
         code: "BAD_REQUEST",
         message: `Cannot broaden rollout in status "${rollout.status}" — must be in HEALTH_CHECK`,
       });
+    }
+
+    // SLO gate (IF-7): refuse to broaden a canary whose error budget is
+    // clearly burned. Reuses the same error-rate signal as the health-check;
+    // it only holds the canary in HEALTH_CHECK and records the reason — it
+    // never auto-rolls back (out of scope).
+    const budgetCheck = await this.evaluateErrorBudget(rollout.pipelineId);
+    if (budgetCheck.burned) {
+      const errorPct = ((budgetCheck.errorRatio ?? 0) * 100).toFixed(2);
+      const budgetPct = (budgetCheck.budget * 100).toFixed(2);
+      const reason = `Broaden held — canary error ratio ${errorPct}% exceeds error budget ${budgetPct}%`;
+      await prisma.release.update({
+        where: { id: rolloutId, strategy: "CANARY" },
+        data: { reviewNote: reason },
+      });
+      warnLog(
+        "staged-rollout",
+        `Blocked broaden of rollout ${rolloutId}: error ratio ${errorPct}% > budget ${budgetPct}%`,
+      );
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: reason });
     }
 
     // Send config_changed push to remaining nodes

@@ -380,6 +380,70 @@ describe("StagedRolloutService", () => {
         "Staged rollout not found",
       );
     });
+
+    it("blocks broaden when the canary error budget is burned (records reason, status not advanced)", async () => {
+      prismaMock.release.findFirst.mockResolvedValue(
+        makeRollout({ status: "HEALTH_CHECK" }) as never,
+      );
+      // 10% error ratio (100 / 1000) — above the default 0.05 budget.
+      prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
+        { eventsIn: BigInt(1000), errorsTotal: BigInt(100) },
+      ] as never);
+      prismaMock.release.update.mockResolvedValue({} as never);
+
+      await expect(service.broadenRollout("rollout-1")).rejects.toThrow(
+        /error budget/i,
+      );
+
+      // No broaden push to the remaining nodes.
+      expect(relayPushMock).not.toHaveBeenCalled();
+
+      // Reason recorded on the rollout; status NOT advanced to BROADENED.
+      expect(prismaMock.release.update).toHaveBeenCalledWith({
+        where: { id: "rollout-1", strategy: "CANARY" },
+        data: { reviewNote: expect.stringContaining("error budget") },
+      });
+      expect(prismaMock.release.update).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: "BROADENED" }),
+        }),
+      );
+
+      // No "broadened" SSE event fired.
+      expect(broadcastMock).not.toHaveBeenCalledWith(
+        expect.objectContaining({ action: "canary_broadened" }),
+        expect.anything(),
+      );
+    });
+
+    it("proceeds with broaden when the canary error ratio is within budget", async () => {
+      prismaMock.release.findFirst.mockResolvedValue(
+        makeRollout({ status: "HEALTH_CHECK" }) as never,
+      );
+      // 1% error ratio (10 / 1000) — within the default 0.05 budget.
+      prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
+        { eventsIn: BigInt(1000), errorsTotal: BigInt(10) },
+      ] as never);
+      prismaMock.release.update.mockResolvedValue({} as never);
+      fireEventAlertMock.mockResolvedValue(undefined as never);
+
+      await service.broadenRollout("rollout-1");
+
+      // Broaden push to all 3 remaining nodes.
+      expect(relayPushMock).toHaveBeenCalledTimes(3);
+
+      // Status advanced to BROADENED.
+      expect(prismaMock.release.update).toHaveBeenCalledWith({
+        where: { id: "rollout-1", strategy: "CANARY" },
+        data: { status: "BROADENED", broadenedAt: expect.any(Date) },
+      });
+
+      // "broadened" SSE event fired.
+      expect(broadcastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "canary_broadened", pipelineId: "pipe-1" }),
+        "env-1",
+      );
+    });
   });
 
   // ─── rollbackRollout ────────────────────────────────────────────────
