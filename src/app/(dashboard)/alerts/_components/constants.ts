@@ -2,6 +2,7 @@ import {
   MessageSquare,
   Mail,
   AlertTriangle,
+  BellRing,
   Webhook,
 } from "lucide-react";
 
@@ -75,6 +76,7 @@ export const CHANNEL_TYPE_LABELS: Record<string, string> = {
   teams: "Microsoft Teams",
   email: "Email",
   pagerduty: "PagerDuty",
+  opsgenie: "Opsgenie",
   webhook: "Webhook",
 };
 
@@ -83,5 +85,6 @@ export const CHANNEL_TYPE_ICONS: Record<string, typeof MessageSquare> = {
   teams: MessageSquare,
   email: Mail,
   pagerduty: AlertTriangle,
+  opsgenie: BellRing,
   webhook: Webhook,
 };

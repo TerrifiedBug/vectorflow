@@ -44,6 +44,8 @@ export const alertChannelsRouter = router({
           safeConfig.hmacSecret = "••••••••";
         if ("integrationKey" in safeConfig)
           safeConfig.integrationKey = "••••••••";
+        if ("apiKey" in safeConfig)
+          safeConfig.apiKey = "••••••••";
 
         return { ...ch, config: safeConfig };
       });
@@ -54,7 +56,7 @@ export const alertChannelsRouter = router({
       z.object({
         environmentId: z.string(),
         name: z.string().min(1).max(200),
-        type: z.enum(["slack", "teams", "email", "pagerduty", "webhook"]),
+        type: z.enum(["slack", "teams", "email", "pagerduty", "opsgenie", "webhook"]),
         config: z.record(z.string(), z.unknown()),
       }),
     )
@@ -112,6 +114,14 @@ export const alertChannelsRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: "PagerDuty channels require an integrationKey" });
       }
 
+      if (input.type === "opsgenie") {
+        const { apiKey, region } = input.config as Record<string, unknown>;
+        if (!apiKey || typeof apiKey !== "string")
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Opsgenie channels require an apiKey" });
+        if (region !== undefined && region !== "us" && region !== "eu")
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Opsgenie region must be 'us' or 'eu'" });
+      }
+
       return prisma.notificationChannel.create({
         data: {
           environmentId: input.environmentId,
@@ -164,7 +174,7 @@ export const alertChannelsRouter = router({
         // 2. Preserve sensitive fields that the client cannot see (redacted in listChannels).
         //    When editing, the form sends empty strings for secrets it didn't change.
         const existingCfg = (existing.config ?? {}) as Record<string, unknown>;
-        const PRESERVE_IF_ABSENT = ["smtpPass", "integrationKey", "hmacSecret"] as const;
+        const PRESERVE_IF_ABSENT = ["smtpPass", "integrationKey", "apiKey", "hmacSecret"] as const;
         for (const field of PRESERVE_IF_ABSENT) {
           if (!(field in config) || config[field] === "" || config[field] === undefined) {
             if (field in existingCfg) {
@@ -197,6 +207,13 @@ export const alertChannelsRouter = router({
           const { integrationKey } = config as Record<string, unknown>;
           if (!integrationKey || typeof integrationKey !== "string")
             throw new TRPCError({ code: "BAD_REQUEST", message: "PagerDuty channels require an integrationKey" });
+        }
+        if (existing.type === "opsgenie") {
+          const { apiKey, region } = config as Record<string, unknown>;
+          if (!apiKey || typeof apiKey !== "string")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Opsgenie channels require an apiKey" });
+          if (region !== undefined && region !== "us" && region !== "eu")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Opsgenie region must be 'us' or 'eu'" });
         }
       }
 

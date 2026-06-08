@@ -89,6 +89,7 @@ describe("alertChannelsRouter", () => {
             smtpPass: "secret-pass",
             hmacSecret: "hmac-secret",
             integrationKey: "pager-key",
+            apiKey: "genie-key",
           },
         }),
       ] as never);
@@ -100,6 +101,7 @@ describe("alertChannelsRouter", () => {
       expect(config.smtpPass).toBe("••••••••");
       expect(config.hmacSecret).toBe("••••••••");
       expect(config.integrationKey).toBe("••••••••");
+      expect(config.apiKey).toBe("••••••••");
       expect(config.webhookUrl).toBe("https://hooks.slack.com/services/test");
     });
 
@@ -209,6 +211,49 @@ describe("alertChannelsRouter", () => {
       });
 
       expect(prismaMock.notificationChannel.create).toHaveBeenCalled();
+    });
+
+    it("creates an opsgenie channel and encrypts the apiKey", async () => {
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+      prismaMock.notificationChannel.create.mockResolvedValue(makeChannel({ type: "opsgenie" }) as never);
+
+      await caller.createChannel({
+        environmentId: "env-1",
+        name: "Opsgenie",
+        type: "opsgenie",
+        config: { apiKey: "genie-key-123", region: "eu" },
+      });
+
+      const createCall = prismaMock.notificationChannel.create.mock.calls[0][0];
+      const persisted = (createCall as { data: { config: Record<string, unknown> } }).data.config;
+      expect(persisted.apiKey).toMatch(/^vfenc1:/);
+      expect(persisted.region).toBe("eu");
+    });
+
+    it("throws BAD_REQUEST if opsgenie channel missing apiKey", async () => {
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+
+      await expect(
+        caller.createChannel({
+          environmentId: "env-1",
+          name: "Bad Opsgenie",
+          type: "opsgenie",
+          config: { region: "us" },
+        }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    });
+
+    it("throws BAD_REQUEST if opsgenie region is invalid", async () => {
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+
+      await expect(
+        caller.createChannel({
+          environmentId: "env-1",
+          name: "Bad Region",
+          type: "opsgenie",
+          config: { apiKey: "k", region: "apac" },
+        }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 
     it("throws NOT_FOUND if environment does not exist", async () => {
@@ -324,6 +369,25 @@ describe("alertChannelsRouter", () => {
       const updateCall = prismaMock.notificationChannel.update.mock.calls[0][0];
       const updatedConfig = (updateCall as { data: { config: Record<string, unknown> } }).data.config;
       expect(updatedConfig.smtpPass).toBe("old-secret");
+    });
+
+    it("preserves the existing opsgenie apiKey when update omits it", async () => {
+      const existing = makeChannel({
+        type: "opsgenie",
+        config: { apiKey: "vfenc1:v2:OLDKEY", region: "us" },
+      });
+      prismaMock.notificationChannel.findUnique.mockResolvedValue(existing as never);
+      prismaMock.notificationChannel.update.mockResolvedValue(existing as never);
+
+      await caller.updateChannel({
+        id: "ch-1",
+        config: { region: "eu", apiKey: "" },
+      });
+
+      const updateCall = prismaMock.notificationChannel.update.mock.calls[0][0];
+      const persisted = (updateCall as { data: { config: Record<string, unknown> } }).data.config;
+      expect(persisted.apiKey).toBe("vfenc1:v2:OLDKEY");
+      expect(persisted.region).toBe("eu");
     });
 
     it("throws NOT_FOUND for missing channel", async () => {
