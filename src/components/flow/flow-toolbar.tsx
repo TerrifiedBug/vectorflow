@@ -357,8 +357,8 @@ export function FlowToolbar({
       // Stage the import and show a diff vs the current graph; the user applies
       // it explicitly (below) so an import never silently replaces their work.
       const diff = diffImportedGraph(
-        { nodes: newNodes, edges: newEdges },
-        { nodes, edges },
+        { nodes: newNodes, edges: newEdges, globalConfig: importedGlobalConfig },
+        { nodes, edges, globalConfig },
       );
       setPendingImport({
         nodes: newNodes,
@@ -868,6 +868,11 @@ export function FlowToolbar({
                       {(importDiff.edgesAdded > 0 || importDiff.edgesRemoved > 0) && (
                         <span className="text-muted-foreground">
                           edges +{importDiff.edgesAdded}/−{importDiff.edgesRemoved}
+                        </span>
+                      )}
+                      {importDiff.globalConfigChanged && (
+                        <span className="text-amber-600 dark:text-amber-400">
+                          global config changed
                         </span>
                       )}
                     </div>

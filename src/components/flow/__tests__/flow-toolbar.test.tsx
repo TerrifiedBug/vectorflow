@@ -123,6 +123,7 @@ vi.mock("@/lib/config-generator", () => ({
     unchanged: 0,
     edgesAdded: 0,
     edgesRemoved: 0,
+    globalConfigChanged: false,
   })),
 }));
 

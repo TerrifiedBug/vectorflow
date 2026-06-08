@@ -136,6 +136,7 @@ describe("diffImportedGraph", () => {
     expect(diff.unchanged).toBe(3);
     expect(diff.edgesAdded).toBe(0);
     expect(diff.edgesRemoved).toBe(0);
+    expect(diff.globalConfigChanged).toBe(false);
   });
 
   it("classifies added, changed, and removed components by componentKey", () => {
@@ -191,5 +192,17 @@ sinks:
     expect(diff.edgesAdded).toBe(1); // http_in→out
     expect(diff.edgesRemoved).toBe(1); // parse→out
     expect(diff.components).toEqual([]); // same components, only wiring changed
+  });
+
+  it("flags a global-config-only change while the graph is identical", () => {
+    const current = importVectorConfig(YAML_BASIC);
+    const withApi = `${YAML_BASIC}
+api:
+  enabled: true
+`;
+    const diff = diffImportedGraph(importVectorConfig(withApi), current);
+    expect(diff.components).toEqual([]);
+    expect(diff.unchanged).toBe(3);
+    expect(diff.globalConfigChanged).toBe(true);
   });
 });

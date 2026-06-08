@@ -282,6 +282,8 @@ export interface ImportGraphDiff {
   unchanged: number;
   edgesAdded: number;
   edgesRemoved: number;
+  /** Whether non-graph global config (api, enrichment_tables, …) differs. */
+  globalConfigChanged: boolean;
 }
 
 interface NodeFacts {
@@ -338,8 +340,8 @@ const STATUS_ORDER: Record<ImportComponentChange["status"], number> = {
  * differs. Pure + side-effect free.
  */
 export function diffImportedGraph(
-  imported: Pick<ImportResult, "nodes" | "edges">,
-  current: { nodes: Node[]; edges: Edge[] },
+  imported: Pick<ImportResult, "nodes" | "edges" | "globalConfig">,
+  current: { nodes: Node[]; edges: Edge[]; globalConfig: Record<string, unknown> | null },
 ): ImportGraphDiff {
   const currentByKey = new Map(current.nodes.map((n) => [nodeFacts(n).key, nodeFacts(n)]));
   const importedByKey = new Map(imported.nodes.map((n) => [nodeFacts(n).key, nodeFacts(n)]));
@@ -382,5 +384,9 @@ export function diffImportedGraph(
   for (const e of importedEdges) if (!currentEdges.has(e)) edgesAdded++;
   for (const e of currentEdges) if (!importedEdges.has(e)) edgesRemoved++;
 
-  return { components, unchanged, edgesAdded, edgesRemoved };
+  const globalConfigChanged =
+    stableStringify(imported.globalConfig ?? null) !==
+    stableStringify(current.globalConfig ?? null);
+
+  return { components, unchanged, edgesAdded, edgesRemoved, globalConfigChanged };
 }
