@@ -663,7 +663,11 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
   // gate) so a swap can never leave an invalid, un-deployable graph.
   // getVectorCatalog() is a cached singleton, so this is cheap per render.
   const replacementOptions = (() => {
-    const sameKind = getVectorCatalog().filter((c) => c.kind === componentDef.kind);
+    // Exclude the managed Lake preset — it's a configless palette-only destination
+    // (gated on the server lake being enabled), never a valid in-place swap target.
+    const sameKind = getVectorCatalog().filter(
+      (c) => c.kind === componentDef.kind && c.type !== LAKE_SINK_TYPE,
+    );
     const nodeData = (n: Node | undefined) =>
       (n?.data as { componentDef?: VectorComponentDef } | undefined)?.componentDef;
     const constraints = {

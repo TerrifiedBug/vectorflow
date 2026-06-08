@@ -465,6 +465,10 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       // Preserve a user-customized display name; reset only the untouched default.
       const keepName =
         Boolean(data.displayName) && data.displayName !== currentDef.displayName;
+      // Reset config to the new type's defaults and recompute validation so the
+      // node's error badge reflects the replacement, not the old component.
+      const config = seedConfigDefaults(componentDef);
+      const validation = validateNodeConfig(config, componentDef.configSchema);
       return {
         ...history,
         nodes: state.nodes.map((n) =>
@@ -477,7 +481,9 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
                   componentDef,
                   componentKey: generateComponentKey(componentDef.type),
                   displayName: keepName ? data.displayName : componentDef.displayName,
-                  config: seedConfigDefaults(componentDef),
+                  config,
+                  hasError: validation.hasError || undefined,
+                  firstErrorMessage: validation.firstErrorMessage,
                 },
               }
             : n,

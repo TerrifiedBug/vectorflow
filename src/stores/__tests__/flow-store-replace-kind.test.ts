@@ -129,4 +129,50 @@ describe("flow-store replaceNodeComponent", () => {
       (useFlowStore.getState().nodes[0].data.componentDef as VectorComponentDef).type,
     ).toBe("http");
   });
+
+  it("clears a stale error badge when the replacement's default config is valid", () => {
+    useFlowStore.setState({
+      nodes: [
+        {
+          id: "n",
+          type: "sink",
+          position: { x: 0, y: 0 },
+          data: {
+            componentDef: def("http", "sink", "HTTP"),
+            componentKey: "http_1",
+            displayName: "HTTP",
+            config: {},
+            hasError: true,
+            firstErrorMessage: "old error",
+          },
+        },
+      ],
+      edges: [],
+    });
+    useFlowStore.getState().replaceNodeComponent("n", def("kafka", "sink", "Kafka"));
+    const data = useFlowStore.getState().nodes[0].data;
+    expect(data.hasError).toBeUndefined();
+    expect(data.firstErrorMessage).toBeUndefined();
+  });
+
+  it("flags the new node when the replacement's default config is invalid", () => {
+    const id = addAndGetId(def("http", "sink", "HTTP"));
+    const requiresField = {
+      type: "kafka_req",
+      kind: "sink",
+      displayName: "Kafka (req)",
+      description: "",
+      category: "Test",
+      inputTypes: ["log"],
+      outputTypes: ["log"],
+      icon: "Box",
+      configSchema: {
+        type: "object",
+        properties: { bootstrap_servers: { type: "string" } },
+        required: ["bootstrap_servers"],
+      },
+    } as unknown as VectorComponentDef;
+    useFlowStore.getState().replaceNodeComponent(id, requiresField);
+    expect(useFlowStore.getState().nodes.find((n) => n.id === id)!.data.hasError).toBe(true);
+  });
 });
