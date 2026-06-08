@@ -931,20 +931,17 @@ export const fleetRouter = router({
         orderBy: [{ node: { name: "asc" } }, { pipeline: { name: "asc" } }],
       });
 
-      // Desired checksums only for pipelines the agents actually report on.
-      const pipelineIds = [
-        ...new Set(
-          statuses.filter((s) => s.configChecksum != null).map((s) => s.pipelineId),
-        ),
-      ];
+      // Desired checksums for every reported pipeline — surfaced even when the
+      // agent reports no running checksum (older agents), so the table shows
+      // "— / <desired>" rather than "— / —".
+      const pipelineIds = [...new Set(statuses.map((s) => s.pipelineId))];
       const desiredChecksums = getExpectedChecksums(pipelineIds);
 
       const summary = { total: statuses.length, inSync: 0, drifted: 0, unknown: 0 };
 
       const nodes = statuses.map((s) => {
         const running = s.configChecksum;
-        const desired =
-          running != null ? desiredChecksums.get(s.pipelineId) ?? null : null;
+        const desired = desiredChecksums.get(s.pipelineId) ?? null;
 
         let drift: "in_sync" | "drifted" | "unknown";
         if (running == null || desired == null) {

@@ -158,6 +158,12 @@ describe("fleet.configDriftReport — classification", () => {
     const inSync = result.nodes.find((n) => n.nodeId === "node-1")!;
     expect(inSync.runningChecksum).toBe("desired-aaa");
     expect(inSync.desiredChecksum).toBe("desired-aaa");
+
+    // Older agent (no running checksum) still surfaces the cached desired
+    // checksum so the UI shows "— / <desired>", not "— / —".
+    const olderAgent = result.nodes.find((n) => n.nodeId === "node-3")!;
+    expect(olderAgent.runningChecksum).toBeNull();
+    expect(olderAgent.desiredChecksum).toBe("desired-bbb");
   });
 
   it("scopes the query to the caller's organization and environment", async () => {
