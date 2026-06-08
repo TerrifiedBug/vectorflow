@@ -9,6 +9,7 @@ import {
   Cpu,
   Database,
   FileText,
+  Package,
   Play,
   Radio,
   Search,
@@ -92,6 +93,11 @@ export default function TemplatesPage() {
     ),
   );
   const templates = useMemo(() => templatesQuery.data ?? [], [templatesQuery.data]);
+  const packsQuery = useQuery(trpc.pack.list.queryOptions());
+  const featuredPacks = useMemo(
+    () => (packsQuery.data ?? []).filter((pack) => pack.featured),
+    [packsQuery.data],
+  );
 
   const [search, setSearch] = useState("");
   const [localSearch, setLocalSearch] = useState("");
@@ -261,6 +267,32 @@ export default function TemplatesPage() {
           )}
         </CardContent>
       </Card>
+
+      {featuredPacks.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Package className="h-4 w-4 text-accent-brand" />
+            <h2 className="font-mono text-[12px] uppercase tracking-[0.05em] text-fg-2">
+              Featured packs
+            </h2>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {featuredPacks.map((pack) => (
+              <Card key={pack.id} className="border-line bg-bg-2">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-fg">{pack.name}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <p className="line-clamp-2 text-[12px] text-fg-2">{pack.description}</p>
+                  <Badge variant="outline">
+                    {pack.templateCount} {pack.templateCount === 1 ? "template" : "templates"}
+                  </Badge>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
 
       {templatesQuery.isError ? (
         <QueryError message="Failed to load templates" onRetry={() => templatesQuery.refetch()} />

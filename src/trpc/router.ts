@@ -8,6 +8,7 @@ import { auditRouter } from "@/server/routers/audit";
 import { releaseRouter } from "@/server/routers/release";
 import { vrlRouter } from "@/server/routers/vrl";
 import { templateRouter } from "@/server/routers/template";
+import { packRouter } from "@/server/routers/pack";
 import { settingsRouter } from "@/server/routers/settings";
 import { dashboardRouter } from "@/server/routers/dashboard";
 import { metricsRouter } from "@/server/routers/metrics";
@@ -52,6 +53,7 @@ export const appRouter = router({
   release: releaseRouter,
   vrl: vrlRouter,
   template: templateRouter,
+  pack: packRouter,
   settings: settingsRouter,
   dashboard: dashboardRouter,
   metrics: metricsRouter,

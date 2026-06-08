@@ -1313,11 +1313,33 @@ model Template {
   category       String
   teamId         String?
   team           Team?    @relation(fields: [teamId], references: [id])
+  packId         String?
+  pack           TemplatePack? @relation(fields: [packId], references: [id], onDelete: SetNull)
+  featured       Boolean  @default(false)
   nodes          Json
   edges          Json
   createdAt      DateTime @default(now())
 
   @@index([organizationId])
+}
+
+/// Curated bundle of system templates (NF-1). System packs live in the
+/// default org (organizationId = "default") and are surfaced to every org by
+/// `pack.list`; org-authored packs carry the owning org's id. Member templates
+/// point back via `Template.packId` (SET NULL on pack delete).
+model TemplatePack {
+  id             String     @id @default(cuid())
+  organizationId String     @default("default")
+  name           String
+  description    String
+  category       String
+  icon           String?
+  featured       Boolean    @default(false)
+  templates      Template[]
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([organizationId, featured])
 }
 
 model AuditLog {

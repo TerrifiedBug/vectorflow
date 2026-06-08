@@ -219,6 +219,13 @@ const INTENTIONALLY_UNGUARDED = new Set<string>([
   "template.get",
   "template.delete",
 
+  // pack.get: inline auth in the handler (NF-1). A pack is readable only if
+  // it is a system pack (organizationId = DEFAULT_ORG_ID) or belongs to the
+  // caller's org; a pack from another org is 404. The `{ id }` input is a
+  // TemplatePack row id with no withTeamAccess resolution path — same
+  // inline-auth pattern as template.get above.
+  "pack.get",
+
   // org.verifyDomain / org.unclaimDomain: inline auth in the handler.
   // Both load the `OrganizationDomainClaim` by `id` and reject if
   // `claim.organizationId !== ctx.organizationId` (404 NOT_FOUND). The
