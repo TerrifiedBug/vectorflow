@@ -115,45 +115,52 @@ export function _resetHostOrgCacheForTests(): void {
 
 /**
  * Resolve an org id from an already normalised + lowercased host, hitting the
- * DB. Two paths, in order:
+ * DB. Two paths, in PRECEDENCE order:
  *
- *   1. Subdomain path (the hot path): if the first label is a syntactically
+ *   1. Custom-domain path: a *verified* `OrganizationDomainClaim`
+ *      (`verifiedAt` not null) whose `domain` equals the FULL host (e.g.
+ *      `logs.acme.com`). DNS-TXT ownership of the whole host is the strongest
+ *      signal, so it MUST win over the slug path — otherwise a custom domain
+ *      whose first label happens to collide with an existing org slug (e.g.
+ *      `logs.acme.com` vs an org with slug `logs`) would misroute to the
+ *      slug-org. A claim can only exist for a real custom domain (a tenant
+ *      cannot set DNS-TXT on `*.vectorflow.sh`), so this never shadows a
+ *      genuine `<orgSlug>.vectorflow.sh` subdomain.
+ *   2. Subdomain path (the common case): if the first label is a syntactically
  *      valid slug, look up `Organization.slug`. Preserves the
  *      `<orgSlug>.vectorflow.sh` wildcard scheme exactly.
- *   2. Custom-domain path: when no slug matches, look up a *verified*
- *      `OrganizationDomainClaim` (`verifiedAt` not null) whose `domain`
- *      equals the full host (e.g. `logs.acme.com`). DNS-TXT ownership is
- *      proof enough to route the host to that org.
  *
  * No match in either path → `DEFAULT_ORG_ID`. Throws propagate so the caller
- * can fail open without caching a transient miss.
+ * can fail open without caching a transient miss. The claim probe is an indexed
+ * point query and the result is TTL-cached, so the common subdomain path pays
+ * it only on a cold cache.
  */
 async function resolveOrgIdFromHostUncached(
   normalizedHost: string,
 ): Promise<string> {
-  const slug = extractSlugFromHost(normalizedHost);
-  if (slug) {
-    // Subdomain→org resolution runs before any tenancy scope and reads the
-    // (fenced) Organization table by slug, so it uses the admin connection.
-    const org = await adminPrisma.organization.findUnique({
-      where: { slug },
-      select: { id: true },
-    });
-    if (org) return org.id;
-  }
-  // Custom domains always carry at least one dot; skip the probe for
-  // single-label hosts (`localhost`) and bare IPs that can never own a claim.
+  // 1. Verified custom-domain claim on the full host wins (DNS-TXT ownership).
+  //    Custom domains always carry at least one dot; skip the probe for
+  //    single-label hosts (`localhost`) and bare IPs that can never own a claim.
   if (normalizedHost.includes(".")) {
     // `OrganizationDomainClaim.domain` is stored lowercase + punycode and
     // `Host:` values already arrive punycoded, so a lowercase compare matches.
-    // `@@index([domain])` (and the partial unique index on verified rows)
-    // make this an indexed equality probe. Admin connection: runs
-    // pre-tenancy-scope, same as the slug lookup above.
+    // `@@index([domain])` (+ the partial unique index on verified rows) make
+    // this an indexed equality probe. Admin connection: runs pre-tenancy-scope.
     const claim = await adminPrisma.organizationDomainClaim.findFirst({
       where: { domain: normalizedHost, verifiedAt: { not: null } },
       select: { organizationId: true },
     });
     if (claim) return claim.organizationId;
+  }
+  // 2. Subdomain→org by slug (the `<orgSlug>.vectorflow.sh` hot path). Uses the
+  //    admin connection (reads the fenced Organization table pre-tenancy-scope).
+  const slug = extractSlugFromHost(normalizedHost);
+  if (slug) {
+    const org = await adminPrisma.organization.findUnique({
+      where: { slug },
+      select: { id: true },
+    });
+    if (org) return org.id;
   }
   return DEFAULT_ORG_ID;
 }
