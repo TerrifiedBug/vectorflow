@@ -115,8 +115,8 @@ describe("vrlRouter.runPipelineUnitTests", () => {
     const res = await caller.runPipelineUnitTests({ pipelineId: "pipe-1" });
 
     // Each test ran against ITS component's persisted source, not a shared one.
-    expect(evaluateVrl).toHaveBeenCalledWith("SRC_ONE", [{ a: 1 }]);
-    expect(evaluateVrl).toHaveBeenCalledWith("SRC_TWO", [{ b: 2 }]);
+    expect(evaluateVrl).toHaveBeenCalledWith("SRC_ONE", [{ a: 1 }], { orgId: "org-1" });
+    expect(evaluateVrl).toHaveBeenCalledWith("SRC_TWO", [{ b: 2 }], { orgId: "org-1" });
     expect(res.results).toEqual([
       { id: "t1", name: "one", componentKey: "remap_1", passed: true, actual: { a: 1 }, expected: { a: 1 } },
       { id: "t2", name: "two", componentKey: "remap_2", passed: true, actual: { b: 2 }, expected: { b: 2 } },
@@ -165,7 +165,7 @@ describe("vrlRouter.runPipelineUnitTests", () => {
     expect(res.results.map((r: { id: string }) => r.id)).toEqual(["t1"]);
     expect(res.summary).toEqual({ total: 1, passed: 1, failed: 0 });
     expect(evaluateVrl).toHaveBeenCalledTimes(1);
-    expect(evaluateVrl).toHaveBeenCalledWith("SRC", [{ a: 1 }]);
+    expect(evaluateVrl).toHaveBeenCalledWith("SRC", [{ a: 1 }], { orgId: "org-1" });
   });
 
   it("caps the number of tests run per component", async () => {

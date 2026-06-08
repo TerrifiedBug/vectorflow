@@ -459,7 +459,7 @@ export async function simulateTransform(
     };
   }
 
-  const result = await evaluateVrl(source, events);
+  const result = await evaluateVrl(source, events, { orgId: input.organizationId });
   const estimatedSavingsCents = await projectSimulatedSavings(
     pipelineId,
     input.organizationId,

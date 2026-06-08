@@ -288,7 +288,7 @@ export const proposedChangeRouter = router({
         });
       }
       let source = input.vrlSource;
-      let result = await evaluateVrl(source, [VRL_SAMPLE_EVENT]);
+      let result = await evaluateVrl(source, [VRL_SAMPLE_EVENT], { orgId: ctx.organizationId });
       let attempts = 0;
       while (result.error && attempts < MAX_AUTOFIX_ATTEMPTS) {
         attempts++;
@@ -300,7 +300,7 @@ export const proposedChangeRouter = router({
         });
         if (!fixed) break;
         source = fixed;
-        result = await evaluateVrl(source, [VRL_SAMPLE_EVENT]);
+        result = await evaluateVrl(source, [VRL_SAMPLE_EVENT], { orgId: ctx.organizationId });
       }
       const valid = !result.error;
 

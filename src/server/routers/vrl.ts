@@ -98,17 +98,20 @@ export interface PipelineVrlUnitTestRunResult extends VrlUnitTestRunResult {
  * `runPipelineUnitTests` (every component, each node's persisted source) so both
  * apply identical pass/fail semantics: a compile error, a dropped event, or a
  * mismatch all report `passed: false`.
+ * `orgId` threads through to `evaluateVrl` so the per-tenant `vector`
+ * subprocess bound applies across concurrent calls, not just within a batch.
  */
 async function runTestsAgainstSource(
   source: string,
   tests: ReadonlyArray<{ id: string; name: string; input: unknown; expected: unknown }>,
+  orgId: string,
 ): Promise<VrlUnitTestRunResult[]> {
   const results: VrlUnitTestRunResult[] = [];
   for (let i = 0; i < tests.length; i += VRL_TEST_RUN_CONCURRENCY) {
     const batch = tests.slice(i, i + VRL_TEST_RUN_CONCURRENCY);
     const batchResults = await Promise.all(
       batch.map(async (test) => {
-        const result = await evaluateVrl(source, [test.input]);
+        const result = await evaluateVrl(source, [test.input], { orgId });
         const actual = result.outputs.length === 1 ? result.outputs[0] : null;
         const passed =
           !result.error &&
@@ -304,7 +307,7 @@ export const vrlRouter = router({
       const events = Array.isArray(capture.events)
         ? (capture.events as unknown[])
         : [];
-      return evaluateVrl(input.source, events);
+      return evaluateVrl(input.source, events, { orgId: ctx.organizationId });
     }),
 
   /**
@@ -480,7 +483,7 @@ export const vrlRouter = router({
         take: MAX_VRL_UNIT_TESTS_PER_COMPONENT,
       });
 
-      return runTestsAgainstSource(input.source, tests);
+      return runTestsAgainstSource(input.source, tests, ctx.organizationId);
     }),
 
   /**
@@ -551,7 +554,7 @@ export const vrlRouter = router({
         const results: PipelineVrlUnitTestRunResult[] = [];
         for (const [componentKey, componentTests] of testsByComponent) {
           const source = sourceByComponent.get(componentKey)!;
-          const componentResults = await runTestsAgainstSource(source, componentTests);
+          const componentResults = await runTestsAgainstSource(source, componentTests, ctx.organizationId);
           for (const r of componentResults) {
             results.push({ ...r, componentKey });
           }

@@ -280,7 +280,7 @@ describe("tapCaptureRouter.testTransform", () => {
       source: "del(.a)",
     });
 
-    expect(evaluateVrl).toHaveBeenCalledWith("del(.a)", [{ a: 1 }, { a: 2 }, { a: 3 }]);
+    expect(evaluateVrl).toHaveBeenCalledWith("del(.a)", [{ a: 1 }, { a: 2 }, { a: 3 }], { orgId: "org-1" });
     expect(result.outputs).toHaveLength(2);
     expect(result.stats).toEqual({
       inputCount: 3,
