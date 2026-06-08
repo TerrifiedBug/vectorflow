@@ -5,6 +5,7 @@ import { getOrgSettings } from "@/lib/org-settings";
 import { debugLog, infoLog, errorLog } from "@/lib/logger";
 import { createBackup, runRetentionCleanup, runOrphanCleanup } from "./backup";
 import { fireEventAlert } from "./event-alerts";
+import { isLeader } from "@/server/services/leader-election";
 
 /**
  * Per-organization backup scheduler.
@@ -98,6 +99,17 @@ function scheduleJobForOrg(
   }
 
   const task = cron.schedule(cronExpression, async () => {
+    // SC-3: a demoted leader's cron tasks keep firing for up to one TTL (~15s)
+    // after Redis renewals fail. Re-check leadership at the top of the per-org
+    // callback so a demoted instance skips the backup instead of racing the new
+    // leader (duplicate backups). Guard only — the cron task is left registered.
+    if (!isLeader()) {
+      debugLog(
+        "backup-scheduler",
+        `Skipping scheduled backup for org=${organizationId} — instance is no longer leader`,
+      );
+      return;
+    }
     infoLog(
       "backup-scheduler",
       `Starting scheduled backup for org=${organizationId}`,

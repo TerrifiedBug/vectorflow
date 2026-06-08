@@ -13,12 +13,20 @@ vi.mock("@/server/services/anomaly-detector", () => ({
   },
 }));
 
+// SC-3: control leadership so the tick guard can be exercised both ways.
+// Defaults to leader so the existing tick-driven tests keep doing work.
+vi.mock("@/server/services/leader-election", () => ({
+  isLeader: vi.fn(() => true),
+}));
+
 import { prisma } from "@/lib/prisma";
 import { AnomalyDetectionService } from "@/server/services/anomaly-detection-job";
 import { evaluateAllPipelines } from "@/server/services/anomaly-detector";
+import { isLeader } from "@/server/services/leader-election";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const mockEvaluateAll = evaluateAllPipelines as ReturnType<typeof vi.fn>;
+const mockIsLeader = isLeader as ReturnType<typeof vi.fn>;
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
@@ -28,6 +36,7 @@ describe("AnomalyDetectionService", () => {
   beforeEach(() => {
     mockReset(prismaMock);
     vi.clearAllMocks();
+    mockIsLeader.mockReturnValue(true);
     vi.useFakeTimers();
     // The tick now iterates orgs from prisma.organization.findMany. Default
     // mock returns a single default org so existing single-org test cases
@@ -154,5 +163,37 @@ describe("AnomalyDetectionService", () => {
 
     // Release the hung evaluate so the test exits cleanly.
     releaseFirst([]);
+  });
+
+  // ── SC-3: leadership guard (de-SPOF schedulers) ──────────────────────────
+
+  describe("leadership guard", () => {
+    it("tick is a no-op when the instance is no longer leader", async () => {
+      mockIsLeader.mockReturnValue(false);
+      prismaMock.organization.findMany.mockResolvedValue([
+        { id: "org-a" } as never,
+      ]);
+
+      service.init();
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      // A demoted instance must do no work: no org scan, no pipeline
+      // evaluation — otherwise it duplicates the new leader's anomaly runs.
+      expect(prismaMock.organization.findMany).not.toHaveBeenCalled();
+      expect(mockEvaluateAll).not.toHaveBeenCalled();
+    });
+
+    it("tick proceeds normally while the instance is leader", async () => {
+      mockIsLeader.mockReturnValue(true);
+      prismaMock.organization.findMany.mockResolvedValue([
+        { id: "org-a" } as never,
+      ]);
+
+      service.init();
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(prismaMock.organization.findMany).toHaveBeenCalledTimes(1);
+      expect(mockEvaluateAll).toHaveBeenCalledWith({ organizationId: "org-a" });
+    });
   });
 });

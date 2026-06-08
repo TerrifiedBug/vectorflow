@@ -8,6 +8,7 @@ import {
   cleanupExpiredRecommendations,
 } from "@/server/services/cost-recommendations";
 import { generateAiRecommendations } from "@/server/services/cost-optimizer-ai";
+import { isLeader } from "@/server/services/leader-election";
 
 /**
  * Cost-optimizer scheduler — single global cron tick fans out across orgs.
@@ -86,6 +87,15 @@ function scheduleJob(
   }
 
   const task = cron.schedule(cronExpression, async () => {
+    // SC-3: both the daily and continuous passes route through this callback.
+    // A demoted leader's cron tasks keep firing for up to one TTL (~15s) after
+    // Redis renewals fail, so re-check leadership here — a demoted instance
+    // skips the run instead of racing the new leader (duplicate analysis runs).
+    // Guard only — the cron task is left registered.
+    if (!isLeader()) {
+      debugLog("cost-optimizer", `Skipping ${label} — instance is no longer leader`);
+      return;
+    }
     infoLog("cost-optimizer", `Starting ${label}...`);
     try {
       await run();

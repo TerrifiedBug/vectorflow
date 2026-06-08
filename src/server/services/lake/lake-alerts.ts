@@ -1,7 +1,8 @@
 import { adminPrisma, prisma } from "@/lib/prisma";
 import { withOrgTx } from "@/lib/with-org-tx";
 import { runWithOrgContext } from "@/lib/org-context";
-import { infoLog, errorLog } from "@/lib/logger";
+import { debugLog, infoLog, errorLog } from "@/lib/logger";
+import { isLeader } from "@/server/services/leader-election";
 import type { LakeAlertRule } from "@/generated/prisma";
 import { isLakeEnabled } from "./clickhouse";
 import { aggregateValue, type LakeAggFunction } from "./lake-query";
@@ -279,6 +280,14 @@ let timer: NodeJS.Timeout | null = null;
 let tickInFlight = false;
 
 async function tick(): Promise<void> {
+  // SC-3: re-check leadership each tick. A demoted leader's setInterval keeps
+  // firing for up to one TTL (~15s) after Redis renewals fail; without this
+  // guard the old + new leader both evaluate lake alert rules, double-firing.
+  // Guard only — the timer stays so it resumes if leadership is re-acquired.
+  if (!isLeader()) {
+    debugLog("lake-alert", "Skipping tick — instance is no longer leader");
+    return;
+  }
   if (tickInFlight) return; // setInterval does not skip overlapping callbacks
   tickInFlight = true;
   try {

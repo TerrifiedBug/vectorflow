@@ -7,7 +7,8 @@ import { getDriver } from "@/server/services/channels";
 import { decryptChannelConfig } from "@/server/services/channel-secrets";
 import type { ChannelPayload } from "@/server/services/channels/types";
 import { deliverOutboundWebhook, isPermanentFailure } from "@/server/services/outbound-webhook";
-import { infoLog, errorLog } from "@/lib/logger";
+import { debugLog, infoLog, errorLog } from "@/lib/logger";
+import { isLeader } from "@/server/services/leader-election";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -51,6 +52,15 @@ export class RetryService {
    * tracking wrappers, which handle backoff scheduling automatically.
    */
   async processRetries(): Promise<void> {
+    // SC-3: a demoted leader's setInterval keeps firing for up to one TTL
+    // (~15s) after Redis renewals fail. Re-check leadership so a demoted
+    // instance doesn't re-deliver alerts/webhooks the new leader is already
+    // retrying (duplicate deliveries). Covers processOutboundRetries too (it
+    // runs below). Guard only — the timer stays so it resumes on re-acquisition.
+    if (!isLeader()) {
+      debugLog("retry-service", "Skipping poll — instance is no longer leader");
+      return;
+    }
     let dueRetries;
     try {
       dueRetries = await prisma.deliveryAttempt.findMany({

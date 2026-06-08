@@ -23,15 +23,41 @@ vi.mock("@/server/services/event-alerts", () => ({
 vi.mock("@/server/services/sse-broadcast", () => ({
   broadcastSSE: vi.fn(),
 }));
+vi.mock("@/server/services/leader-election", () => ({
+  isLeader: vi.fn(() => true),
+}));
+
 
 import { prisma } from "@/lib/prisma";
 import { gitSyncCommitPipeline } from "@/server/services/git-sync";
 import { fireEventAlert } from "@/server/services/event-alerts";
 import { GitSyncRetryService, getNextRetryAt, createGitSyncJob } from "../git-sync-retry";
+import { isLeader } from "@/server/services/leader-election";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const commitMock = vi.mocked(gitSyncCommitPipeline);
 const fireAlertMock = vi.mocked(fireEventAlert);
+
+// Keep leadership true by default so the per-tick guard never suppresses the
+// existing tick tests; individual tests opt into the not-leader path.
+beforeEach(() => {
+  vi.mocked(isLeader).mockReturnValue(true);
+});
+
+describe("GitSyncRetryService leadership guard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(isLeader).mockReturnValue(true);
+  });
+
+  it("skips the tick (no work) when this instance is not the leader", async () => {
+    vi.mocked(isLeader).mockReturnValue(false);
+    const service = new GitSyncRetryService();
+    await (service as unknown as { tick(): Promise<void> }).tick();
+    expect(prismaMock.organization.findMany).not.toHaveBeenCalled();
+    expect(commitMock).not.toHaveBeenCalled();
+  });
+});
 
 describe("getNextRetryAt", () => {
   it("returns 30s delay for attempt 0", () => {
