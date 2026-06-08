@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useFlowStore } from "@/stores/flow-store";
 import type { VectorComponentDef } from "@/lib/vector/types";
+import { DLP_VRL_SOURCES } from "@/lib/vector/dlp-vrl-sources";
 
 // UX-1: replaceNodeComponent swaps a node's component type in place — same id,
 // position, and edges — so users can try a different sink/source/transform
@@ -174,5 +175,16 @@ describe("flow-store replaceNodeComponent", () => {
     } as unknown as VectorComponentDef;
     useFlowStore.getState().replaceNodeComponent(id, requiresField);
     expect(useFlowStore.getState().nodes.find((n) => n.id === id)!.data.hasError).toBe(true);
+  });
+
+  it("seeds the DLP VRL template when swapping to a dlp_* transform", () => {
+    const id = addAndGetId(def("remap", "transform", "Remap"));
+    const dlp = def("dlp_credit_card_masking", "transform", "Credit Card Masking", {
+      source: {},
+    });
+    useFlowStore.getState().replaceNodeComponent(id, dlp);
+    const config = useFlowStore.getState().nodes.find((n) => n.id === id)!.data
+      .config as Record<string, unknown>;
+    expect(config.source).toBe(DLP_VRL_SOURCES.dlp_credit_card_masking);
   });
 });

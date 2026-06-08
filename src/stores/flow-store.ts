@@ -16,6 +16,7 @@ import {
 import type { VectorComponentDef } from "@/lib/vector/types";
 import { findComponentDef } from "@/lib/vector/catalog";
 import { validateNodeConfig } from "@/lib/vector/validate-node-config";
+import { DLP_VRL_SOURCES } from "@/lib/vector/dlp-vrl-sources";
 import { applyAutoLayout } from "@/lib/auto-layout";
 
 /** Shape of node.data used throughout the flow editor */
@@ -468,6 +469,13 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       // Reset config to the new type's defaults and recompute validation so the
       // node's error badge reflects the replacement, not the old component.
       const config = seedConfigDefaults(componentDef);
+      // DLP transforms require a `source` the palette/canvas prefill from a
+      // template; mirror that here so swapping to a dlp_* type yields a valid,
+      // ready-to-use node rather than one that immediately blocks deploy.
+      if (componentDef.type.startsWith("dlp_")) {
+        const dlpSource = DLP_VRL_SOURCES[componentDef.type];
+        if (dlpSource) config.source = dlpSource;
+      }
       const validation = validateNodeConfig(config, componentDef.configSchema);
       return {
         ...history,
