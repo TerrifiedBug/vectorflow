@@ -298,6 +298,56 @@ describe("nextReplayBatch", () => {
     expect(result).toMatchObject({ status: "COMPLETED", done: true, replayedEvents: BigInt(10) });
   });
 
+  it("marks the job FAILED with a reason when the drained replay served fewer than totalEvents (NF-6)", async () => {
+    // Estimated 10 events at create, but the window drains after only 3 (short
+    // read) → cumulative 3 < 10 → FAILED with a reason, not a silent COMPLETED.
+    prismaMock.replayJob.findFirst.mockResolvedValue(
+      jobFixture({ status: "RUNNING", replayedEvents: BigInt(0), totalEvents: BigInt(10), startedAt: FROM }) as never,
+    );
+    lakeQueryMock.mockResolvedValueOnce([lakeEvent("a"), lakeEvent("b"), lakeEvent("c")]);
+    prismaMock.replayJob.updateMany.mockResolvedValue({ count: 1 } as never);
+
+    const result = await nextReplayBatch({ orgId: ORG, targetPipelineId: "tgt", batchSize: 5 });
+
+    expect(prismaMock.replayJob.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "FAILED",
+          replayedEvents: BigInt(3),
+          completedAt: expect.any(Date),
+          error: expect.stringContaining("3 of 10"),
+        }),
+      }),
+    );
+    expect(result).toMatchObject({ status: "FAILED", done: true, replayedEvents: BigInt(3) });
+    // The final partial batch is still handed back — those events are real lake rows.
+    expect(result?.events).toHaveLength(3);
+  });
+
+  it("marks COMPLETED and clears the error when the drained replay met or exceeded totalEvents (NF-6)", async () => {
+    // totalEvents was under-counted at create (the lake grew afterwards); the
+    // window drains at 3 >= 2 → COMPLETED, with `error` explicitly cleared.
+    prismaMock.replayJob.findFirst.mockResolvedValue(
+      jobFixture({ status: "RUNNING", replayedEvents: BigInt(0), totalEvents: BigInt(2), startedAt: FROM }) as never,
+    );
+    lakeQueryMock.mockResolvedValueOnce([lakeEvent("a"), lakeEvent("b"), lakeEvent("c")]);
+    prismaMock.replayJob.updateMany.mockResolvedValue({ count: 1 } as never);
+
+    const result = await nextReplayBatch({ orgId: ORG, targetPipelineId: "tgt", batchSize: 5 });
+
+    expect(prismaMock.replayJob.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "COMPLETED",
+          replayedEvents: BigInt(3),
+          completedAt: expect.any(Date),
+          error: null,
+        }),
+      }),
+    );
+    expect(result).toMatchObject({ status: "COMPLETED", done: true, replayedEvents: BigInt(3) });
+  });
+
   it("completes immediately on an empty window (totalEvents 0)", async () => {
     prismaMock.replayJob.findFirst.mockResolvedValue(
       jobFixture({ status: "PENDING", replayedEvents: BigInt(0), totalEvents: BigInt(0) }) as never,
