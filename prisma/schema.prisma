@@ -127,6 +127,20 @@ model OrganizationSettings {
   oidcTeamMappings            String?
   oidcDefaultTeamId           String?
 
+  // SAML SSO (per-org; mirrors the OIDC block above). Coexists with OIDC
+  // and local auth. `samlIdpCert` is the IdP's PUBLIC signing certificate,
+  // so — unlike `oidcClientSecret` — it is stored in plaintext and never
+  // encrypted. Group→team reconciliation reuses the shared
+  // `oidcTeamMappings` mechanism, keyed by the assertion attribute named in
+  // `samlGroupAttribute`. `samlEnforced` disables local credential login
+  // for the org once SAML is fully configured (see src/auth.ts).
+  samlEnabled        Boolean @default(false)
+  samlIdpEntityId    String?
+  samlIdpSsoUrl      String?
+  samlIdpCert        String?
+  samlEnforced       Boolean @default(false)
+  samlGroupAttribute String?
+
   // Fleet tuning (moved from SystemSettings)
   fleetPollIntervalMs        Int @default(15000)
   fleetUnhealthyThreshold    Int @default(3)

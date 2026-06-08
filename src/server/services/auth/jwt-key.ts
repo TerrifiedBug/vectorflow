@@ -148,6 +148,28 @@ export async function getJwtSecretForOrg(orgId: string): Promise<JwtKeyResult> {
   return { value: Buffer.from(envSecret, "utf8"), fromEnv: true, kmsFailure: false, rotationCounter: 0 };
 }
 
+/**
+ * The single JWT signing key (as a string) that `auth.ts` passes as the
+ * FIRST entry of NextAuth's `secret` array. The custom SAML ACS route mints
+ * its session cookie with this exact key so a SAML-issued JWT verifies
+ * identically to an OIDC- or credentials-issued one — same per-org signing
+ * key, same `org_id` claim binding.
+ *
+ *   - env-fallback orgs (no DEK): the raw `NEXTAUTH_SECRET` string, matching
+ *     `auth.ts`'s `secretArg = [process.env.NEXTAUTH_SECRET!]`.
+ *   - DEK-provisioned orgs: the base64url encoding of the derived key,
+ *     matching `auth.ts`'s `jwtKeyResult.value.toString("base64url")`.
+ *
+ * Throws (via `getJwtSecretForOrg`) when neither a per-org DEK nor
+ * `NEXTAUTH_SECRET` is configured.
+ */
+export async function getSessionSigningKey(orgId: string): Promise<string> {
+  const result = await getJwtSecretForOrg(orgId);
+  return result.fromEnv
+    ? process.env.NEXTAUTH_SECRET!
+    : result.value.toString("base64url");
+}
+
 export interface RevokeOrgSessionsRequestor {
   /** "customer" = owner/admin self-serve; "operator" = a platform-operator account. */
   kind: "customer" | "operator";

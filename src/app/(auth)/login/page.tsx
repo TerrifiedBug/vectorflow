@@ -89,6 +89,8 @@ function LoginPageContent() {
     enabled: boolean;
     displayName: string;
     localAuthDisabled: boolean;
+    samlEnabled: boolean;
+    samlEnforced: boolean;
   } | null>(null);
   const [checkingSetup, setCheckingSetup] = useState(true);
 
@@ -99,13 +101,13 @@ function LoginPageContent() {
         .catch(() => ({ setupRequired: false })),
       fetch("/api/auth/oidc-status")
         .then((res) => res.json())
-        .catch(() => ({ enabled: false, displayName: "SSO" })),
+        .catch(() => ({ enabled: false, displayName: "SSO", samlEnabled: false, samlEnforced: false })),
     ]).then(([setup, oidc]) => {
       if ((setup as { setupRequired: boolean }).setupRequired) {
         router.replace("/setup");
         return;
       }
-      setOidcStatus(oidc as { enabled: boolean; displayName: string; localAuthDisabled: boolean });
+      setOidcStatus(oidc as { enabled: boolean; displayName: string; localAuthDisabled: boolean; samlEnabled: boolean; samlEnforced: boolean });
       setCheckingSetup(false);
     });
   }, [router]);
@@ -145,6 +147,13 @@ function LoginPageContent() {
     signIn("oidc", { callbackUrl: "/" });
   }
 
+  function handleSamlLogin() {
+    // SAML is not a NextAuth provider — kick off the SP-initiated flow via our
+    // own route, which redirects to the org IdP and sets the state cookie.
+    const target = searchParams.get("callbackUrl") ?? "/";
+    window.location.href = `/api/auth/saml/login?callbackUrl=${encodeURIComponent(target)}`;
+  }
+
   function handleBackToLogin() {
     setTotpRequired(false);
     setTotpCode("");
@@ -160,7 +169,13 @@ function LoginPageContent() {
     );
   }
 
-  if (oidcStatus?.localAuthDisabled && !oidcStatus?.enabled) {
+  const oidcEnabled = !!oidcStatus?.enabled;
+  const samlEnabled = !!oidcStatus?.samlEnabled;
+  // Local password login is off when the env flag is set OR the org enforces SAML.
+  const localAuthDisabled = !!(oidcStatus?.localAuthDisabled || oidcStatus?.samlEnforced);
+  const anySsoEnabled = oidcEnabled || samlEnabled;
+
+  if (localAuthDisabled && !anySsoEnabled) {
     return (
       <div>
         <div className="font-mono text-[11px] text-fg-2 uppercase tracking-[0.06em]">
@@ -176,7 +191,7 @@ function LoginPageContent() {
     );
   }
 
-  const ssoOnlyMode = oidcStatus?.localAuthDisabled && oidcStatus?.enabled;
+  const ssoOnlyMode = localAuthDisabled && anySsoEnabled;
 
   const content = ssoOnlyMode ? (
     <div>
@@ -197,16 +212,30 @@ function LoginPageContent() {
         </div>
       )}
 
-      <Button
-        type="button"
-        variant="primary"
-        size="lg"
-        className="w-full mt-5 justify-center"
-        onClick={handleSsoLogin}
-      >
-        <Shield className="h-4 w-4" />
-        Sign in with {oidcStatus!.displayName}
-      </Button>
+      {oidcEnabled && (
+        <Button
+          type="button"
+          variant="primary"
+          size="lg"
+          className="w-full mt-5 justify-center"
+          onClick={handleSsoLogin}
+        >
+          <Shield className="h-4 w-4" />
+          Sign in with {oidcStatus!.displayName}
+        </Button>
+      )}
+      {samlEnabled && (
+        <Button
+          type="button"
+          variant={oidcEnabled ? "outline" : "primary"}
+          size="lg"
+          className="w-full mt-3 justify-center"
+          onClick={handleSamlLogin}
+        >
+          <Shield className="h-4 w-4" />
+          Sign in with SAML
+        </Button>
+      )}
     </div>
   ) : (
     <div>
@@ -356,6 +385,28 @@ function LoginPageContent() {
               >
                 <Shield className="h-4 w-4" />
                 Continue with {oidcStatus.displayName}
+              </Button>
+            </>
+          )}
+
+          {!totpRequired && samlEnabled && (
+            <>
+              {!oidcEnabled && (
+                <div className="flex items-center gap-2.5 my-2 font-mono text-[10px] text-fg-2">
+                  <div className="flex-1 h-px bg-line" />
+                  or
+                  <div className="flex-1 h-px bg-line" />
+                </div>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="w-full justify-center"
+                onClick={handleSamlLogin}
+              >
+                <Shield className="h-4 w-4" />
+                Continue with SAML
               </Button>
             </>
           )}
