@@ -12,6 +12,7 @@ import {
   ReplayError,
   type ReplayFilter,
 } from "@/server/services/lake/replay";
+import { evaluateReplayValidation } from "@/server/services/lake/replay-validation";
 
 /**
  * VectorFlow Lake — replay / rehydration router (A4).
@@ -132,6 +133,25 @@ export const replayRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Replay job not found" });
       }
       return job;
+    }),
+
+  /** Score a completed replay against the TARGET pipeline's SLIs over the
+   *  replay window — the promotion-gate signal (NF-6). The job's target must be
+   *  `pipelineId`: the verdict is about the candidate the events were
+   *  re-injected into, not the source they were read from. */
+  validate: protectedProcedure
+    .input(z.object({ pipelineId: z.string(), jobId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input, ctx }) => {
+      const job = await getReplayJob({ orgId: ctx.organizationId, jobId: input.jobId });
+      if (!job || job.targetPipelineId !== input.pipelineId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Replay job not found" });
+      }
+      return evaluateReplayValidation({
+        targetPipelineId: job.targetPipelineId,
+        startedAt: job.startedAt,
+        completedAt: job.completedAt,
+      });
     }),
 
   /** Cancel an in-flight replay job (EDITOR; audited). The job must reference

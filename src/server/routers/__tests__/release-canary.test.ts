@@ -41,9 +41,19 @@ vi.mock("@/server/services/audit", () => ({
   writeAuditLog: vi.fn().mockResolvedValue({}),
 }));
 
+vi.mock("@/server/services/lake/replay", () => ({
+  getReplayJob: vi.fn(),
+}));
+
+vi.mock("@/server/services/lake/replay-validation", () => ({
+  evaluateReplayValidation: vi.fn(),
+}));
+
 import { prisma } from "@/lib/prisma";
 import { canaryReleaseRouter } from "@/server/routers/release/canary";
 import { stagedRolloutService } from "@/server/services/staged-rollout";
+import { getReplayJob } from "@/server/services/lake/replay";
+import { evaluateReplayValidation } from "@/server/services/lake/replay-validation";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const stagedRolloutServiceMock = stagedRolloutService as unknown as {
@@ -130,6 +140,128 @@ describe("release.canary router", () => {
 
       expect(result).toEqual({ success: true });
       expect(stagedRolloutServiceMock.broadenRollout).toHaveBeenCalledWith("rollout-1");
+    });
+
+    it("blocks the broaden when replay validation FAILs and force is not set", async () => {
+      const caller = t.createCallerFactory(appRouter)({
+        session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
+        userRole: "ADMIN",
+        teamId: "team-1",
+      });
+
+      prismaMock.release.findFirst.mockResolvedValueOnce({
+        id: "rollout-1",
+        pipelineId: "pipe-1",
+        pipeline: { environmentId: "env-1" },
+      } as never);
+      vi.mocked(getReplayJob).mockResolvedValueOnce({
+        id: "job-1",
+        targetPipelineId: "pipe-1",
+        startedAt: NOW,
+        completedAt: NOW,
+      } as never);
+      vi.mocked(evaluateReplayValidation).mockResolvedValueOnce({
+        verdict: "FAIL",
+        slis: [{ metric: "error_rate", status: "breached", value: 0.2, threshold: 0.05, condition: "lt" }],
+        window: { from: NOW.toISOString(), to: NOW.toISOString() },
+      });
+
+      await expect(
+        caller.release.canary.broaden({ rolloutId: "rollout-1", replayJobId: "job-1" }),
+      ).rejects.toThrow(/Replay validation failed/);
+      expect(stagedRolloutServiceMock.broadenRollout).not.toHaveBeenCalled();
+    });
+
+    it("allows a forced broaden over a FAILed validation and records the override", async () => {
+      const caller = t.createCallerFactory(appRouter)({
+        session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
+        userRole: "ADMIN",
+        teamId: "team-1",
+      });
+
+      prismaMock.release.findFirst.mockResolvedValueOnce({
+        id: "rollout-1",
+        pipelineId: "pipe-1",
+        pipeline: { environmentId: "env-1" },
+      } as never);
+      vi.mocked(getReplayJob).mockResolvedValueOnce({
+        id: "job-1",
+        targetPipelineId: "pipe-1",
+        startedAt: NOW,
+        completedAt: NOW,
+      } as never);
+      vi.mocked(evaluateReplayValidation).mockResolvedValueOnce({
+        verdict: "FAIL",
+        slis: [{ metric: "error_rate", status: "breached", value: 0.2, threshold: 0.05, condition: "lt" }],
+        window: { from: NOW.toISOString(), to: NOW.toISOString() },
+      });
+      stagedRolloutServiceMock.broadenRollout.mockResolvedValueOnce(undefined);
+
+      const result = await caller.release.canary.broaden({
+        rolloutId: "rollout-1",
+        replayJobId: "job-1",
+        force: true,
+      });
+
+      expect(result).toEqual({ success: true, replayValidation: { verdict: "FAIL", overridden: true } });
+      expect(stagedRolloutServiceMock.broadenRollout).toHaveBeenCalledWith("rollout-1");
+    });
+
+    it("broadens when replay validation PASSes and records the verdict", async () => {
+      const caller = t.createCallerFactory(appRouter)({
+        session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
+        userRole: "ADMIN",
+        teamId: "team-1",
+      });
+
+      prismaMock.release.findFirst.mockResolvedValueOnce({
+        id: "rollout-1",
+        pipelineId: "pipe-1",
+        pipeline: { environmentId: "env-1" },
+      } as never);
+      vi.mocked(getReplayJob).mockResolvedValueOnce({
+        id: "job-1",
+        targetPipelineId: "pipe-1",
+        startedAt: NOW,
+        completedAt: NOW,
+      } as never);
+      vi.mocked(evaluateReplayValidation).mockResolvedValueOnce({
+        verdict: "PASS",
+        slis: [{ metric: "error_rate", status: "met", value: 0.0, threshold: 0.05, condition: "lt" }],
+        window: { from: NOW.toISOString(), to: NOW.toISOString() },
+      });
+      stagedRolloutServiceMock.broadenRollout.mockResolvedValueOnce(undefined);
+
+      const result = await caller.release.canary.broaden({ rolloutId: "rollout-1", replayJobId: "job-1" });
+
+      expect(result).toEqual({ success: true, replayValidation: { verdict: "PASS", overridden: false } });
+      expect(stagedRolloutServiceMock.broadenRollout).toHaveBeenCalledWith("rollout-1");
+    });
+
+    it("rejects a replay job that targets a different pipeline", async () => {
+      const caller = t.createCallerFactory(appRouter)({
+        session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
+        userRole: "ADMIN",
+        teamId: "team-1",
+      });
+
+      prismaMock.release.findFirst.mockResolvedValueOnce({
+        id: "rollout-1",
+        pipelineId: "pipe-1",
+        pipeline: { environmentId: "env-1" },
+      } as never);
+      vi.mocked(getReplayJob).mockResolvedValueOnce({
+        id: "job-1",
+        targetPipelineId: "other-pipe",
+        startedAt: NOW,
+        completedAt: NOW,
+      } as never);
+
+      await expect(
+        caller.release.canary.broaden({ rolloutId: "rollout-1", replayJobId: "job-1" }),
+      ).rejects.toThrow(/does not target this rollout/);
+      expect(vi.mocked(evaluateReplayValidation)).not.toHaveBeenCalled();
+      expect(stagedRolloutServiceMock.broadenRollout).not.toHaveBeenCalled();
     });
   });
 

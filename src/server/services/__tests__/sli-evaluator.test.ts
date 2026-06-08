@@ -75,4 +75,21 @@ describe("evaluatePipelineHealth", () => {
       }),
     ]);
   });
+
+  it("reports a dark pipeline (empty metric window) as degraded", async () => {
+    prismaMock.pipelineSli.findMany.mockResolvedValue([
+      makeSli({ metric: "throughput_floor", condition: "gt", threshold: 10, windowMinutes: 5 }),
+    ]);
+    prismaMock.pipelineMetric.aggregate.mockResolvedValue({
+      _sum: { eventsIn: null, errorsTotal: null, eventsDiscarded: null },
+      _count: 0,
+    } as never);
+
+    const result = await evaluatePipelineHealth("pipeline-1");
+
+    expect(result.status).toBe("degraded");
+    expect(result.slis[0]).toEqual(
+      expect.objectContaining({ metric: "throughput_floor", status: "breached", value: 0 }),
+    );
+  });
 });
