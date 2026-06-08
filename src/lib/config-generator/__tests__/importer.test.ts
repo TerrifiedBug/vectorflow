@@ -205,4 +205,20 @@ api:
     expect(diff.unchanged).toBe(3);
     expect(diff.globalConfigChanged).toBe(true);
   });
+
+  it("treats a disabled current node re-enabled by the import as changed", () => {
+    const current = importVectorConfig(YAML_BASIC);
+    const outNode = current.nodes.find(
+      (n) => (n.data as { componentKey?: string }).componentKey === "out",
+    )!;
+    (outNode.data as { disabled?: boolean }).disabled = true;
+
+    // Re-importing the same YAML (all nodes enabled) re-enables `out`, so it must
+    // show as changed — not unchanged — since apply flips its disabled state.
+    const diff = diffImportedGraph(importVectorConfig(YAML_BASIC), current);
+    expect(diff.components).toEqual([
+      { componentKey: "out", status: "changed", type: "console" },
+    ]);
+    expect(diff.unchanged).toBe(2);
+  });
 });

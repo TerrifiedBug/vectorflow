@@ -290,6 +290,8 @@ interface NodeFacts {
   key: string;
   type: string;
   config: unknown;
+  /** Disabled nodes are excluded from generated config but live in the editor graph. */
+  disabled: boolean;
 }
 
 function nodeFacts(node: Node): NodeFacts {
@@ -297,11 +299,13 @@ function nodeFacts(node: Node): NodeFacts {
     componentKey?: string;
     componentDef?: { type?: string };
     config?: unknown;
+    disabled?: boolean;
   };
   return {
     key: data.componentKey ?? node.id,
     type: data.componentDef?.type ?? "",
     config: data.config ?? {},
+    disabled: data.disabled ?? false,
   };
 }
 
@@ -355,6 +359,7 @@ export function diffImportedGraph(
       components.push({ componentKey: key, status: "added", type: next.type });
     } else if (
       prev.type !== next.type ||
+      prev.disabled !== next.disabled ||
       stableStringify(prev.config) !== stableStringify(next.config)
     ) {
       components.push({ componentKey: key, status: "changed", type: next.type });
