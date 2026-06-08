@@ -144,26 +144,29 @@ describe("fleet.configDriftReport — classification", () => {
       { nodeId: "node-4", drift: "unknown" },
     ]);
 
-    // Drifted row surfaces both sides so the UI can show the running≠desired diff.
+    // Drifted row exposes presence only (raw secret-derived checksums are never
+    // sent to the client), plus enough context for the UI.
     const drifted = result.nodes.find((n) => n.nodeId === "node-2")!;
     expect(drifted).toMatchObject({
       pipelineName: "ingest",
       status: "RUNNING",
-      runningChecksum: "stale-zzz",
-      desiredChecksum: "desired-aaa",
+      hasRunning: true,
+      hasDesired: true,
       lastReportedAt: REPORTED,
     });
+    expect("runningChecksum" in drifted).toBe(false);
+    expect("desiredChecksum" in drifted).toBe(false);
 
-    // In-sync row reports matching running/desired.
+    // In-sync row: both present.
     const inSync = result.nodes.find((n) => n.nodeId === "node-1")!;
-    expect(inSync.runningChecksum).toBe("desired-aaa");
-    expect(inSync.desiredChecksum).toBe("desired-aaa");
+    expect(inSync.hasRunning).toBe(true);
+    expect(inSync.hasDesired).toBe(true);
 
-    // Older agent (no running checksum) still surfaces the cached desired
-    // checksum so the UI shows "— / <desired>", not "— / —".
+    // Older agent (no running checksum) still reflects that the desired checksum
+    // is cached, so the UI shows "— / reported" not "— / —".
     const olderAgent = result.nodes.find((n) => n.nodeId === "node-3")!;
-    expect(olderAgent.runningChecksum).toBeNull();
-    expect(olderAgent.desiredChecksum).toBe("desired-bbb");
+    expect(olderAgent.hasRunning).toBe(false);
+    expect(olderAgent.hasDesired).toBe(true);
   });
 
   it("scopes the query to the caller's organization and environment", async () => {

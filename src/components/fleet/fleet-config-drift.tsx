@@ -65,11 +65,11 @@ function SummaryStat({
   );
 }
 
-// Checksums are SHA-256 hex; only the running config's *checksum* is reported by
-// the agent (the full running config text is never persisted), so the
-// "running vs desired" comparison is a checksum diff, not a line-level diff.
-function shortChecksum(checksum: string | null): string {
-  return checksum ? `${checksum.slice(0, 12)}…` : "—";
+// The agent reports only a checksum of its running config (the full text is
+// never persisted) and that checksum is derived from secret-bearing config, so
+// the raw hash is never sent to the client. We surface presence only.
+function presence(has: boolean): string {
+  return has ? "reported" : "—";
 }
 
 export function FleetConfigDrift({ environmentId }: FleetConfigDriftProps) {
@@ -167,7 +167,7 @@ export function FleetConfigDrift({ environmentId }: FleetConfigDriftProps) {
                         {pipelineStatusLabel(node.status)}
                       </StatusBadge>
                     </TableCell>
-                    <TableCell className="font-mono text-xs tabular-nums">
+                    <TableCell className="text-xs tabular-nums">
                       <span
                         className={
                           node.drift === "drifted"
@@ -175,11 +175,11 @@ export function FleetConfigDrift({ environmentId }: FleetConfigDriftProps) {
                             : "text-muted-foreground"
                         }
                       >
-                        {shortChecksum(node.runningChecksum)}
+                        {presence(node.hasRunning)}
                       </span>
                       <span className="text-muted-foreground"> / </span>
                       <span className="text-muted-foreground">
-                        {shortChecksum(node.desiredChecksum)}
+                        {presence(node.hasDesired)}
                       </span>
                     </TableCell>
                     <TableCell>

@@ -961,8 +961,11 @@ export const fleetRouter = router({
           pipelineId: s.pipelineId,
           pipelineName: s.pipeline.name,
           status: s.status,
-          runningChecksum: running,
-          desiredChecksum: desired,
+          // Never expose the raw checksums: they are derived from the rendered
+          // config including resolved secrets, so a hash would let a viewer
+          // confirm guessed secrets offline / track rotations. Presence only.
+          hasRunning: running != null,
+          hasDesired: desired != null,
           drift,
           lastReportedAt: s.lastUpdated,
         };
