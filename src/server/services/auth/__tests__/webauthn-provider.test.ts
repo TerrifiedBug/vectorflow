@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   finishAuthentication: vi.fn(),
   userFindUnique: vi.fn(),
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
+  getSamlSettings: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("@/server/services/webauthn", () => ({
@@ -17,6 +18,9 @@ vi.mock("@/lib/logger", () => ({
   infoLog: vi.fn(),
   warnLog: vi.fn(),
   errorLog: vi.fn(),
+}));
+vi.mock("@/server/services/auth/saml-config", () => ({
+  getSamlSettings: mocks.getSamlSettings,
 }));
 
 import { authorizeWebauthn } from "../webauthn-provider";
@@ -37,6 +41,14 @@ describe("webauthnProvider", () => {
     mocks.finishAuthentication.mockReset();
     mocks.userFindUnique.mockReset();
     mocks.writeAuditLog.mockClear();
+    mocks.getSamlSettings.mockResolvedValue(null);
+  });
+
+  it("denies WebAuthn login when the org enforces SAML SSO (no passkey bypass)", async () => {
+    mocks.getSamlSettings.mockResolvedValue({ enforced: true });
+    const result = await authorize({ assertionJSON: goodAssertion });
+    expect(result).toBeNull();
+    expect(mocks.finishAuthentication).not.toHaveBeenCalled();
   });
 
   it("returns the NextAuth user on a successful assertion", async () => {

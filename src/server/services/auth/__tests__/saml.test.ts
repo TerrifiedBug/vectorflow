@@ -48,6 +48,7 @@ import { reconcileUserTeamMemberships } from "@/server/services/group-mappings";
 import { mockOrgSettings } from "@/__tests__/helpers/mock-org-settings";
 import {
   validateSamlResponse,
+  sanitizeReturnTo,
   provisionSamlUser,
   extractSamlEmail,
   extractSamlGroups,
@@ -330,5 +331,30 @@ describe("getSamlSettings — enforced gating", () => {
     );
 
     await expect(getSamlSettings("org-1")).resolves.toBeNull();
+  });
+});
+
+describe("sanitizeReturnTo — open-redirect prevention", () => {
+  it("keeps a safe same-origin path (with query + hash)", () => {
+    expect(sanitizeReturnTo("/pipelines?x=1#h")).toBe("/pipelines?x=1#h");
+  });
+
+  it("defaults to / for null / non-relative / protocol-relative inputs", () => {
+    expect(sanitizeReturnTo(null)).toBe("/");
+    expect(sanitizeReturnTo("https://evil.com")).toBe("/");
+    expect(sanitizeReturnTo("//evil.com")).toBe("/");
+  });
+
+  it("rejects backslash paths that fold to a foreign origin (open redirect)", () => {
+    // Backslashes are folded to "/" by the WHATWG URL parser for http(s), so
+    // these escape to https://evil.com/ and MUST be rejected.
+    for (const evil of ["/\\evil.com", "/\\/evil.com", "/\\@evil.com"]) {
+      expect(sanitizeReturnTo(evil)).toBe("/");
+    }
+  });
+
+  it("keeps a tab-containing path same-origin (folds to a local path, not a redirect)", () => {
+    // A tab is stripped, leaving "/evil.com//" — a path on THIS origin, safe.
+    expect(sanitizeReturnTo("/\tevil.com//")).toBe("/evil.com//");
   });
 });

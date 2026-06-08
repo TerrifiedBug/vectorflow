@@ -451,8 +451,17 @@ export async function buildSamlSessionCookie(params: {
 
 /** Ensure a post-login redirect target stays on this origin (no open redirect). */
 export function sanitizeReturnTo(raw: string | null | undefined): string {
-  if (typeof raw !== "string" || !raw.startsWith("/") || raw.startsWith("//")) {
+  // Must be a relative path. Resolve against a sentinel origin and confirm it
+  // did NOT escape to a foreign origin: the WHATWG URL parser folds backslashes
+  // and strips tab/newline for http(s), so prefix checks like `!startsWith("//")`
+  // are bypassable (e.g. "/\\evil.com" -> https://evil.com/). Compare origins.
+  if (typeof raw !== "string" || !raw.startsWith("/")) return "/";
+  try {
+    const base = "https://sp.invalid";
+    const u = new URL(raw, base);
+    if (u.origin !== base) return "/";
+    return u.pathname + u.search + u.hash;
+  } catch {
     return "/";
   }
-  return raw;
 }
