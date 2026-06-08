@@ -42,6 +42,11 @@ export async function evaluateSliOverWindow(
   sli: SliDefinition,
   since: Date,
   until?: Date,
+  /** Verdict for a window with zero metric rows. Rolling health treats a dark
+   *  pipeline as `breached` — its documented contract, mirrored by
+   *  batch-health.ts / fleet-metrics.ts. Replay validation uses `no_data`: an
+   *  unscored window is "no opinion", never a failure. */
+  emptyWindowStatus: "breached" | "no_data" = "no_data",
 ): Promise<SliResult> {
   const timestamp = until ? { gte: since, lte: until } : { gte: since };
   const noData: SliResult = {
@@ -59,7 +64,11 @@ export async function evaluateSliOverWindow(
     _count: true,
   });
 
-  if (agg._count === 0) return noData;
+  if (agg._count === 0) {
+    return emptyWindowStatus === "breached"
+      ? { metric: sli.metric, status: "breached", value: 0, threshold: sli.threshold, condition: sli.condition }
+      : noData;
+  }
 
   let value: number;
   const totalEventsIn = Number(agg._sum.eventsIn ?? 0);
@@ -136,7 +145,7 @@ export async function evaluatePipelineHealth(pipelineId: string): Promise<{
   for (const sli of sliDefs) {
     // Each rolling SLI scores its own trailing window.
     const since = new Date(Date.now() - sli.windowMinutes * 60_000);
-    results.push(await evaluateSliOverWindow(pipelineId, sli, since));
+    results.push(await evaluateSliOverWindow(pipelineId, sli, since, undefined, "breached"));
   }
 
   return { status: rollUpSliStatus(results), slis: results };
