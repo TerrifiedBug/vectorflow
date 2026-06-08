@@ -16,6 +16,12 @@ describe("encryptChannelConfig", () => {
     expect(out.hmacSecret as string).toMatch(/^vfenc1:/);
   });
 
+  it("encrypts opsgenie apiKey but leaves region in plaintext", () => {
+    const out = encryptChannelConfig("opsgenie", { apiKey: "raw-genie-key", region: "us" });
+    expect(out.apiKey as string).toMatch(/^vfenc1:/);
+    expect(out.region).toBe("us");
+  });
+
   it("does not treat user-supplied secrets that begin with v2: as already encrypted", () => {
     const out = encryptChannelConfig("webhook", { hmacSecret: "v2:user-token" });
     expect(out.hmacSecret as string).toMatch(/^vfenc1:/);
@@ -29,6 +35,7 @@ describe("encrypt+decrypt round trip", () => {
     ["webhook", { url: "https://x.test/h", hmacSecret: "s1", headers: { Authorization: "Bearer abc" } }],
     ["slack",     { webhookUrl: "https://hooks.slack.com/services/T/B/XYZ" }],
     ["pagerduty", { integrationKey: "ROUTING-KEY-123", severityMap: { error: "warning" } }],
+    ["opsgenie",  { apiKey: "GENIE-KEY-123", region: "eu" }],
     ["email",     { smtpHost: "smtp.x", smtpUser: "u", smtpPass: "p", recipients: ["a@b"] }],
   ])("round-trips %s", (type, plain) => {
     const enc = encryptChannelConfig(type, plain);

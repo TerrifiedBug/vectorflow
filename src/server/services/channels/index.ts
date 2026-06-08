@@ -6,6 +6,7 @@ import { emailDriver } from "./email";
 import { pagerdutyDriver } from "./pagerduty";
 import { webhookDriver } from "./webhook";
 import { teamsDriver } from "./teams";
+import { opsgenieDriver } from "./opsgenie";
 import { trackChannelDelivery } from "@/server/services/delivery-tracking";
 import { isDemoMode } from "@/lib/is-demo-mode";
 import { decryptChannelConfig } from "@/server/services/channel-secrets";
@@ -18,6 +19,7 @@ const drivers: Record<string, ChannelDriver> = {
   pagerduty: pagerdutyDriver,
   webhook: webhookDriver,
   teams: teamsDriver,
+  opsgenie: opsgenieDriver,
 };
 
 /**

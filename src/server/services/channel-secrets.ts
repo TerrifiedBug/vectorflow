@@ -5,6 +5,7 @@ export const SENSITIVE_FIELDS_BY_TYPE: Record<string, readonly string[]> = {
   slack:     ["webhookUrl"],
   teams:     ["webhookUrl"],
   pagerduty: ["integrationKey"],
+  opsgenie:  ["apiKey"],
   email:     ["smtpPass"],
 };
 

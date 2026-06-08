@@ -161,7 +161,7 @@ function ChannelDeliveryHistory({
 
 // ─── Notification Channels Section ───────────────────────────────────────────────
 
-type ChannelType = "slack" | "teams" | "email" | "pagerduty" | "webhook";
+type ChannelType = "slack" | "teams" | "email" | "pagerduty" | "opsgenie" | "webhook";
 
 interface ChannelFormState {
   name: string;
@@ -177,6 +177,9 @@ interface ChannelFormState {
   recipients: string;
   // PagerDuty
   integrationKey: string;
+  // Opsgenie
+  apiKey: string;
+  region: string;
   // Webhook
   url: string;
   headers: string;
@@ -194,6 +197,8 @@ const EMPTY_CHANNEL_FORM: ChannelFormState = {
   emailFrom: "",
   recipients: "",
   integrationKey: "",
+  apiKey: "",
+  region: "us",
   url: "",
   headers: "",
   hmacSecret: "",
@@ -218,6 +223,8 @@ function buildConfigFromForm(form: ChannelFormState): Record<string, unknown> {
       };
     case "pagerduty":
       return { integrationKey: form.integrationKey };
+    case "opsgenie":
+      return { apiKey: form.apiKey, region: form.region };
     case "webhook": {
       const config: Record<string, unknown> = { url: form.url };
       if (form.headers.trim()) {
@@ -258,6 +265,12 @@ function formFromConfig(
       };
     case "pagerduty":
       return { ...base, integrationKey: "" };
+    case "opsgenie":
+      return {
+        ...base,
+        apiKey: "",
+        region: (config.region as string) === "eu" ? "eu" : "us",
+      };
     case "webhook":
       return {
         ...base,
@@ -411,6 +424,12 @@ export function NotificationChannelsSection({
       case "pagerduty":
         if (!editingChannelId && !form.integrationKey.trim()) {
           toast.error("Integration key is required", { duration: 6000 });
+          return false;
+        }
+        break;
+      case "opsgenie":
+        if (!editingChannelId && !form.apiKey.trim()) {
+          toast.error("API key is required", { duration: 6000 });
           return false;
         }
         break;
@@ -656,6 +675,7 @@ export function NotificationChannelsSection({
                     <SelectItem value="teams">Microsoft Teams</SelectItem>
                     <SelectItem value="email">Email</SelectItem>
                     <SelectItem value="pagerduty">PagerDuty</SelectItem>
+                    <SelectItem value="opsgenie">Opsgenie</SelectItem>
                     <SelectItem value="webhook">Webhook</SelectItem>
                   </SelectContent>
                 </Select>
@@ -793,6 +813,49 @@ export function NotificationChannelsSection({
                     : "Found in PagerDuty under Service > Integrations > Events API v2."}
                 </p>
               </div>
+            )}
+
+            {form.type === "opsgenie" && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="og-api-key">API Key</Label>
+                  <Input
+                    id="og-api-key"
+                    type="password"
+                    placeholder={
+                      editingChannelId
+                        ? "Leave blank to keep existing key"
+                        : "Enter Opsgenie API key"
+                    }
+                    value={form.apiKey}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, apiKey: e.target.value }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {editingChannelId
+                      ? "Leave blank to keep the existing key, or enter a new one to replace it."
+                      : "Create an API integration in Opsgenie (Settings > Integrations > API) and paste its key."}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="og-region">Region</Label>
+                  <Select
+                    value={form.region}
+                    onValueChange={(v) =>
+                      setForm((f) => ({ ...f, region: v }))
+                    }
+                  >
+                    <SelectTrigger id="og-region">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="us">US (api.opsgenie.com)</SelectItem>
+                      <SelectItem value="eu">EU (api.eu.opsgenie.com)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
             )}
 
             {form.type === "webhook" && (

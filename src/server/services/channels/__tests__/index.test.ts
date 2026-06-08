@@ -7,8 +7,12 @@ import type { PrismaClient } from "@/generated/prisma";
 // vi.mock() factories run before module imports, so any locally-defined
 // value referenced inside them must be hoisted with vi.hoisted().
 
-const { fakeWebhookDriver } = vi.hoisted(() => ({
+const { fakeWebhookDriver, fakeOpsgenieDriver } = vi.hoisted(() => ({
   fakeWebhookDriver: {
+    deliver: vi.fn(),
+    test: vi.fn(),
+  },
+  fakeOpsgenieDriver: {
     deliver: vi.fn(),
     test: vi.fn(),
   },
@@ -20,6 +24,12 @@ vi.mock("@/lib/prisma", () => { const __pm = mockDeep<PrismaClient>(); return { 
 // the dispatcher hands it. The driver itself is tested in webhook.test.ts.
 vi.mock("@/server/services/channels/webhook", () => ({
   webhookDriver: fakeWebhookDriver,
+}));
+
+// Same for the opsgenie driver — assert the dispatcher decrypts apiKey before
+// handing config to it. The driver itself is tested in opsgenie.test.ts.
+vi.mock("@/server/services/channels/opsgenie", () => ({
+  opsgenieDriver: fakeOpsgenieDriver,
 }));
 
 // Avoid creating real DeliveryAttempt rows when alertEventId is passed.
@@ -64,6 +74,8 @@ describe("deliverToChannels — secret decryption at driver boundary", () => {
     mockReset(prismaMock);
     fakeWebhookDriver.deliver.mockReset();
     fakeWebhookDriver.test.mockReset();
+    fakeOpsgenieDriver.deliver.mockReset();
+    fakeOpsgenieDriver.test.mockReset();
     delete process.env.NEXT_PUBLIC_VF_DEMO_MODE;
   });
 
@@ -130,5 +142,30 @@ describe("deliverToChannels — secret decryption at driver boundary", () => {
       url: "https://hooks.example.com/x",
       hmacSecret: "tracked-secret",
     });
+  });
+
+  it("routes type='opsgenie' to the opsgenie driver with a decrypted apiKey", async () => {
+    fakeOpsgenieDriver.deliver.mockResolvedValue({ channelId: "ch-og", success: true });
+
+    const encryptedKey = ENCRYPTED_MARKER + encrypt("raw-genie-key", ENCRYPTION_DOMAINS.SECRETS);
+
+    prismaMock.notificationChannel.findMany.mockResolvedValue([
+      {
+        id: "ch-og",
+        name: "Opsgenie",
+        type: "opsgenie",
+        config: { apiKey: encryptedKey, region: "eu" },
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ] as any);
+
+    const results = await deliverToChannels("env-1", null, makePayload());
+
+    expect(fakeOpsgenieDriver.deliver).toHaveBeenCalledTimes(1);
+    expect(fakeOpsgenieDriver.deliver).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: "raw-genie-key", region: "eu" }),
+      expect.objectContaining({ alertId: "alert-1" }),
+    );
+    expect(results[0]).toMatchObject({ channelId: "ch-og", success: true });
   });
 });
