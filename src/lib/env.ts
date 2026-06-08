@@ -106,6 +106,17 @@ const runtimeEnvSchema = z
     VF_LAKE_CLICKHOUSE_PASSWORD: z.string().optional(),
     // Default DB mirrors DEFAULT_LAKE_DATABASE in the lake wrapper.
     VF_LAKE_CLICKHOUSE_DATABASE: z.string().default("vectorflow_lake"),
+    // Connection-pool bounds for the lake ClickHouse client. createClient()
+    // otherwise opens unbounded sockets under load (the @clickhouse/client pool
+    // is per-client and we keep a single cached client). Cap concurrent sockets
+    // and fail slow requests rather than hang. Conservative defaults — raise
+    // VF_LAKE_CH_POOL_MAX for higher lake query/insert parallelism.
+    VF_LAKE_CH_POOL_MAX: z.coerce.number().int().positive().default(10),
+    VF_LAKE_CH_REQUEST_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(30000),
     // Cold tier (S3-backed). When VF_LAKE_S3_BUCKET is set the lake migration
     // runner (scripts/lake-migrate.ts) applies a TTL move-to-cold +
     // `storage_policy='vf_hot_cold'`; otherwise lake_events is a plain MergeTree
