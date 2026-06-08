@@ -213,7 +213,7 @@ export const tapCaptureRouter = router({
       const events = Array.isArray(capture.events)
         ? (capture.events as unknown[])
         : [];
-      const result = await evaluateVrl(input.source, events);
+      const result = await evaluateVrl(input.source, events, { orgId: ctx.organizationId });
       return {
         outputs: result.outputs,
         stats: {

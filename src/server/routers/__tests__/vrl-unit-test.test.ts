@@ -226,7 +226,7 @@ describe("vrlRouter.runUnitTests", () => {
       source: '.level = "info"',
     });
 
-    expect(evaluateVrl).toHaveBeenCalledWith('.level = "info"', [{ level: "debug" }]);
+    expect(evaluateVrl).toHaveBeenCalledWith('.level = "info"', [{ level: "debug" }], { orgId: "org-1" });
     expect(results).toEqual([
       { id: "ut-1", name: "set level", passed: true, actual: { host: "h", level: "info" }, expected: { level: "info", host: "h" } },
     ]);

@@ -17,11 +17,19 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { join } from "path";
 import { tmpdir } from "os";
+import { withOrgConcurrencyLimit } from "@/lib/org-concurrency";
 
 const execFileAsync = promisify(execFile);
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_BUFFER_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Max concurrent `vector` subprocesses per org (bucket key `"vector-eval"`).
+ * Conservative: enough for an interactive editor's parallel unit-test batch
+ * without letting one tenant monopolize the shared host.
+ */
+const VECTOR_EVAL_CONCURRENCY = 4;
 
 export interface TransformEvalStats {
   /** Events fed in. */
@@ -50,6 +58,11 @@ export interface TransformEvalResult extends TransformEvalStats {
 
 export interface EvaluateVrlOptions {
   timeoutMs?: number;
+  /**
+   * Organization to bound the `vector` subprocess spawn under (see
+   * `withOrgConcurrencyLimit`). Omit to run unbounded (backward-compatible).
+   */
+  orgId?: string;
 }
 
 /** NDJSON encoding for `vector vrl --input` (one compact JSON object per line). */
@@ -120,24 +133,19 @@ function resultFromOutputs(
 }
 
 /**
- * Run a VRL program over `events`, returning transformed outputs + reduction
- * stats. An empty program or empty input is a no-op pass-through (0% reduction).
- * Never throws — failures land in `result.error`.
+ * Spawn the `vector` subprocess for a non-trivial program/input pair: write the
+ * program + NDJSON to a temp dir, run `vector vrl`, parse the surviving events.
+ * Never throws — compile errors, a missing binary, or a timeout land in
+ * `result.error`. Temp files are always cleaned up.
  */
-export async function evaluateVrl(
+async function runVectorEval(
   source: string,
-  events: unknown[],
-  options: EvaluateVrlOptions = {},
+  ndjson: string,
+  inputCount: number,
+  inputBytes: number,
+  start: number,
+  timeoutMs: number,
 ): Promise<TransformEvalResult> {
-  const start = performance.now();
-  const inputCount = events.length;
-  const ndjson = buildNdjson(events);
-  const inputBytes = Buffer.byteLength(ndjson, "utf8");
-
-  if (!source.trim() || inputCount === 0) {
-    return resultFromOutputs(inputCount, inputBytes, [...events], 0);
-  }
-
   let tmpDir: string;
   try {
     tmpDir = await mkdtemp(join(tmpdir(), "vf-transform-eval-"));
@@ -156,7 +164,7 @@ export async function evaluateVrl(
       "vector",
       ["vrl", "--input", inputPath, "--program", programPath, "--print-object"],
       {
-        timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+        timeout: timeoutMs,
         maxBuffer: MAX_BUFFER_BYTES,
         env: { ...process.env, VECTOR_LOG: "error" },
       },
@@ -176,4 +184,36 @@ export async function evaluateVrl(
     await unlink(programPath).catch(() => {});
     await unlink(inputPath).catch(() => {});
   }
+}
+
+/**
+ * Run a VRL program over `events`, returning transformed outputs + reduction
+ * stats. An empty program or empty input is a no-op pass-through (0% reduction).
+ * Never throws — failures land in `result.error`.
+ *
+ * When `options.orgId` is set, the `vector` subprocess spawn is bounded per org
+ * (key `"vector-eval"`) so one tenant's concurrent evals (live-tap, cost
+ * what-if, unit-test "run all") cannot starve the shared host. The no-op fast
+ * path never takes a slot, and behavior is unchanged when `orgId` is omitted.
+ */
+export async function evaluateVrl(
+  source: string,
+  events: unknown[],
+  options: EvaluateVrlOptions = {},
+): Promise<TransformEvalResult> {
+  const start = performance.now();
+  const inputCount = events.length;
+  const ndjson = buildNdjson(events);
+  const inputBytes = Buffer.byteLength(ndjson, "utf8");
+
+  if (!source.trim() || inputCount === 0) {
+    return resultFromOutputs(inputCount, inputBytes, [...events], 0);
+  }
+
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const run = () => runVectorEval(source, ndjson, inputCount, inputBytes, start, timeoutMs);
+
+  return options.orgId
+    ? withOrgConcurrencyLimit(options.orgId, "vector-eval", VECTOR_EVAL_CONCURRENCY, run)
+    : run();
 }
