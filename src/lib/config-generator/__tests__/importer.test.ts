@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { generateVectorYaml } from "../yaml-generator";
-import { importVectorConfig } from "../importer";
+import { importVectorConfig, diffImportedGraph } from "../importer";
 
 const YAML_BASIC = `
 sources:
@@ -124,5 +124,118 @@ describe("importVectorConfig", () => {
     expect(generatedYaml).toContain("inputs:\n      - demo");
     expect(generatedYaml).not.toContain("- out");
     expect(generatedYaml).not.toContain("- audit");
+  });
+});
+
+describe("diffImportedGraph", () => {
+  it("reports no changes for an identical re-import", () => {
+    const current = importVectorConfig(YAML_BASIC);
+    const imported = importVectorConfig(YAML_BASIC);
+    const diff = diffImportedGraph(imported, current);
+    expect(diff.components).toEqual([]);
+    expect(diff.unchanged).toBe(3);
+    expect(diff.edgesAdded).toBe(0);
+    expect(diff.edgesRemoved).toBe(0);
+    expect(diff.globalConfigChanged).toBe(false);
+  });
+
+  it("classifies added, changed, and removed components by componentKey", () => {
+    const current = importVectorConfig(YAML_BASIC); // http_in, parse, out
+    const modified = `
+sources:
+  http_in:
+    type: http
+    address: 0.0.0.0:8080
+transforms:
+  parse:
+    type: remap
+    inputs: [http_in]
+    source: |
+      .changed = true
+sinks:
+  archive:
+    type: console
+    inputs: [parse]
+    encoding:
+      codec: json
+`;
+    const diff = diffImportedGraph(importVectorConfig(modified), current);
+    const keys = (status: string) =>
+      diff.components.filter((c) => c.status === status).map((c) => c.componentKey);
+    expect(keys("added")).toEqual(["archive"]);
+    expect(keys("changed")).toEqual(["parse"]);
+    expect(keys("removed")).toEqual(["out"]);
+    expect(diff.unchanged).toBe(1); // http_in untouched
+  });
+
+  it("detects edge changes by component-key pair, ignoring fresh node ids", () => {
+    const current = importVectorConfig(YAML_BASIC); // http_in→parse, parse→out
+    const rewired = `
+sources:
+  http_in:
+    type: http
+    address: 0.0.0.0:8080
+transforms:
+  parse:
+    type: remap
+    inputs: [http_in]
+    source: |
+      . = parse_json!(.message)
+sinks:
+  out:
+    type: console
+    inputs: [http_in]
+    encoding:
+      codec: json
+`;
+    const diff = diffImportedGraph(importVectorConfig(rewired), current);
+    expect(diff.edgesAdded).toBe(1); // http_in→out
+    expect(diff.edgesRemoved).toBe(1); // parse→out
+    expect(diff.components).toEqual([]); // same components, only wiring changed
+  });
+
+  it("flags a global-config-only change while the graph is identical", () => {
+    const current = importVectorConfig(YAML_BASIC);
+    const withApi = `${YAML_BASIC}
+api:
+  enabled: true
+`;
+    const diff = diffImportedGraph(importVectorConfig(withApi), current);
+    expect(diff.components).toEqual([]);
+    expect(diff.unchanged).toBe(3);
+    expect(diff.globalConfigChanged).toBe(true);
+  });
+
+  it("treats a disabled current node re-enabled by the import as changed", () => {
+    const current = importVectorConfig(YAML_BASIC);
+    const outNode = current.nodes.find(
+      (n) => (n.data as { componentKey?: string }).componentKey === "out",
+    )!;
+    (outNode.data as { disabled?: boolean }).disabled = true;
+
+    // Re-importing the same YAML (all nodes enabled) re-enables `out`, so it must
+    // show as changed — not unchanged — since apply flips its disabled state.
+    const diff = diffImportedGraph(importVectorConfig(YAML_BASIC), current);
+    expect(diff.components).toEqual([
+      { componentKey: "out", status: "changed", type: "console" },
+    ]);
+    expect(diff.unchanged).toBe(2);
+  });
+
+  it("treats a component moved between sections (same key/type, different kind) as changed", () => {
+    const node = (kind: string) =>
+      ({
+        id: "n1",
+        type: kind,
+        position: { x: 0, y: 0 },
+        data: { componentKey: "relay", componentDef: { type: "socket", kind }, config: {} },
+      }) as never;
+    const diff = diffImportedGraph(
+      { nodes: [node("sink")], edges: [], globalConfig: null },
+      { nodes: [node("source")], edges: [], globalConfig: null },
+    );
+    expect(diff.components).toEqual([
+      { componentKey: "relay", status: "changed", type: "socket" },
+    ]);
   });
 });

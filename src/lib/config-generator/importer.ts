@@ -260,3 +260,141 @@ export function importVectorConfig(
     warnings,
   };
 }
+
+/* ------------------------------------------------------------------ */
+/*  Import diff — preview added/removed/changed components before apply */
+/* ------------------------------------------------------------------ */
+
+/** A single component-level change between an imported graph and the current one. */
+export interface ImportComponentChange {
+  /** Vector component name (the stable identity matched across graphs). */
+  componentKey: string;
+  status: "added" | "removed" | "changed";
+  /** Component type — from the imported config for added/changed, the current graph for removed. */
+  type: string;
+}
+
+/** Summary of what importing a config would change versus the current graph. */
+export interface ImportGraphDiff {
+  /** Per-component changes, ordered added → changed → removed, then by key. */
+  components: ImportComponentChange[];
+  /** Components present unchanged in both graphs. */
+  unchanged: number;
+  edgesAdded: number;
+  edgesRemoved: number;
+  /** Whether non-graph global config (api, enrichment_tables, …) differs. */
+  globalConfigChanged: boolean;
+}
+
+interface NodeFacts {
+  key: string;
+  type: string;
+  kind: string;
+  config: unknown;
+  /** Disabled nodes are excluded from generated config but live in the editor graph. */
+  disabled: boolean;
+}
+
+function nodeFacts(node: Node): NodeFacts {
+  const data = node.data as {
+    componentKey?: string;
+    componentDef?: { type?: string; kind?: string };
+    config?: unknown;
+    disabled?: boolean;
+  };
+  return {
+    key: data.componentKey ?? node.id,
+    type: data.componentDef?.type ?? "",
+    kind: data.componentDef?.kind ?? "",
+    config: data.config ?? {},
+    disabled: data.disabled ?? false,
+  };
+}
+
+/** Deterministic JSON with recursively sorted object keys, for order-insensitive config equality. */
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/** Edge identity by component-key pair (node ids differ between a fresh import and the live graph). */
+function edgeKeyPairs(nodes: Node[], edges: Edge[]): Set<string> {
+  const idToKey = new Map(nodes.map((n) => [n.id, nodeFacts(n).key]));
+  return new Set(
+    edges.map((e) => `${idToKey.get(e.source) ?? e.source}\u0000${idToKey.get(e.target) ?? e.target}`),
+  );
+}
+
+const STATUS_ORDER: Record<ImportComponentChange["status"], number> = {
+  added: 0,
+  changed: 1,
+  removed: 2,
+};
+
+/**
+ * Diff an imported graph against the current one so the editor can preview the
+ * impact (and require confirmation) before replacing the graph. Components are
+ * matched by `componentKey`; a component is `changed` when its type or config
+ * differs. Pure + side-effect free.
+ */
+export function diffImportedGraph(
+  imported: Pick<ImportResult, "nodes" | "edges" | "globalConfig">,
+  current: { nodes: Node[]; edges: Edge[]; globalConfig: Record<string, unknown> | null },
+): ImportGraphDiff {
+  const currentByKey = new Map(current.nodes.map((n) => [nodeFacts(n).key, nodeFacts(n)]));
+  const importedByKey = new Map(imported.nodes.map((n) => [nodeFacts(n).key, nodeFacts(n)]));
+
+  const components: ImportComponentChange[] = [];
+  let unchanged = 0;
+
+  for (const [key, next] of importedByKey) {
+    const prev = currentByKey.get(key);
+    if (!prev) {
+      components.push({ componentKey: key, status: "added", type: next.type });
+    } else if (
+      prev.type !== next.type ||
+      prev.kind !== next.kind ||
+      prev.disabled !== next.disabled ||
+      stableStringify(prev.config) !== stableStringify(next.config)
+    ) {
+      components.push({ componentKey: key, status: "changed", type: next.type });
+    } else {
+      unchanged++;
+    }
+  }
+  for (const [key, prev] of currentByKey) {
+    if (!importedByKey.has(key)) {
+      components.push({ componentKey: key, status: "removed", type: prev.type });
+    }
+  }
+  components.sort((a, b) =>
+    STATUS_ORDER[a.status] !== STATUS_ORDER[b.status]
+      ? STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
+      : a.componentKey < b.componentKey
+        ? -1
+        : a.componentKey > b.componentKey
+          ? 1
+          : 0,
+  );
+
+  const currentEdges = edgeKeyPairs(current.nodes, current.edges);
+  const importedEdges = edgeKeyPairs(imported.nodes, imported.edges);
+  let edgesAdded = 0;
+  let edgesRemoved = 0;
+  for (const e of importedEdges) if (!currentEdges.has(e)) edgesAdded++;
+  for (const e of currentEdges) if (!importedEdges.has(e)) edgesRemoved++;
+
+  const globalConfigChanged =
+    stableStringify(imported.globalConfig ?? null) !==
+    stableStringify(current.globalConfig ?? null);
+
+  return { components, unchanged, edgesAdded, edgesRemoved, globalConfigChanged };
+}
