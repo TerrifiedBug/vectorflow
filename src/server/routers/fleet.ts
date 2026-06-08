@@ -918,6 +918,11 @@ export const fleetRouter = router({
             environmentId: input.environmentId,
             organizationId: ctx.organizationId,
           },
+          // Only active, deployed pipelines: paused/draft/undeployed pipelines
+          // leave stale NodePipelineStatus rows the agent no longer reports on,
+          // which would otherwise show as phantom drift (matches the agent
+          // config endpoint's active-pipeline filter).
+          pipeline: { isDraft: false, deployedAt: { not: null }, pausedAt: null },
         },
         select: {
           nodeId: true,

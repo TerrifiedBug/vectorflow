@@ -176,7 +176,10 @@ describe("fleet.configDriftReport — classification", () => {
 
     expect(prismaMock.nodePipelineStatus.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { node: { environmentId: "env-1", organizationId: "default" } },
+        where: {
+          node: { environmentId: "env-1", organizationId: "default" },
+          pipeline: { isDraft: false, deployedAt: { not: null }, pausedAt: null },
+        },
       }),
     );
   });
