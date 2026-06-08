@@ -4,7 +4,8 @@ import {
   evaluateAllPipelines,
   ANOMALY_CONFIG,
 } from "@/server/services/anomaly-detector";
-import { infoLog, errorLog } from "@/lib/logger";
+import { debugLog, infoLog, errorLog } from "@/lib/logger";
+import { isLeader } from "@/server/services/leader-election";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -59,6 +60,14 @@ export class AnomalyDetectionService {
    * tenant's analysis (or failure) does not stall another's.
    */
   private async tick(): Promise<void> {
+    // SC-3: re-check leadership each tick. A demoted leader's setInterval keeps
+    // firing for up to one TTL (~15s) after Redis renewals fail; without this
+    // guard the old + new leader both run anomaly analysis, duplicating events.
+    // Guard only — the timer stays so it resumes if leadership is re-acquired.
+    if (!isLeader()) {
+      debugLog("anomaly-detection", "Skipping tick — instance is no longer leader");
+      return;
+    }
     if (this.tickInFlight) {
       infoLog(
         "anomaly-detection",

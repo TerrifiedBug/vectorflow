@@ -33,6 +33,12 @@ vi.mock("@/server/services/cost-alert", () => ({
   evaluateCostAlerts: vi.fn().mockResolvedValue(undefined),
 }));
 
+// SC-3: control leadership so the tick guard can be exercised both ways.
+// Defaults to leader so the existing tick-driven tests keep doing work.
+vi.mock("@/server/services/leader-election", () => ({
+  isLeader: vi.fn(() => true),
+}));
+
 import { prisma } from "@/lib/prisma";
 import { FleetAlertService } from "@/server/services/fleet-alert-service";
 import {
@@ -44,8 +50,10 @@ import {
 } from "@/server/services/fleet-metrics";
 import { deliverToChannels } from "@/server/services/channels";
 import { getVersionDrift } from "@/server/services/drift-metrics";
+import { isLeader } from "@/server/services/leader-election";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
+const mockIsLeader = isLeader as ReturnType<typeof vi.fn>;
 
 const mockGetFleetErrorRate = getFleetErrorRate as ReturnType<typeof vi.fn>;
 const mockGetFleetEventVolume = getFleetEventVolume as ReturnType<typeof vi.fn>;
@@ -130,6 +138,8 @@ describe("FleetAlertService", () => {
     mockGetFleetThroughputDrop.mockReset();
     mockGetNodeLoadImbalance.mockReset();
     (deliverToChannels as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    mockIsLeader.mockReset();
+    mockIsLeader.mockReturnValue(true);
 
     service = new FleetAlertService();
   });
@@ -670,6 +680,45 @@ describe("FleetAlertService", () => {
       await vi.advanceTimersByTimeAsync(30_000);
 
       expect(prismaMock.alertRule.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── SC-3: leadership guard (de-SPOF schedulers) ──────────────────────────
+
+  describe("leadership guard", () => {
+    it("tick is a no-op when the instance is no longer leader", async () => {
+      mockIsLeader.mockReturnValue(false);
+      prismaMock.organization.findMany.mockResolvedValue([
+        { id: "org-a" } as never,
+      ]);
+      prismaMock.alertRule.findMany.mockResolvedValue([]);
+
+      service.start();
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      // A demoted instance must do no work: no org scan, no rule evaluation,
+      // no channel delivery — otherwise it double-fires with the new leader.
+      expect(prismaMock.organization.findMany).not.toHaveBeenCalled();
+      expect(prismaMock.alertRule.findMany).not.toHaveBeenCalled();
+      expect(deliverToChannels).not.toHaveBeenCalled();
+    });
+
+    it("tick proceeds normally while the instance is leader", async () => {
+      mockIsLeader.mockReturnValue(true);
+      prismaMock.organization.findMany.mockResolvedValue([
+        { id: "org-a" } as never,
+      ]);
+      prismaMock.alertRule.findMany.mockResolvedValue([]);
+
+      service.start();
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(prismaMock.organization.findMany).toHaveBeenCalledTimes(1);
+      expect(prismaMock.alertRule.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ organizationId: "org-a" }),
+        }),
+      );
     });
   });
 });

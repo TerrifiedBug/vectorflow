@@ -17,7 +17,8 @@ import type { LoadImbalanceResult, ThroughputDropDetail } from "@/server/service
 import { getVersionDrift } from "@/server/services/drift-metrics";
 import { checkCertificateExpiry } from "@/server/services/cert-expiry-checker";
 import { evaluateCostAlerts } from "@/server/services/cost-alert";
-import { infoLog, errorLog } from "@/lib/logger";
+import { debugLog, infoLog, errorLog } from "@/lib/logger";
+import { isLeader } from "@/server/services/leader-election";
 
 // Re-export the constant for downstream use (e.g. T03 validation)
 export { FLEET_METRICS } from "@/server/services/alert-evaluator";
@@ -83,6 +84,15 @@ export class FleetAlertService {
    * their own queries.
    */
   private async tick(): Promise<void> {
+    // SC-3: a demoted leader's timers keep firing for up to one TTL (~15s)
+    // after Redis renewals fail. Without this guard the old + new leader both
+    // evaluate every rule, double-firing alerts. Re-check leadership each tick
+    // so a demoted instance becomes a no-op (we keep the timer, not tear it
+    // down, so it resumes cleanly if it re-acquires leadership).
+    if (!isLeader()) {
+      debugLog("fleet-alert", "Skipping tick — instance is no longer leader");
+      return;
+    }
     if (this.tickInFlight) {
       infoLog(
         "fleet-alert",
