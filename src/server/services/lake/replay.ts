@@ -103,7 +103,8 @@ export interface ReplayBatch {
   /** Cursor after this batch (BigInt — total events served so far). */
   replayedEvents: bigint;
   totalEvents: bigint;
-  /** True once the window is drained and the job flipped to COMPLETED. */
+  /** True once the window is drained and the job reached a terminal state —
+   *  COMPLETED on a full replay, FAILED on a short one (see nextReplayBatch). */
   done: boolean;
   events: ReplayEvent[];
 }
@@ -331,7 +332,8 @@ export async function createReplayJob(args: {
 /**
  * Agent-pull primitive. Find the org's oldest active (PENDING|RUNNING) job for
  * `targetPipelineId`, serve the next bounded window, advance the cursor, and
- * flip status: PENDING→RUNNING on the first pull, →COMPLETED once drained.
+ * flip status: PENDING→RUNNING on the first pull, then on drain →COMPLETED when
+ * the full `totalEvents` were served or →FAILED on a shortfall (NF-6).
  * Returns `null` when no active job exists (the route answers 204).
  *
  * The cursor read+advance happen in one org transaction, and the advancing
@@ -378,12 +380,31 @@ export async function nextReplayBatch(args: {
     // estimate from create time, and trusting it would silently drop events if
     // the window were still receiving writes. The cost is one final empty pull.
     const done = fetched < batchSize;
-    const status: ReplayStatus = done ? REPLAY_STATUS.COMPLETED : REPLAY_STATUS.RUNNING;
+    // NF-6: validate completion. A drained replay is COMPLETED only when it
+    // served at least the `totalEvents` counted at create time; a shortfall
+    // means events that existed at create time never made it into the replay
+    // (a lake gap, TTL eviction, or a window that lost rows) — so the job is
+    // FAILED with a reason instead of a silent partial COMPLETED. An over-count
+    // (the lake grew after create) still satisfies `>=` and completes cleanly.
+    let status: ReplayStatus;
+    let failureReason: string | null = null;
+    if (!done) {
+      status = REPLAY_STATUS.RUNNING;
+    } else if (replayedEvents >= job.totalEvents) {
+      status = REPLAY_STATUS.COMPLETED;
+    } else {
+      status = REPLAY_STATUS.FAILED;
+      failureReason = `Replay drained after ${replayedEvents} of ${job.totalEvents} expected events`;
+    }
     const now = new Date();
 
     const data: Prisma.ReplayJobUpdateManyMutationInput = { status, replayedEvents };
     if (!job.startedAt) data.startedAt = now;
-    if (done) data.completedAt = now;
+    if (done) {
+      data.completedAt = now;
+      // Stamp the failure reason on a short replay; null clears it on a clean finish.
+      data.error = failureReason;
+    }
 
     // Guard on the job still being active: if it was cancelled/completed
     // concurrently, do not resurrect it or hand out the batch.
