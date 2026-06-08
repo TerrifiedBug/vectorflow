@@ -14,6 +14,11 @@ import { Prisma } from "@/generated/prisma";
 
 const execFileAsync = promisify(execFile);
 
+/** Cap saved VRL unit tests per component so "Run all" can't fan out unboundedly. */
+const MAX_VRL_UNIT_TESTS_PER_COMPONENT = 50;
+/** Max concurrent `vector` subprocesses when running unit tests (each evaluateVrl spawns one). */
+const VRL_TEST_RUN_CONCURRENCY = 4;
+
 export interface VrlDiagnostic {
   line: number;
   column: number;
@@ -327,6 +332,19 @@ export const vrlRouter = router({
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("vrlUnitTest.created", "VrlUnitTest"))
     .mutation(async ({ input, ctx }) => {
+      const existing = await prisma.vrlUnitTest.count({
+        where: {
+          organizationId: ctx.organizationId,
+          pipelineId: input.pipelineId,
+          componentKey: input.componentKey,
+        },
+      });
+      if (existing >= MAX_VRL_UNIT_TESTS_PER_COMPONENT) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `A component can have at most ${MAX_VRL_UNIT_TESTS_PER_COMPONENT} unit tests.`,
+        });
+      }
       return prisma.vrlUnitTest.create({
         data: {
           organizationId: ctx.organizationId,
@@ -417,24 +435,33 @@ export const vrlRouter = router({
         },
         orderBy: { createdAt: "desc" },
         select: { id: true, name: true, input: true, expected: true },
+        take: MAX_VRL_UNIT_TESTS_PER_COMPONENT,
       });
 
-      return Promise.all(
-        tests.map(async (test) => {
-          const result = await evaluateVrl(input.source, [test.input]);
-          const actual = result.outputs.length === 1 ? result.outputs[0] : null;
-          const passed =
-            !result.error &&
-            result.outputs.length === 1 &&
-            deepEqualUnordered(actual, test.expected);
-          return {
-            id: test.id,
-            name: test.name,
-            passed,
-            actual,
-            expected: test.expected,
-          };
-        }),
-      );
+      // Each evaluateVrl spawns a `vector` subprocess, so run in bounded
+      // batches rather than all-at-once to cap concurrent processes on the host.
+      const results: VrlUnitTestRunResult[] = [];
+      for (let i = 0; i < tests.length; i += VRL_TEST_RUN_CONCURRENCY) {
+        const batch = tests.slice(i, i + VRL_TEST_RUN_CONCURRENCY);
+        const batchResults = await Promise.all(
+          batch.map(async (test) => {
+            const result = await evaluateVrl(input.source, [test.input]);
+            const actual = result.outputs.length === 1 ? result.outputs[0] : null;
+            const passed =
+              !result.error &&
+              result.outputs.length === 1 &&
+              deepEqualUnordered(actual, test.expected);
+            return {
+              id: test.id,
+              name: test.name,
+              passed,
+              actual,
+              expected: test.expected,
+            };
+          }),
+        );
+        results.push(...batchResults);
+      }
+      return results;
     }),
 });

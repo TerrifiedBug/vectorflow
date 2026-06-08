@@ -108,6 +108,7 @@ describe("deepEqualUnordered", () => {
 
 describe("vrlRouter.createUnitTest", () => {
   it("persists the test stamped with the caller's organizationId", async () => {
+    prismaMock.vrlUnitTest.count.mockResolvedValue(0 as never);
     prismaMock.vrlUnitTest.create.mockResolvedValue({
       id: "ut-1",
       name: "drops debug",
@@ -135,6 +136,20 @@ describe("vrlRouter.createUnitTest", () => {
       input: { level: "debug" },
       expected: { level: "info" },
     });
+  });
+
+  it("rejects creating beyond the per-component cap", async () => {
+    prismaMock.vrlUnitTest.count.mockResolvedValue(50 as never);
+    await expect(
+      caller.createUnitTest({
+        pipelineId: "pipe-1",
+        componentKey: "remap_1",
+        name: "one too many",
+        input: { level: "debug" },
+        expected: { level: "info" },
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(prismaMock.vrlUnitTest.create).not.toHaveBeenCalled();
   });
 });
 
