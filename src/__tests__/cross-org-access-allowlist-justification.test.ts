@@ -89,6 +89,15 @@ const JUSTIFICATIONS: Justification[] = [
     mustContain: ["isOrgWideAdmin", "teamMember.findUnique"],
   },
 
+  // pack.get (NF-1) — system packs (default org) are readable by all; an
+  // org-owned pack requires its organizationId to match the caller. 404 on a
+  // foreign pack, no side channel.
+  {
+    procedure: "pack.get",
+    file: "src/server/routers/pack.ts",
+    mustContain: ["pack.organizationId !== ctx.organizationId", "DEFAULT_ORG_ID"],
+  },
+
   // org.verifyDomain / org.unclaimDomain — load the OrganizationDomainClaim
   // by id and reject if `claim.organizationId !== ctx.organizationId`.
   {

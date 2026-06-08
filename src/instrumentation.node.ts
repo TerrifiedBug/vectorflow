@@ -161,6 +161,20 @@ export async function registerNodeInstrumentation() {
     }
 
     try {
+      // Seed (upsert) the curated SYSTEM template packs (NF-1). Must run
+      // AFTER seedDlpTemplates so the DLP templates exist to link into the
+      // Data Protection pack. Idempotent (upsert on a stable id), leader-gated
+      // like the DLP seed above to avoid a rolling-deploy write stampede.
+      const { seedCuratedPacks } = await import(
+        "@/server/services/pack-seed"
+      );
+      await runWithOrgContext(DEFAULT_ORG_ID, () => seedCuratedPacks());
+      infoLog("instrumentation", "Curated template packs seeded");
+    } catch (error) {
+      errorLog("instrumentation", "Failed to seed curated template packs", error);
+    }
+
+    try {
       // VectorFlow Lake: when enabled (VF_LAKE_CLICKHOUSE_URL set), ensure the
       // ClickHouse lake schema exists. Idempotent (CREATE ... IF NOT EXISTS) and
       // a no-op when the lake is disabled, so operators enable the lake by
