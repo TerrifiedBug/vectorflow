@@ -401,17 +401,6 @@ export function FlowToolbar({
     }
   };
 
-  const applyPendingImport = () => {
-    if (!pendingImport) return;
-    loadGraph(pendingImport.nodes, pendingImport.edges, pendingImport.globalConfig);
-    toast.success(
-      `Imported ${pendingImport.nodes.length} components from ${pendingImport.sourceName}`,
-    );
-    setPendingImport(null);
-    setImportDiff(null);
-    setImportOpen(false);
-  };
-
   // Drop a staged import preview and invalidate any in-flight validation (bump
   // the request id so its async callback is ignored) so no stale feedback lingers.
   const clearStagedImport = () => {
@@ -420,6 +409,17 @@ export function FlowToolbar({
     setImportDiff(null);
     setImportWarnings([]);
     setImportValidation({ status: "idle" });
+  };
+
+  const applyPendingImport = () => {
+    if (!pendingImport) return;
+    loadGraph(pendingImport.nodes, pendingImport.edges, pendingImport.globalConfig);
+    toast.success(
+      `Imported ${pendingImport.nodes.length} components from ${pendingImport.sourceName}`,
+    );
+    // Reset preview + validation state so reopening the dialog starts clean.
+    clearStagedImport();
+    setImportOpen(false);
   };
 
   const handlePasteImport = (format?: "yaml" | "toml") => {
