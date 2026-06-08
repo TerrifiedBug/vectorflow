@@ -9,8 +9,15 @@ import { TRPCError } from "@trpc/server";
 import { prisma } from "@/lib/prisma";
 import { evaluateVrl } from "@/server/services/transform-eval";
 import { simulateTailSample as runTailSampleSimulation } from "@/server/services/trace-sampling";
+import { withAudit } from "@/server/middleware/audit";
+import { Prisma } from "@/generated/prisma";
 
 const execFileAsync = promisify(execFile);
+
+/** Cap saved VRL unit tests per component so "Run all" can't fan out unboundedly. */
+const MAX_VRL_UNIT_TESTS_PER_COMPONENT = 50;
+/** Max concurrent `vector` subprocesses when running unit tests (each evaluateVrl spawns one). */
+const VRL_TEST_RUN_CONCURRENCY = 4;
 
 export interface VrlDiagnostic {
   line: number;
@@ -38,6 +45,45 @@ export function parseVrlDiagnostics(errorText: string): VrlDiagnostic[] {
     diagnostics.push({ line: 1, column: 1, message: errorText.trim() });
   }
   return diagnostics;
+}
+
+/** Result of running one saved VRL unit test against the editor's current source. */
+export interface VrlUnitTestRunResult {
+  id: string;
+  name: string;
+  passed: boolean;
+  actual: unknown;
+  expected: unknown;
+}
+
+/**
+ * Deep structural equality with object keys compared order-insensitively
+ * (arrays stay order-sensitive — element order is semantic for events). Backs
+ * the VRL unit-test runner so a transform's output matches the saved `expected`
+ * snapshot regardless of the key order `vector` happens to emit.
+ */
+export function deepEqualUnordered(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") {
+    return false;
+  }
+  const aIsArray = Array.isArray(a);
+  const bIsArray = Array.isArray(b);
+  if (aIsArray !== bIsArray) return false;
+  if (aIsArray && bIsArray) {
+    if (a.length !== b.length) return false;
+    return a.every((item, i) => deepEqualUnordered(item, b[i]));
+  }
+  const aObj = a as Record<string, unknown>;
+  const bObj = b as Record<string, unknown>;
+  const aKeys = Object.keys(aObj);
+  const bKeys = Object.keys(bObj);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every(
+    (key) =>
+      Object.prototype.hasOwnProperty.call(bObj, key) &&
+      deepEqualUnordered(aObj[key], bObj[key]),
+  );
 }
 
 export const vrlRouter = router({
@@ -264,5 +310,158 @@ export const vrlRouter = router({
         events = Array.isArray(capture.events) ? (capture.events as unknown[]) : [];
       }
       return runTailSampleSimulation(events, input.policy);
+    }),
+
+  /**
+   * IF-6 — saved VRL unit tests. A unit test pins a single `input` event to the
+   * `expected` transformed output for a pipeline transform component, so authors
+   * can capture regression cases before deploying a remap/transform. CRUD +
+   * runner carry `pipelineId` (or a row `id`) so `withTeamAccess` resolves the
+   * owning team/org; every query is additionally org-scoped on top of RLS.
+   */
+  createUnitTest: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        componentKey: z.string().min(1),
+        name: z.string().min(1).max(100),
+        input: z.record(z.string(), z.unknown()),
+        expected: z.record(z.string(), z.unknown()),
+      }),
+    )
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("vrlUnitTest.created", "VrlUnitTest"))
+    .mutation(async ({ input, ctx }) => {
+      const existing = await prisma.vrlUnitTest.count({
+        where: {
+          organizationId: ctx.organizationId,
+          pipelineId: input.pipelineId,
+          componentKey: input.componentKey,
+        },
+      });
+      if (existing >= MAX_VRL_UNIT_TESTS_PER_COMPONENT) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `A component can have at most ${MAX_VRL_UNIT_TESTS_PER_COMPONENT} unit tests.`,
+        });
+      }
+      return prisma.vrlUnitTest.create({
+        data: {
+          organizationId: ctx.organizationId,
+          pipelineId: input.pipelineId,
+          componentKey: input.componentKey,
+          name: input.name,
+          input: input.input as Prisma.InputJsonValue,
+          expected: input.expected as Prisma.InputJsonValue,
+        },
+        select: {
+          id: true,
+          name: true,
+          componentKey: true,
+          input: true,
+          expected: true,
+          createdAt: true,
+        },
+      });
+    }),
+
+  /** Saved unit tests for a pipeline, optionally narrowed to one component. */
+  listUnitTests: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        componentKey: z.string().optional(),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input, ctx }) => {
+      return prisma.vrlUnitTest.findMany({
+        where: {
+          organizationId: ctx.organizationId,
+          pipelineId: input.pipelineId,
+          ...(input.componentKey ? { componentKey: input.componentKey } : {}),
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          name: true,
+          componentKey: true,
+          input: true,
+          expected: true,
+          createdAt: true,
+        },
+      });
+    }),
+
+  deleteUnitTest: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("vrlUnitTest.deleted", "VrlUnitTest"))
+    .mutation(async ({ input, ctx }) => {
+      // Org-scoped delete (defense-in-depth on top of RLS + withTeamAccess);
+      // count===0 means not found, or another tenant's row — indistinguishable.
+      const { count } = await prisma.vrlUnitTest.deleteMany({
+        where: { id: input.id, organizationId: ctx.organizationId },
+      });
+      if (count === 0) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit test not found" });
+      }
+      // Return the id so withAudit records it as the entityId.
+      return { id: input.id, deleted: true };
+    }),
+
+  /**
+   * Run every saved unit test for a component against the editor's current VRL
+   * `source`: evaluate `source` over each test's single `input` event and assert
+   * the single transformed output deep-equals (order-insensitive on object keys)
+   * the saved `expected`. Read-only (VIEWER, no audit). A compile error, a
+   * dropped event, or a mismatch all report `passed: false`.
+   */
+  runUnitTests: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        componentKey: z.string().min(1),
+        source: z.string(),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .mutation(async ({ input, ctx }): Promise<VrlUnitTestRunResult[]> => {
+      const tests = await prisma.vrlUnitTest.findMany({
+        where: {
+          organizationId: ctx.organizationId,
+          pipelineId: input.pipelineId,
+          componentKey: input.componentKey,
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, name: true, input: true, expected: true },
+        take: MAX_VRL_UNIT_TESTS_PER_COMPONENT,
+      });
+
+      // Each evaluateVrl spawns a `vector` subprocess, so run in bounded
+      // batches rather than all-at-once to cap concurrent processes on the host.
+      const results: VrlUnitTestRunResult[] = [];
+      for (let i = 0; i < tests.length; i += VRL_TEST_RUN_CONCURRENCY) {
+        const batch = tests.slice(i, i + VRL_TEST_RUN_CONCURRENCY);
+        const batchResults = await Promise.all(
+          batch.map(async (test) => {
+            const result = await evaluateVrl(input.source, [test.input]);
+            const actual = result.outputs.length === 1 ? result.outputs[0] : null;
+            const passed =
+              !result.error &&
+              result.outputs.length === 1 &&
+              deepEqualUnordered(actual, test.expected);
+            return {
+              id: test.id,
+              name: test.name,
+              passed,
+              actual,
+              expected: test.expected,
+            };
+          }),
+        );
+        results.push(...batchResults);
+      }
+      return results;
     }),
 });

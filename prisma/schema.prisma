@@ -921,6 +921,7 @@ model Pipeline {
   releasesAsTarget          Release[]              @relation("ReleaseTargetPipeline")
   pipelineMetricRollups     PipelineMetricRollup[]
   tapCaptures               TapCapture[]
+  vrlUnitTests              VrlUnitTest[]
   proposedChanges           ProposedChange[]       @relation("ProposedChangePipeline")
   lakeDatasets              LakeDataset[]          @relation("LakeDatasetPipeline")
   lakeAlertRules            LakeAlertRule[]        @relation("LakeAlertRulePipeline")
@@ -2286,6 +2287,27 @@ model TapCapture {
   createdById    String?
   createdBy      User?    @relation("TapCaptureCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt      DateTime @default(now())
+
+  @@index([organizationId, pipelineId])
+  @@index([pipelineId])
+}
+
+/// IF-6: a saved VRL unit test — a named input→expected snippet pinned to a
+/// pipeline transform component. The runner evaluates the editor's current VRL
+/// source against `input` and asserts the single transformed output deep-equals
+/// `expected`, so authors can capture regression cases for a remap/transform
+/// before deploying. Org-scoped (RLS by organizationId) and pipeline-scoped.
+model VrlUnitTest {
+  id             String   @id @default(cuid())
+  organizationId String   @default("default")
+  pipelineId     String
+  pipeline       Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  componentKey   String
+  name           String
+  input          Json
+  expected       Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([organizationId, pipelineId])
   @@index([pipelineId])
