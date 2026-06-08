@@ -1,6 +1,7 @@
 import { adminPrisma } from "@/lib/prisma";
 import { withOrgTx } from "@/lib/with-org-tx";
-import { infoLog, errorLog } from "@/lib/logger";
+import { infoLog, errorLog, debugLog } from "@/lib/logger";
+import { isLeader } from "@/server/services/leader-election";
 
 /**
  * Long-retention metric rollups (B5).
@@ -602,6 +603,10 @@ const ROLLUP_INTERVAL_MS = HOUR_MS;
 let timer: ReturnType<typeof setInterval> | null = null;
 
 async function runRollupTick(): Promise<void> {
+  if (!isLeader()) {
+    debugLog("metrics-rollup", "Skipping tick — instance is no longer leader");
+    return;
+  }
   for (const granularity of ["HOUR", "DAY"] as const) {
     try {
       const result = await rollupMetrics({ granularity });

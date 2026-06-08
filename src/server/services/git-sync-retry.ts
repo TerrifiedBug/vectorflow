@@ -5,6 +5,7 @@ import { gitSyncCommitPipeline, gitSyncDeletePipeline } from "@/server/services/
 import { fireEventAlert } from "@/server/services/event-alerts";
 import { loadOrgDataKeyCiphertext } from "@/server/services/crypto-v3-callsite";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
+import { isLeader } from "@/server/services/leader-election";
 
 // --- Constants ---
 
@@ -61,6 +62,10 @@ export class GitSyncRetryService {
    * Single tick: iterate orgs and process retries per org.
    */
   private async tick(): Promise<void> {
+    if (!isLeader()) {
+      debugLog("git-sync-retry", "Skipping tick — instance is no longer leader");
+      return;
+    }
     if (this.tickInFlight) {
       infoLog(
         "git-sync-retry",
