@@ -33,6 +33,7 @@ import { LazyMotionProvider } from "@/components/motion/lazy-motion-provider";
 import { UpdateBanner } from "@/components/update-banner";
 import { CommandPalette, triggerCommandPalette } from "@/components/command-palette";
 import { KeyboardShortcutsModal } from "@/components/keyboard-shortcuts-modal";
+import { ProductTour } from "@/components/onboarding/product-tour";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { DemoBanner } from "@/components/dashboard/demo-banner";
 import { isDemoMode } from "@/lib/is-demo-mode";
@@ -311,6 +312,7 @@ export default function DashboardLayout({
         <UpdateBanner />
         <CommandPalette />
         <KeyboardShortcutsModal />
+        <ProductTour />
         <LazyMotionProvider>
           <main id="main-content" className="flex-1 min-h-0 overflow-auto" tabIndex={-1}>
             <ErrorBoundary>

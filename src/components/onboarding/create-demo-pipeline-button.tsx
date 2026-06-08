@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Loader2, Sparkles } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
+import { TOUR_DEMO_PIPELINE_ATTR } from "@/components/onboarding/product-tour";
 
 interface CreateDemoPipelineButtonProps {
   /** Environment the demo pipeline is created in. */
@@ -60,6 +61,7 @@ export function CreateDemoPipelineButton({
       onClick={handleClick}
       disabled={createDemo.isPending || !environmentId}
       className={className}
+      data-tour={TOUR_DEMO_PIPELINE_ATTR}
     >
       {createDemo.isPending ? (
         <>

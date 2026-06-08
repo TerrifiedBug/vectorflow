@@ -21,6 +21,7 @@
 import { useSyncExternalStore } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { startProductTour } from "@/components/onboarding/product-tour";
 import { cn } from "@/lib/utils";
 
 const DISMISS_KEY = "vf:onboarding-dismissed";
@@ -147,16 +148,26 @@ export function OnboardingChecklist({
             {completedCount} of {steps.length} steps complete
           </p>
         </div>
-        {dismissible ? (
+        <div className="flex shrink-0 items-center gap-1">
           <Button
             variant="ghost"
             size="sm"
-            onClick={dismiss}
-            aria-label="Dismiss getting-started checklist"
+            onClick={startProductTour}
+            aria-label="Take a guided product tour"
           >
-            Dismiss
+            Take a tour
           </Button>
-        ) : null}
+          {dismissible ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={dismiss}
+              aria-label="Dismiss getting-started checklist"
+            >
+              Dismiss
+            </Button>
+          ) : null}
+        </div>
       </header>
 
       <ol className="mt-4 space-y-3">
