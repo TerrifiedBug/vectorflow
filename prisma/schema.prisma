@@ -932,6 +932,10 @@ model Pipeline {
   anomalyEvents             AnomalyEvent[]
   pausedAt                  DateTime?
   pausedBy                  String? // userId or "VectorFlow Support" when paused by operator
+  /// Desired config checksum the agent config endpoint last computed for this
+  /// pipeline (config YAML + resolved secrets). Persisted (not a process-local
+  /// cache) so config-drift detection is correct across restarts and HA replicas.
+  desiredConfigChecksum     String?
   createdAt                 DateTime               @default(now())
   updatedAt                 DateTime               @updatedAt
 

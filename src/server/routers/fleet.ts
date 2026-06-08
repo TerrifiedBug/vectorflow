@@ -940,7 +940,7 @@ export const fleetRouter = router({
       // agent reports no running checksum (older agents), so the table shows
       // "— / <desired>" rather than "— / —".
       const pipelineIds = [...new Set(statuses.map((s) => s.pipelineId))];
-      const desiredChecksums = getExpectedChecksums(pipelineIds);
+      const desiredChecksums = await getExpectedChecksums(pipelineIds);
 
       const summary = { total: statuses.length, inSync: 0, drifted: 0, unknown: 0 };
 

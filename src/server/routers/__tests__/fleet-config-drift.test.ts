@@ -9,9 +9,9 @@
  *   2. RBAC gating — `withTeamAccess("VIEWER")` blocks non-members (FORBIDDEN)
  *      and `protectedProcedure` blocks unauthenticated callers (UNAUTHORIZED).
  *
- * The desired checksum is sourced from the real drift-metrics in-memory cache
- * (`setExpectedChecksum`), which is exactly how the config endpoint and
- * `getConfigDrift` derive it.
+ * The desired checksum is sourced from Pipeline.desiredConfigChecksum (mocked
+ * here via prisma.pipeline.findMany), which is exactly how the config endpoint
+ * persists it and getExpectedChecksums reads it.
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
@@ -60,10 +60,6 @@ vi.mock("@/server/services/fleet-data", () => ({
 
 import { prisma } from "@/lib/prisma";
 import { fleetRouter } from "@/server/routers/fleet";
-import {
-  setExpectedChecksum,
-  clearExpectedChecksumCache,
-} from "@/server/services/drift-metrics";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -94,7 +90,6 @@ function statusRow(overrides: Partial<Record<string, unknown>> = {}) {
 beforeEach(() => {
   mockReset(prismaMock);
   vi.clearAllMocks();
-  clearExpectedChecksumCache();
 });
 
 describe("fleet.configDriftReport — classification", () => {
@@ -129,8 +124,10 @@ describe("fleet.configDriftReport — classification", () => {
       }),
     ] as never);
 
-    setExpectedChecksum("pipe-1", "desired-aaa");
-    setExpectedChecksum("pipe-2", "desired-bbb");
+    prismaMock.pipeline.findMany.mockResolvedValue([
+      { id: "pipe-1", desiredConfigChecksum: "desired-aaa" },
+      { id: "pipe-2", desiredConfigChecksum: "desired-bbb" },
+    ] as never);
 
     const result = await caller.configDriftReport({ environmentId: "env-1" });
 

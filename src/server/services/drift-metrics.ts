@@ -160,9 +160,9 @@ export async function getConfigDrift(
     return { value: 0 };
   }
 
-  // Get expected checksums from the in-memory cache
+  // Get desired checksums from shared storage (Pipeline.desiredConfigChecksum)
   const pipelineIds = statusesWithChecksum.map((s) => s.pipelineId);
-  const expectedChecksums = getExpectedChecksums(pipelineIds);
+  const expectedChecksums = await getExpectedChecksums(pipelineIds);
 
   let driftCount = 0;
   for (const status of statusesWithChecksum) {
@@ -177,36 +177,38 @@ export async function getConfigDrift(
 }
 
 // ---------------------------------------------------------------------------
-// Expected Config Checksum Cache
+// Desired config checksum -- persisted on Pipeline.desiredConfigChecksum
 // ---------------------------------------------------------------------------
+//
+// The agent config endpoint computes the desired checksum (config YAML +
+// resolved secrets) when it serves a pipeline and persists it here. Using shared
+// storage rather than a process-local cache keeps drift detection correct across
+// server restarts and HA replicas, and keeps the fleet KPI and the config-drift
+// report consistent.
 
-/**
- * In-memory cache of the expected config checksum per pipeline.
- * Populated by the config endpoint when it serves configs to agents.
- * Keyed by pipelineId -> SHA256 hex string.
- */
-const expectedChecksumCache = new Map<string, string>();
-
-/** Store the expected checksum for a pipeline (called from config endpoint). */
-export function setExpectedChecksum(pipelineId: string, checksum: string): void {
-  expectedChecksumCache.set(pipelineId, checksum);
+/** Persist the desired checksum for a pipeline (called from the config endpoint). */
+export async function setExpectedChecksum(
+  pipelineId: string,
+  checksum: string,
+): Promise<void> {
+  await prisma.pipeline.update({
+    where: { id: pipelineId },
+    data: { desiredConfigChecksum: checksum },
+  });
 }
 
-/** Read expected checksums for a set of pipeline IDs. */
-export function getExpectedChecksums(
+/** Read desired checksums for a set of pipeline IDs from shared storage. */
+export async function getExpectedChecksums(
   pipelineIds: string[],
-): Map<string, string> {
+): Promise<Map<string, string>> {
   const result = new Map<string, string>();
-  for (const id of pipelineIds) {
-    const checksum = expectedChecksumCache.get(id);
-    if (checksum) {
-      result.set(id, checksum);
-    }
+  if (pipelineIds.length === 0) return result;
+  const rows = await prisma.pipeline.findMany({
+    where: { id: { in: pipelineIds } },
+    select: { id: true, desiredConfigChecksum: true },
+  });
+  for (const row of rows) {
+    if (row.desiredConfigChecksum) result.set(row.id, row.desiredConfigChecksum);
   }
   return result;
-}
-
-/** Clear the cache (for testing). */
-export function clearExpectedChecksumCache(): void {
-  expectedChecksumCache.clear();
 }
