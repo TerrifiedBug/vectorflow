@@ -241,6 +241,7 @@ vi.mock("@/components/flow/detail-panel", () => ({ DetailPanel: () => <aside>Det
 vi.mock("@/components/flow/live-tail-panel", () => ({ LiveTailPanel: () => null }));
 vi.mock("@/components/flow/deploy-dialog", () => ({ DeployDialog: () => null }));
 vi.mock("@/components/flow/save-template-dialog", () => ({ SaveTemplateDialog: () => null }));
+vi.mock("@/components/flow/compliance-presets-dialog", () => ({ CompliancePresetsDialog: () => null }));
 vi.mock("@/components/confirm-dialog", () => ({ ConfirmDialog: () => null }));
 vi.mock("@/components/pipeline/metrics-chart", () => ({ PipelineMetricsChart: () => <div>Editor metrics</div> }));
 vi.mock("@/components/pipeline/pipeline-logs", () => ({ PipelineLogs: () => <div>Logs</div> }));
