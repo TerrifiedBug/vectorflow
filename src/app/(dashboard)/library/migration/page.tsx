@@ -71,7 +71,7 @@ const PLATFORMS = [
     name: "Fluent Bit",
     description: "Migrate from Fluent Bit pipelines to Vector",
     icon: ArrowRightLeft,
-    available: false,
+    available: true,
     href: null,
   },
   {
