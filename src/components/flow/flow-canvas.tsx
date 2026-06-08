@@ -22,6 +22,7 @@ import { edgeTypes } from "./edge-types";
 import { NodeContextMenu } from "./node-context-menu";
 import { EdgeContextMenu } from "./edge-context-menu";
 import { SaveSharedComponentDialog } from "./save-shared-component-dialog";
+import { componentDataTypes, dataTypesCompatible } from "@/lib/vector/edge-compat";
 import { findComponentDef } from "@/lib/vector/catalog";
 import type { VectorComponentDef, DataType } from "@/lib/vector/types";
 import { DLP_VRL_SOURCES } from "@/lib/vector/dlp-vrl-sources";
@@ -33,13 +34,10 @@ interface FlowCanvasProps {
 }
 
 function getNodeDataTypes(node: { data: Record<string, unknown> }, direction: "output" | "input"): DataType[] {
-  const def = node.data.componentDef as VectorComponentDef | undefined;
-  if (!def) return [];
-  return direction === "output" ? (def.outputTypes ?? []) : (def.inputTypes ?? def.outputTypes ?? []);
-}
-
-function hasOverlappingTypes(a: DataType[], b: DataType[]): boolean {
-  return a.some((t) => b.includes(t));
+  return componentDataTypes(
+    node.data.componentDef as VectorComponentDef | undefined,
+    direction,
+  );
 }
 
 type ValidationResult =
@@ -74,10 +72,9 @@ function validateConnection(
   const sourceTypes = getNodeDataTypes(sourceNode, "output");
   const targetTypes = getNodeDataTypes(targetNode, "input");
 
-  // Type-agnostic on either side → permissive (preserves existing behaviour
-  // for nodes whose VectorComponentDef has no declared types).
-  if (sourceTypes.length === 0 || targetTypes.length === 0) return { valid: true };
-  if (hasOverlappingTypes(sourceTypes, targetTypes)) return { valid: true };
+  // Type-agnostic on either side → permissive. Shared with the inspector's
+  // component-type switcher via edge-compat so the two never drift.
+  if (dataTypesCompatible(sourceTypes, targetTypes)) return { valid: true };
 
   const sourceDef = sourceNode.data.componentDef as VectorComponentDef | undefined;
   const targetDef = targetNode.data.componentDef as VectorComponentDef | undefined;

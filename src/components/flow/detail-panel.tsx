@@ -41,6 +41,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getVectorCatalog } from "@/lib/vector/catalog";
+import { componentDataTypes, isReplacementCompatible } from "@/lib/vector/edge-compat";
 import { getIcon } from "@/components/flow/node-icon";
 import type { VectorComponentDef } from "@/lib/vector/types";
 import type { Node, Edge } from "@xyflow/react";
@@ -657,11 +658,24 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
   };
 
   const isReadOnly = isSystemLocked || isShared;
-  // UX-1: components of the same kind this node can be swapped to in place.
-  // getVectorCatalog() is a cached singleton, so this filter is cheap per render.
-  const sameKindComponents = getVectorCatalog().filter(
-    (c) => c.kind === componentDef.kind,
-  );
+  // UX-1: same-kind components this node can be swapped to, restricted to types
+  // compatible with the node's current edges (same rule as the canvas connection
+  // gate) so a swap can never leave an invalid, un-deployable graph.
+  // getVectorCatalog() is a cached singleton, so this is cheap per render.
+  const replacementOptions = (() => {
+    const sameKind = getVectorCatalog().filter((c) => c.kind === componentDef.kind);
+    const nodeData = (n: Node | undefined) =>
+      (n?.data as { componentDef?: VectorComponentDef } | undefined)?.componentDef;
+    const constraints = {
+      incomingOutputs: edges
+        .filter((e) => e.target === selectedNodeId)
+        .map((e) => componentDataTypes(nodeData(nodes.find((n) => n.id === e.source)), "output")),
+      outgoingInputs: edges
+        .filter((e) => e.source === selectedNodeId)
+        .map((e) => componentDataTypes(nodeData(nodes.find((n) => n.id === e.target)), "input")),
+    };
+    return sameKind.filter((c) => isReplacementCompatible(c, constraints));
+  })();
   const statusPill = (() => {
     switch (nodeMetrics?.status) {
       case "healthy":
@@ -738,14 +752,14 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
             {/* ---- Component type switcher (UX-1 replace-kind) ---- */}
             {!isReadOnly &&
               componentDef.type !== LAKE_SINK_TYPE &&
-              sameKindComponents.length > 1 && (
+              replacementOptions.length > 1 && (
                 <div className="space-y-1.5">
                   <Label className="text-[12px] text-fg-1">Component type</Label>
                   <Select
                     value={componentDef.type}
                     onValueChange={(type) => {
                       if (!selectedNodeId || type === componentDef.type) return;
-                      const next = sameKindComponents.find((c) => c.type === type);
+                      const next = replacementOptions.find((c) => c.type === type);
                       if (next) replaceNodeComponent(selectedNodeId, next);
                     }}
                   >
@@ -753,7 +767,7 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {sameKindComponents.map((c) => (
+                      {replacementOptions.map((c) => (
                         <SelectItem key={c.type} value={c.type}>
                           {c.displayName}
                         </SelectItem>
