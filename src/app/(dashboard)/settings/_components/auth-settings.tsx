@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { QueryError } from "@/components/query-error";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
@@ -137,6 +138,52 @@ export function AuthSettings() {
       return;
     }
     testOidcMutation.mutate({ issuer });
+  };
+
+  // ─── SAML SSO ───────────────────────────────────────────────────────────
+  const [samlEnabled, setSamlEnabled] = useState(false);
+  const [samlEnforced, setSamlEnforced] = useState(false);
+  const [samlIdpEntityId, setSamlIdpEntityId] = useState("");
+  const [samlSsoUrl, setSamlSsoUrl] = useState("");
+  const [samlIdpCert, setSamlIdpCert] = useState("");
+  const [samlGroupAttribute, setSamlGroupAttribute] = useState("");
+
+  useEffect(() => {
+    if (!settings) return;
+    if (hasLoadedRef.current && isDirty) return; // Don't clobber dirty edits on refetch.
+    setSamlEnabled(settings.samlEnabled ?? false);
+    setSamlEnforced(settings.samlEnforced ?? false);
+    setSamlIdpEntityId(settings.samlIdpEntityId ?? "");
+    setSamlSsoUrl(settings.samlIdpSsoUrl ?? "");
+    setSamlIdpCert(settings.samlIdpCert ?? "");
+    setSamlGroupAttribute(settings.samlGroupAttribute ?? "");
+  }, [settings, isDirty]);
+
+  const updateSamlMutation = useMutation(
+    // eslint-disable-next-line react-hooks/refs
+    trpc.settings.updateSaml.mutationOptions({
+      onSuccess: () => {
+        setIsDirty(false);
+        hasLoadedRef.current = false; // Allow next sync from server.
+        queryClient.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
+        toast.success("SAML settings saved");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to save SAML settings", { duration: 6000 });
+      },
+    })
+  );
+
+  const handleSaveSaml = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateSamlMutation.mutate({
+      enabled: samlEnabled,
+      enforced: samlEnforced,
+      idpEntityId: samlIdpEntityId,
+      ssoUrl: samlSsoUrl,
+      idpCert: samlIdpCert,
+      groupAttribute: samlGroupAttribute,
+    });
   };
 
   const [teamMappings, setTeamMappings] = useState<Array<{group: string; teamIds: string[]; role: "VIEWER" | "EDITOR" | "ADMIN"}>>([]);
@@ -419,11 +466,146 @@ export function AuthSettings() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
+          SAML SSO Configuration
+          <DemoDisabledBadge className="ml-auto" />
+        </CardTitle>
+        <CardDescription>
+          Configure a SAML 2.0 identity provider for single sign-on. Coexists
+          with OIDC and local auth. Group→team mapping reuses the IdP Group
+          Mappings below (set the assertion attribute that carries group names).
+        </CardDescription>
+        <div className="mt-2">
+          <StatusBadge variant={settings?.samlEnabled ? "healthy" : "neutral"}>
+            {settings?.samlEnabled ? "Enabled" : "Disabled"}
+          </StatusBadge>
+        </div>
+      </CardHeader>
+      <CardContent>
+       <DemoDisabledFieldset message="SAML SSO configuration is disabled in the public demo.">
+        <form onSubmit={handleSaveSaml} className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="saml-enabled">Enable SAML SSO</Label>
+              <p className="text-xs text-muted-foreground">
+                Show a &quot;Sign in with SAML&quot; button on the login page.
+              </p>
+            </div>
+            <Switch
+              id="saml-enabled"
+              checked={samlEnabled}
+              onCheckedChange={(v) => { markDirty(); setSamlEnabled(v); if (!v) setSamlEnforced(false); }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="saml-enforced">Enforce SAML</Label>
+              <p className="text-xs text-muted-foreground">
+                Disable local password login for this organization (SAML becomes mandatory).
+              </p>
+            </div>
+            <Switch
+              id="saml-enforced"
+              checked={samlEnforced}
+              disabled={!samlEnabled}
+              onCheckedChange={(v) => { markDirty(); setSamlEnforced(v); }}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="saml-idp-entity-id">IdP Entity ID {samlEnabled && <span className="text-destructive">*</span>}</Label>
+            <Input
+              id="saml-idp-entity-id"
+              placeholder="https://idp.example.com/metadata"
+              value={samlIdpEntityId}
+              onChange={(e) => { markDirty(); setSamlIdpEntityId(e.target.value); }}
+            />
+            <p className="text-xs text-muted-foreground">
+              The IdP&apos;s EntityID (issuer) — must match the <code>Issuer</code> in its assertions.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="saml-sso-url">IdP SSO URL {samlEnabled && <span className="text-destructive">*</span>}</Label>
+            <Input
+              id="saml-sso-url"
+              type="url"
+              placeholder="https://idp.example.com/sso/saml"
+              value={samlSsoUrl}
+              onChange={(e) => { markDirty(); setSamlSsoUrl(e.target.value); }}
+            />
+            <p className="text-xs text-muted-foreground">
+              The IdP single-sign-on endpoint the login redirect is sent to.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="saml-idp-cert">IdP Signing Certificate {samlEnabled && <span className="text-destructive">*</span>}</Label>
+            <Textarea
+              id="saml-idp-cert"
+              placeholder={"-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"}
+              value={samlIdpCert}
+              onChange={(e) => { markDirty(); setSamlIdpCert(e.target.value); }}
+              rows={6}
+              className="font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              The IdP&apos;s public X.509 signing certificate (PEM). Every assertion
+              is verified against this — paste the exact certificate from your IdP.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="saml-group-attribute">Group Attribute</Label>
+            <Input
+              id="saml-group-attribute"
+              placeholder="groups"
+              value={samlGroupAttribute}
+              onChange={(e) => { markDirty(); setSamlGroupAttribute(e.target.value); }}
+            />
+            <p className="text-xs text-muted-foreground">
+              Assertion attribute carrying the user&apos;s group names, mapped to teams
+              via the IdP Group Mappings below. Leave blank to disable group sync.
+            </p>
+          </div>
+
+          <div className="rounded-md border border-line bg-muted/40 p-3 space-y-1">
+            <p className="text-xs font-medium">Service Provider details (give these to your IdP):</p>
+            <p className="text-xs text-muted-foreground break-all">
+              <span className="font-medium">Metadata / EntityID:</span>{" "}
+              <code>{typeof window !== "undefined" ? `${window.location.origin}/api/auth/saml/metadata` : "/api/auth/saml/metadata"}</code>
+            </p>
+            <p className="text-xs text-muted-foreground break-all">
+              <span className="font-medium">ACS (Reply) URL:</span>{" "}
+              <code>{typeof window !== "undefined" ? `${window.location.origin}/api/auth/saml/callback` : "/api/auth/saml/callback"}</code>
+            </p>
+          </div>
+
+          <Separator />
+
+          <Button type="submit" disabled={updateSamlMutation.isPending}>
+            {updateSamlMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save SAML Settings"
+            )}
+          </Button>
+        </form>
+       </DemoDisabledFieldset>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
           IdP Group Mappings
           <DemoDisabledBadge className="ml-auto" />
         </CardTitle>
         <CardDescription>
-          Map identity provider groups to teams and roles. Used by both OIDC login (via groups claim) and SCIM sync (via group membership).
+          Map identity provider groups to teams and roles. Used by OIDC login (via groups claim), SAML login (via the configured group attribute), and SCIM sync (via group membership).
         </CardDescription>
       </CardHeader>
       <CardContent>

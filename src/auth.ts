@@ -36,6 +36,7 @@ import { getRequestHostFromHeaders } from "@/lib/request-host";
 import { webauthnProvider } from "@/server/services/auth/webauthn-provider";
 import { getJwtSecretForOrg } from "@/server/services/auth/jwt-key";
 import { isOidcEmailVerified } from "@/server/services/auth/oidc-email-verified";
+import { getSamlSettings } from "@/server/services/auth/saml-config";
 
 async function getClientIp(): Promise<string | null> {
   try {
@@ -155,6 +156,17 @@ const credentialsProvider = Credentials({
   async authorize(credentials) {
     if (env.VF_DISABLE_LOCAL_AUTH === "true") {
       throw new Error("Local authentication is disabled");
+    }
+
+    // Per-org SAML enforcement: when an org has SAML fully configured AND
+    // `samlEnforced`, local credential login is disabled for that org (the
+    // analogue of the global `VF_DISABLE_LOCAL_AUTH`, coexisting with OIDC).
+    // `getSamlSettings()` resolves the org from the request host and returns
+    // null unless the IdP config is complete, so a half-configured org can
+    // never lock its users out.
+    const samlCfg = await getSamlSettings();
+    if (samlCfg?.enforced) {
+      throw new Error("Local authentication is disabled for this organization (SAML SSO is enforced)");
     }
 
     if (!credentials?.email || !credentials?.password) return null;
@@ -754,18 +766,24 @@ export async function signOut(...args: any[]) {
 }
 
 /**
- * Check whether OIDC SSO is configured (for the login page).
- * This is a server-only function.
+ * SSO status for the login page: whether OIDC and/or SAML are configured for
+ * the org owning the request, plus whether local auth is disabled. SAML is
+ * resolved independently of OIDC so an org can run either, both, or neither.
+ * Server-only.
  */
 export async function getOidcStatus(): Promise<{
   enabled: boolean;
   displayName: string;
   localAuthDisabled: boolean;
+  samlEnabled: boolean;
+  samlEnforced: boolean;
 }> {
-  const oidc = await getOidcSettings();
+  const [oidc, saml] = await Promise.all([getOidcSettings(), getSamlSettings()]);
   return {
     enabled: !!oidc,
     displayName: oidc?.displayName ?? "SSO",
     localAuthDisabled: env.VF_DISABLE_LOCAL_AUTH === "true",
+    samlEnabled: !!saml,
+    samlEnforced: saml?.enforced ?? false,
   };
 }

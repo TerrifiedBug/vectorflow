@@ -32,6 +32,12 @@ export function mockOrgSettings(
     oidcTokenEndpointAuthMethod: string | null;
     oidcTeamMappings: string | null;
     oidcDefaultTeamId: string | null;
+    samlEnabled: boolean;
+    samlIdpEntityId: string | null;
+    samlIdpSsoUrl: string | null;
+    samlIdpCert: string | null;
+    samlEnforced: boolean;
+    samlGroupAttribute: string | null;
     fleetPollIntervalMs: number;
     fleetUnhealthyThreshold: number;
     metricsRetentionDays: number;
@@ -82,6 +88,12 @@ export function mockOrgSettings(
     oidcTokenEndpointAuthMethod: "client_secret_post",
     oidcTeamMappings: null,
     oidcDefaultTeamId: null,
+    samlEnabled: false,
+    samlIdpEntityId: null,
+    samlIdpSsoUrl: null,
+    samlIdpCert: null,
+    samlEnforced: false,
+    samlGroupAttribute: null,
     fleetPollIntervalMs: 15000,
     fleetUnhealthyThreshold: 3,
     metricsRetentionDays: 7,

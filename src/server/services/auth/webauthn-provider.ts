@@ -36,6 +36,7 @@ import { finishAuthentication } from "@/server/services/webauthn";
 import { writeAuditLog } from "@/server/services/audit";
 import { warnLog, infoLog } from "@/lib/logger";
 import { getRemainingLockSeconds } from "@/server/services/login-protection";
+import { getSamlSettings } from "@/server/services/auth/saml-config";
 
 const RP_ID = process.env.VF_WEBAUTHN_RP_ID ?? "localhost";
 const RP_NAME = process.env.VF_WEBAUTHN_RP_NAME ?? "VectorFlow";
@@ -146,6 +147,18 @@ export async function authorizeWebauthn(
   // Honour operator SSO-only policy — disable all local auth paths including WebAuthn.
   if (process.env.VF_DISABLE_LOCAL_AUTH === "true") {
     warnLog("webauthn-provider", "VF_DISABLE_LOCAL_AUTH is set; denying WebAuthn login");
+    return null;
+  }
+  // Per-org SAML enforcement must block passkeys too — otherwise a previously
+  // registered WebAuthn credential bypasses enforced SSO (skipping IdP MFA /
+  // deprovisioning). getSamlSettings() returns null unless SAML is fully
+  // configured, so a half-configured org can't lock its users out.
+  const samlCfg = await getSamlSettings();
+  if (samlCfg?.enforced) {
+    warnLog(
+      "webauthn-provider",
+      "SAML SSO is enforced for this org; denying WebAuthn login",
+    );
     return null;
   }
 

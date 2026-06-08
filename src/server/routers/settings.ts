@@ -102,6 +102,15 @@ export const settingsRouter = router({
           }
         })(),
         oidcDefaultTeamId: settings.oidcDefaultTeamId,
+        // SAML SSO (per-org; mirrors OIDC). `samlIdpCert` is the IdP's PUBLIC
+        // signing cert — returned verbatim (not masked) so the admin can see
+        // the configured value; it is never a secret.
+        samlEnabled: settings.samlEnabled,
+        samlIdpEntityId: settings.samlIdpEntityId,
+        samlIdpSsoUrl: settings.samlIdpSsoUrl,
+        samlIdpCert: settings.samlIdpCert,
+        samlEnforced: settings.samlEnforced,
+        samlGroupAttribute: settings.samlGroupAttribute,
         fleetPollIntervalMs: settings.fleetPollIntervalMs,
         fleetUnhealthyThreshold: settings.fleetUnhealthyThreshold,
         metricsRetentionDays: settings.metricsRetentionDays,
@@ -201,6 +210,54 @@ export const settingsRouter = router({
       }
 
       const result = await updateOrgSettings(ctx.organizationId, data);
+      invalidateAuthCache();
+      return result;
+    }),
+
+  /**
+   * Per-org SAML SSO config (mirrors `updateOidc`). The IdP signing
+   * certificate is a PUBLIC credential, so — unlike the OIDC client secret —
+   * it is stored verbatim, never encrypted. Enabling requires a complete IdP
+   * config; enforcing requires SAML to be enabled (so an org can't lock its
+   * users out of local auth without a working IdP). Group→team mapping is the
+   * shared `oidcTeamMappings` mechanism, keyed by `samlGroupAttribute`.
+   */
+  updateSaml: protectedProcedure
+    .use(denyInDemo())
+    .use(requireOrgAdmin())
+    .input(
+      z
+        .object({
+          enabled: z.boolean(),
+          enforced: z.boolean(),
+          idpEntityId: z.string().trim().max(2048).default(""),
+          ssoUrl: z.string().trim().max(2048).default(""),
+          idpCert: z.string().trim().max(20000).default(""),
+          groupAttribute: z.string().trim().max(256).default(""),
+        })
+        .refine((d) => !d.ssoUrl || /^https?:\/\//.test(d.ssoUrl), {
+          message: "SSO URL must be a valid http(s) URL.",
+          path: ["ssoUrl"],
+        })
+        .refine((d) => !d.enabled || (!!d.idpEntityId && !!d.ssoUrl && !!d.idpCert), {
+          message: "IdP Entity ID, SSO URL, and certificate are required to enable SAML.",
+        })
+        .refine((d) => !d.enforced || d.enabled, {
+          message: "Enable SAML before enforcing it.",
+        }),
+    )
+    .use(withAudit("settings.saml_updated", "OrganizationSettings"))
+    .mutation(async ({ input, ctx }) => {
+      const result = await updateOrgSettings(ctx.organizationId, {
+        samlEnabled: input.enabled,
+        samlEnforced: input.enforced,
+        samlIdpEntityId: input.idpEntityId || null,
+        samlIdpSsoUrl: input.ssoUrl || null,
+        samlIdpCert: input.idpCert || null,
+        samlGroupAttribute: input.groupAttribute || null,
+      });
+      // Local-auth enforcement is read live from settings, but invalidate the
+      // per-org auth instance for parity with updateOidc.
       invalidateAuthCache();
       return result;
     }),
