@@ -7,6 +7,7 @@ import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { EmptyState } from "@/components/empty-state";
 import { OnboardingChecklist } from "@/components/onboarding/onboarding-checklist";
+import { CreateDemoPipelineButton } from "@/components/onboarding/create-demo-pipeline-button";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader, PageHeaderMetaSep } from "@/components/ui/page-header";
@@ -235,6 +236,7 @@ export default function DashboardPage() {
           agentEnrolled={stats.data.nodes > 0}
           pipelineCreated={(stats.data.pipelinesTotal ?? 0) > 0}
           pipelineDeployed={false}
+          demoAction={<CreateDemoPipelineButton environmentId={selectedEnvironmentId} />}
         />
       </div>
     );
