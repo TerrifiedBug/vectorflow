@@ -123,7 +123,6 @@ export async function GET(request: Request) {
       select: {
         id: true,
         name: true,
-        desiredConfigChecksum: true,
         nodeSelector: true,
         versions: {
           orderBy: { version: "desc" },
@@ -334,11 +333,7 @@ export async function GET(request: Request) {
           ? configYaml + JSON.stringify(pipelineSecrets, Object.keys(pipelineSecrets).sort())
           : configYaml;
         const checksum = createHash("sha256").update(checksumInput).digest("hex");
-        // Persist the desired checksum only when it changes, so the hot config
-        // poll doesn't write on every request once steady-state is reached.
-        if (pipeline.desiredConfigChecksum !== checksum) {
-          await setExpectedChecksum(pipeline.id, checksum);
-        }
+        setExpectedChecksum(pipeline.id, checksum);
 
         pipelineConfigs.push({
           pipelineId: pipeline.id,
