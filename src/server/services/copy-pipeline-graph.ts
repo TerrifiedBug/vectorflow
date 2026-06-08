@@ -56,6 +56,7 @@ export async function copyPipelineGraph(
         positionX: node.positionX,
         positionY: node.positionY,
         disabled: node.disabled,
+        groupId: node.groupId,
         sharedComponentId: stripSharedComponentLinks ? null : (node.sharedComponentId ?? null),
         sharedComponentVersion: stripSharedComponentLinks ? null : (node.sharedComponentVersion ?? null),
       },

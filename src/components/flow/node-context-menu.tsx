@@ -9,6 +9,8 @@ import {
   Share2,
   Power,
   Replace,
+  Group,
+  Ungroup,
   AlignStartVertical,
   AlignCenterVertical,
   AlignEndVertical,
@@ -62,12 +64,16 @@ export function NodeContextMenu({
   const nodes = useFlowStore((s) => s.nodes);
   const alignSelectedNodes = useFlowStore((s) => s.alignSelectedNodes);
   const distributeSelectedNodes = useFlowStore((s) => s.distributeSelectedNodes);
+  const groupSelectedNodes = useFlowStore((s) => s.groupSelectedNodes);
+  const ungroupNodes = useFlowStore((s) => s.ungroupNodes);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const targetNode = nodes.find((n) => n.id === nodeId);
   const isLocked = !!targetNode?.data?.isSystemLocked;
   const isShared = !!targetNode?.data?.sharedComponentId;
   const isDisabled = !!targetNode?.data?.disabled;
+  const targetGroupId =
+    (targetNode?.data as { groupId?: string } | undefined)?.groupId;
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -226,6 +232,33 @@ export function NodeContextMenu({
             },
           },
         ] as MenuItem[])
+      : []),
+    // UX-1 grouping: "Group selected" needs a multi-selection; "Ungroup" shows
+    // whenever the right-clicked node already belongs to a group.
+    ...(isMulti
+      ? ([
+          { separator: true },
+          {
+            label: "Group selected",
+            icon: Group,
+            onClick: () => {
+              groupSelectedNodes();
+              onClose();
+            },
+          },
+        ] as MenuItem[])
+      : []),
+    ...(targetGroupId
+      ? ([
+          {
+            label: "Ungroup",
+            icon: Ungroup,
+            onClick: () => {
+              ungroupNodes(targetGroupId);
+              onClose();
+            },
+          },
+        ] as MenuAction[])
       : []),
     { separator: true },
     {

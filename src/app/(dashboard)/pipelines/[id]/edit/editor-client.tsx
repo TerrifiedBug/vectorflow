@@ -62,6 +62,7 @@ function dbNodesToFlowNodes(
     positionX: number;
     positionY: number;
     disabled?: boolean;
+    groupId?: string | null;
     sharedComponentId?: string | null;
     sharedComponentVersion?: number | null;
     sharedComponent?: {
@@ -91,6 +92,7 @@ function dbNodesToFlowNodes(
         displayName: n.displayName ?? undefined,
         config: (n.config as Record<string, unknown>) ?? {},
         disabled: n.disabled ?? false,
+        groupId: n.groupId ?? undefined,
         sharedComponentId: n.sharedComponentId ?? null,
         sharedComponentVersion: n.sharedComponentVersion ?? null,
         sharedComponentName: n.sharedComponent?.name ?? null,
@@ -387,6 +389,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
         positionX: n.position.x,
         positionY: n.position.y,
         disabled: !!((n.data as Record<string, unknown>).disabled),
+        groupId: ((n.data as Record<string, unknown>).groupId as string | null) ?? null,
         sharedComponentId: ((n.data as Record<string, unknown>).sharedComponentId as string | null) ?? null,
         sharedComponentVersion: ((n.data as Record<string, unknown>).sharedComponentVersion as number | null) ?? null,
       })),

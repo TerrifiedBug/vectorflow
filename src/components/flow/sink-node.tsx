@@ -22,6 +22,7 @@ type SinkNodeData = {
   config: Record<string, unknown>;
   metrics?: NodeMetricsData;
   disabled?: boolean;
+  groupId?: string;
   hasError?: boolean;
   firstErrorMessage?: string;
   sharedComponentId?: string | null;
@@ -76,6 +77,7 @@ function SinkNodeComponent({ id, data, selected }: NodeProps<SinkNodeType>) {
       fadedForSearch={isSearching && !isSearchMatch}
       searchMatch={isSearchMatch}
       badge={badge}
+      groupId={data.groupId}
     />
   );
 }
