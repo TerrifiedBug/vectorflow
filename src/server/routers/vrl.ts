@@ -86,6 +86,48 @@ export function deepEqualUnordered(a: unknown, b: unknown): boolean {
   );
 }
 
+/** One pre-deploy test result: a saved test plus the component it ran against. */
+export interface PipelineVrlUnitTestRunResult extends VrlUnitTestRunResult {
+  componentKey: string;
+}
+
+/**
+ * Run a batch of saved unit tests against a single VRL `source`, capping
+ * concurrent `vector` subprocesses (each evaluateVrl spawns one). Shared by
+ * `runUnitTests` (one component, the editor's live source) and
+ * `runPipelineUnitTests` (every component, each node's persisted source) so both
+ * apply identical pass/fail semantics: a compile error, a dropped event, or a
+ * mismatch all report `passed: false`.
+ */
+async function runTestsAgainstSource(
+  source: string,
+  tests: ReadonlyArray<{ id: string; name: string; input: unknown; expected: unknown }>,
+): Promise<VrlUnitTestRunResult[]> {
+  const results: VrlUnitTestRunResult[] = [];
+  for (let i = 0; i < tests.length; i += VRL_TEST_RUN_CONCURRENCY) {
+    const batch = tests.slice(i, i + VRL_TEST_RUN_CONCURRENCY);
+    const batchResults = await Promise.all(
+      batch.map(async (test) => {
+        const result = await evaluateVrl(source, [test.input]);
+        const actual = result.outputs.length === 1 ? result.outputs[0] : null;
+        const passed =
+          !result.error &&
+          result.outputs.length === 1 &&
+          deepEqualUnordered(actual, test.expected);
+        return {
+          id: test.id,
+          name: test.name,
+          passed,
+          actual,
+          expected: test.expected,
+        };
+      }),
+    );
+    results.push(...batchResults);
+  }
+  return results;
+}
+
 export const vrlRouter = router({
   validate: protectedProcedure
     .input(z.object({ source: z.string() }))
@@ -438,30 +480,88 @@ export const vrlRouter = router({
         take: MAX_VRL_UNIT_TESTS_PER_COMPONENT,
       });
 
-      // Each evaluateVrl spawns a `vector` subprocess, so run in bounded
-      // batches rather than all-at-once to cap concurrent processes on the host.
-      const results: VrlUnitTestRunResult[] = [];
-      for (let i = 0; i < tests.length; i += VRL_TEST_RUN_CONCURRENCY) {
-        const batch = tests.slice(i, i + VRL_TEST_RUN_CONCURRENCY);
-        const batchResults = await Promise.all(
-          batch.map(async (test) => {
-            const result = await evaluateVrl(input.source, [test.input]);
-            const actual = result.outputs.length === 1 ? result.outputs[0] : null;
-            const passed =
-              !result.error &&
-              result.outputs.length === 1 &&
-              deepEqualUnordered(actual, test.expected);
-            return {
-              id: test.id,
-              name: test.name,
-              passed,
-              actual,
-              expected: test.expected,
-            };
-          }),
-        );
-        results.push(...batchResults);
-      }
-      return results;
+      return runTestsAgainstSource(input.source, tests);
     }),
+
+  /**
+   * UX-2 — pre-deploy test gate. Run every saved unit test for a pipeline
+   * against its component's CURRENT persisted source (the `source` on each
+   * transform PipelineNode), grouped by component, so the deploy dialog can
+   * surface pass/fail before publishing. Read-only (VIEWER, no audit). Tests
+   * whose component no longer carries a VRL source are skipped; the per-component
+   * cap mirrors `runUnitTests`. Returns the flat results plus a roll-up summary.
+   */
+  runPipelineUnitTests: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .mutation(
+      async ({
+        input,
+        ctx,
+      }): Promise<{
+        results: PipelineVrlUnitTestRunResult[];
+        summary: { total: number; passed: number; failed: number };
+      }> => {
+        // PipelineNode carries no organizationId column, so org-scope through
+        // its pipeline (withTeamAccess already gated team membership).
+        const pipeline = await prisma.pipeline.findFirst({
+          where: { id: input.pipelineId, organizationId: ctx.organizationId },
+          select: {
+            nodes: {
+              where: { kind: "TRANSFORM" },
+              select: { componentKey: true, config: true },
+            },
+          },
+        });
+        if (!pipeline) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
+        }
+
+        // componentKey -> current VRL source, for transform nodes that carry one.
+        const sourceByComponent = new Map<string, string>();
+        for (const node of pipeline.nodes) {
+          const source = (node.config as Record<string, unknown> | null)?.source;
+          if (typeof source === "string" && source.trim()) {
+            sourceByComponent.set(node.componentKey, source);
+          }
+        }
+
+        const tests = await prisma.vrlUnitTest.findMany({
+          where: {
+            organizationId: ctx.organizationId,
+            pipelineId: input.pipelineId,
+          },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, name: true, componentKey: true, input: true, expected: true },
+        });
+
+        // Group by component, dropping tests with no current source to run
+        // against and capping each component (mirrors runUnitTests' take()).
+        const testsByComponent = new Map<string, typeof tests>();
+        for (const test of tests) {
+          if (!sourceByComponent.has(test.componentKey)) continue;
+          const bucket = testsByComponent.get(test.componentKey) ?? [];
+          if (bucket.length >= MAX_VRL_UNIT_TESTS_PER_COMPONENT) continue;
+          bucket.push(test);
+          testsByComponent.set(test.componentKey, bucket);
+        }
+
+        // Components run sequentially; each component's batch is itself bounded,
+        // so total concurrent `vector` processes stay within the cap.
+        const results: PipelineVrlUnitTestRunResult[] = [];
+        for (const [componentKey, componentTests] of testsByComponent) {
+          const source = sourceByComponent.get(componentKey)!;
+          const componentResults = await runTestsAgainstSource(source, componentTests);
+          for (const r of componentResults) {
+            results.push({ ...r, componentKey });
+          }
+        }
+
+        const passed = results.filter((r) => r.passed).length;
+        return {
+          results,
+          summary: { total: results.length, passed, failed: results.length - passed },
+        };
+      },
+    ),
 });

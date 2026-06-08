@@ -7,7 +7,7 @@ import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
-import { Rocket, CheckCircle, CheckCircle2, XCircle, Loader2, Radio, ChevronsUpDown, Check, X, ShieldCheck, ShieldX, Clock, AlertTriangle, DollarSign, GitBranch } from "lucide-react";
+import { Rocket, CheckCircle, CheckCircle2, XCircle, Loader2, Radio, ChevronsUpDown, Check, X, ShieldCheck, ShieldX, Clock, AlertTriangle, DollarSign, GitBranch, FlaskConical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatBytes, formatCost } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,7 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ConfigDiff } from "@/components/ui/config-diff";
 import { parseDeploymentStrategy } from "@/lib/deployment-strategy";
 
@@ -45,6 +46,12 @@ interface DeployDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
+
+/** Result of `vrl.runPipelineUnitTests` — flat per-test results + a roll-up. */
+type PipelineTestRun = {
+  results: { id: string; componentKey: string; name: string; passed: boolean; actual: unknown; expected: unknown }[];
+  summary: { total: number; passed: number; failed: number };
+};
 
 export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogProps) {
   const trpc = useTRPC();
@@ -57,7 +64,9 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   const [rejectNote, setRejectNote] = useState("");
   const [stagedDeploy, setStagedDeploy] = useState(false);
   const [healthCheckWindow, setHealthCheckWindow] = useState(5);
-  const [deployStep, setDeployStep] = useState<"idle" | "prepare" | "deploy" | "confirm">("idle");
+  const [deployStep, setDeployStep] = useState<"idle" | "prepare" | "tests" | "deploy" | "confirm">("idle");
+  const [testRun, setTestRun] = useState<PipelineTestRun | null>(null);
+  const [ackTestFailures, setAckTestFailures] = useState(false);
 
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
@@ -166,6 +175,18 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
     ...trpc.release.direct.listPendingRequests.queryOptions({ pipelineId }),
     enabled: open,
   });
+
+  const unitTestsListQuery = useQuery({
+    ...trpc.vrl.listUnitTests.queryOptions({ pipelineId }),
+    enabled: open,
+  });
+  const hasUnitTests = (unitTestsListQuery.data?.length ?? 0) > 0;
+  const deploySteps = hasUnitTests
+    ? ["Prepare", "Tests", "Deploy", "Confirm"]
+    : ["Prepare", "Deploy", "Confirm"];
+  const deployStepOrder = hasUnitTests
+    ? ["prepare", "tests", "deploy", "confirm"]
+    : ["prepare", "deploy", "confirm"];
   const agentMutation = useMutation(
     trpc.release.direct.agent.mutationOptions({
       onSuccess: (result) => {
@@ -358,8 +379,49 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
     });
   }
 
+  const runTestsMutation = useMutation(
+    trpc.vrl.runPipelineUnitTests.mutationOptions({
+      onSuccess: (data) => {
+        // Component sources may have changed since tests were saved; if nothing
+        // is runnable, don't trap the user on an empty gate — deploy straight on.
+        if (data.summary.total === 0) {
+          handleDeploy();
+          return;
+        }
+        setTestRun(data);
+      },
+      onError: (err) => {
+        toast.error("Failed to run unit tests", { description: err.message, duration: 6000 });
+        setDeployStep("prepare");
+      },
+    })
+  );
+
+  function handleDeployClick() {
+    // Pipelines with saved unit tests route through the Tests gate first;
+    // pipelines without any tests deploy exactly as before.
+    if (hasUnitTests) {
+      setTestRun(null);
+      setAckTestFailures(false);
+      setDeployStep("tests");
+      runTestsMutation.mutate({ pipelineId });
+    } else {
+      handleDeploy();
+    }
+  }
+
+  const deployButtonInner = deploying ? (
+    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{stagedDeploy ? "Deploying Canary..." : requiresApproval ? "Requesting..." : "Deploying..."}</>
+  ) : stagedDeploy ? (
+    <><Rocket className="mr-2 h-4 w-4" />Deploy to Canary Nodes</>
+  ) : requiresApproval ? (
+    <><Clock className="mr-2 h-4 w-4" />Request Deploy</>
+  ) : (
+    <><Radio className="mr-2 h-4 w-4" />Publish to Agents</>
+  );
+
   return (
-    <Dialog open={open} onOpenChange={(val) => { if (deploying) return; if (!val) { setChangelog(""); setSelectedLabels([]); setRejectNote(""); setStagedDeploy(false); setHealthCheckWindow(5); setDeployStep("idle"); } onOpenChange(val); }}>
+    <Dialog open={open} onOpenChange={(val) => { if (deploying) return; if (!val) { setChangelog(""); setSelectedLabels([]); setRejectNote(""); setStagedDeploy(false); setHealthCheckWindow(5); setDeployStep("idle"); setTestRun(null); setAckTestFailures(false); } onOpenChange(val); }}>
       <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -394,8 +456,8 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
 
         {!isReviewMode && !approvedRequest && deployStep !== "idle" && (
           <div className="flex items-center gap-2 px-1 py-2">
-            {(["Prepare", "Deploy", "Confirm"] as const).map((step, i) => {
-              const currentIndex = deployStep === "prepare" ? 0 : deployStep === "deploy" ? 1 : deployStep === "confirm" ? 2 : -1;
+            {deploySteps.map((step, i) => {
+              const currentIndex = deployStepOrder.indexOf(deployStep);
               const isComplete = i < currentIndex;
               const isCurrent = i === currentIndex;
               return (
@@ -412,7 +474,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                     "text-xs shrink-0",
                     (isComplete || isCurrent) ? "text-foreground font-medium" : "text-muted-foreground"
                   )}>{step}</span>
-                  {i < 2 && <div className={cn(
+                  {i < deploySteps.length - 1 && <div className={cn(
                     "h-px flex-1",
                     i < currentIndex ? "bg-primary" : "bg-border"
                   )} />}
@@ -544,6 +606,68 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
           <div className="flex flex-col items-center justify-center gap-3 py-8">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <p className="text-sm text-muted-foreground">Waiting for agent...</p>
+          </div>
+        ) : deployStep === "tests" ? (
+          /* Tests step (UX-2) — run saved VRL unit tests before deploying */
+          <div className="space-y-4">
+            {runTestsMutation.isPending || !testRun ? (
+              <div className="flex flex-col items-center justify-center gap-3 py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">Running unit tests…</p>
+              </div>
+            ) : (
+              <>
+                {testRun.summary.failed > 0 ? (
+                  <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                    <div className="text-xs text-amber-700 dark:text-amber-300 space-y-0.5">
+                      <p className="font-medium">
+                        {testRun.summary.failed} of {testRun.summary.total} unit test{testRun.summary.total !== 1 ? "s" : ""} failing
+                      </p>
+                      <p>
+                        Deploying will publish VRL that no longer matches its saved expectations. Review the failures, then confirm to deploy anyway.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 rounded-md border border-green-500/30 bg-green-500/10 p-3">
+                    <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+                    <p className="text-xs font-medium text-green-700 dark:text-green-300">
+                      All {testRun.summary.total} unit test{testRun.summary.total !== 1 ? "s" : ""} passing
+                    </p>
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  {testRun.results.map((r) => (
+                    <div key={r.id} className="flex items-center gap-2 rounded-md border p-2 text-xs">
+                      {r.passed ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />
+                      ) : (
+                        <XCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                      )}
+                      <span className={cn("truncate", !r.passed && "font-medium")}>{r.name}</span>
+                      <Badge variant="outline" className="ml-auto shrink-0 font-mono text-[10px]">
+                        {r.componentKey}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+
+                {testRun.summary.failed > 0 && (
+                  <label className="flex cursor-pointer items-start gap-2 rounded-md border border-amber-500/30 p-3">
+                    <Checkbox
+                      checked={ackTestFailures}
+                      onCheckedChange={(v) => setAckTestFailures(v === true)}
+                      className="mt-0.5"
+                    />
+                    <span className="text-xs">
+                      I understand {testRun.summary.failed} unit test{testRun.summary.failed !== 1 ? "s are" : " is"} failing and want to deploy anyway.
+                    </span>
+                  </label>
+                )}
+              </>
+            )}
           </div>
         ) : (
           /* Normal deploy / request mode */
@@ -909,20 +1033,30 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                     )}
                   </Button>
                 </>
+              ) : deployStep === "tests" ? (
+                /* Tests step (UX-2) — confirm, acknowledging any failures */
+                <Button
+                  onClick={handleDeploy}
+                  disabled={
+                    runTestsMutation.isPending ||
+                    deploying ||
+                    !isValid ||
+                    !changelog.trim() ||
+                    (!!testRun && testRun.summary.failed > 0 && !ackTestFailures)
+                  }
+                >
+                  {deployButtonInner}
+                </Button>
               ) : (
                 /* Normal deploy / request button */
                 <Button
-                  onClick={handleDeploy}
-                  disabled={isLoading || !isValid || deploying || !changelog.trim()}
+                  onClick={handleDeployClick}
+                  disabled={isLoading || unitTestsListQuery.isLoading || !isValid || deploying || !changelog.trim()}
                 >
-                  {deploying ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{stagedDeploy ? "Deploying Canary..." : requiresApproval ? "Requesting..." : "Deploying..."}</>
-                  ) : stagedDeploy ? (
-                    <><Rocket className="mr-2 h-4 w-4" />Deploy to Canary Nodes</>
-                  ) : requiresApproval ? (
-                    <><Clock className="mr-2 h-4 w-4" />Request Deploy</>
+                  {hasUnitTests && !deploying ? (
+                    <><FlaskConical className="mr-2 h-4 w-4" />Run Tests</>
                   ) : (
-                    <><Radio className="mr-2 h-4 w-4" />Publish to Agents</>
+                    deployButtonInner
                   )}
                 </Button>
               )}
