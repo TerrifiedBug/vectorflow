@@ -48,12 +48,13 @@ export const POST = apiRoute(
       );
     }
 
-    if (body.platform !== "FLUENTD") {
+    if (body.platform !== "FLUENTD" && body.platform !== "FLUENT_BIT") {
       return NextResponse.json(
-        { error: "platform must be 'FLUENTD'" },
+        { error: "platform must be 'FLUENTD' or 'FLUENT_BIT'" },
         { status: 400 },
       );
     }
+    const platform = body.platform;
 
     if (!body.originalConfig || typeof body.originalConfig !== "string") {
       return NextResponse.json(
@@ -79,7 +80,7 @@ export const POST = apiRoute(
       data: {
         name: body.name.trim(),
         teamId: env.teamId,
-        platform: "FLUENTD",
+        platform,
         originalConfig: body.originalConfig,
         status: "DRAFT",
         createdById: ctx.serviceAccountId, // service account as creator
@@ -103,7 +104,7 @@ export const POST = apiRoute(
       teamId: env.teamId,
       environmentId: ctx.environmentId,
       ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0] ?? null,
-      metadata: { name: body.name.trim(), platform: "FLUENTD" },
+      metadata: { name: body.name.trim(), platform },
     }).catch(() => {});
 
     return NextResponse.json({ project }, { status: 201 });

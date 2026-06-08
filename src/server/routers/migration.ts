@@ -4,6 +4,7 @@ import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { parseFluentdConfig } from "@/server/services/migration/fluentd-parser";
+import { parseFluentbitConfig } from "@/server/services/migration/fluentbit-parser";
 import { computeReadiness } from "@/server/services/migration/readiness";
 import { translateBlocks, translateBlocksAsync } from "@/server/services/migration/ai-translator";
 import { generatePipeline } from "@/server/services/migration/pipeline-generator";
@@ -78,7 +79,7 @@ export const migrationRouter = router({
       z.object({
         teamId: z.string(),
         name: z.string().min(1).max(200),
-        platform: z.enum(["FLUENTD"]),
+        platform: z.enum(["FLUENTD", "FLUENT_BIT"]),
         originalConfig: z.string().min(1).max(500_000), // 500KB max
       }),
     )
@@ -172,6 +173,8 @@ export const migrationRouter = router({
         let parsedConfig: ParsedConfig;
         if (project.platform === "FLUENTD") {
           parsedConfig = parseFluentdConfig(project.originalConfig);
+        } else if (project.platform === "FLUENT_BIT") {
+          parsedConfig = parseFluentbitConfig(project.originalConfig);
         } else {
           throw new TRPCError({
             code: "BAD_REQUEST",

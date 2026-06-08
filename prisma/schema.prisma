@@ -1148,7 +1148,7 @@ enum ComponentKind {
 
 enum MigrationPlatform {
   FLUENTD
-  // FLUENT_BIT  — future
+  FLUENT_BIT
   // LOGSTASH    — future
 }
 
