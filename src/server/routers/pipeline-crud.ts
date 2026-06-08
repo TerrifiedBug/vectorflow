@@ -14,6 +14,7 @@ import { withAudit } from "@/server/middleware/audit";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { getOrCreateSystemEnvironment } from "@/server/services/system-environment";
 import { promotePipeline, detectConfigChanges, listPipelinesForEnvironment, saveGraphComponents } from "@/server/services/pipeline-graph";
+import { findDeprecatedComponents } from "@/lib/vector/deprecations";
 import { copyPipelineGraph } from "@/server/services/copy-pipeline-graph";
 import { gitSyncDeletePipeline } from "@/server/services/git-sync";
 import { loadOrgDataKeyCiphertext } from "@/server/services/crypto-v3-callsite";
@@ -115,6 +116,7 @@ export const pipelineCrudRouter = router({
         hasConfigChanges,
         deployedVersionNumber,
         gitOpsMode: pipeline.environment.gitOpsMode,
+        deprecations: findDeprecatedComponents(pipeline.nodes),
       };
     }),
 
