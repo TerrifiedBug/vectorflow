@@ -10,6 +10,7 @@ import { pushRegistry } from "@/server/services/push-registry";
 import { relayPush } from "@/server/services/push-broadcast";
 import { getFleetOverview, getVolumeTrend, getNodeThroughput, getNodeCapacity, getCpuHeatmap, getDataLoss, getMatrixThroughput } from "@/server/services/fleet-data";
 import { isVersionOlder } from "@/lib/version";
+import { getExpectedChecksums } from "@/server/services/drift-metrics";
 
 
 interface NodeMetricChartRow {
@@ -887,6 +888,90 @@ export const fleetRouter = router({
         summary,
         nodes: reportNodes,
       };
+    }),
+
+  /**
+   * Per (node, pipeline) config drift — running vs desired.
+   *
+   * The agent reports the *running* config checksum on
+   * `NodePipelineStatus.configChecksum`; the *desired* checksum is the
+   * server-side expected value the config endpoint cached the last time it
+   * served that pipeline's config (see `drift-metrics`). A node-pipeline is
+   * `drifted` when both checksums are known and differ, `in_sync` when they
+   * match, and `unknown` when the agent reports no checksum (older agent) or no
+   * desired checksum is cached yet — mirroring `getConfigDrift`, an unknown is
+   * never counted as drift. Mirrors `agentDriftReport`'s auth/shape.
+   */
+  configDriftReport: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input, ctx }) => {
+      const statuses = await prisma.nodePipelineStatus.findMany({
+        where: {
+          // Scope to the caller's org so cross-org rows never surface even if
+          // the environment filter were ever loosened.
+          node: {
+            environmentId: input.environmentId,
+            organizationId: ctx.organizationId,
+          },
+        },
+        select: {
+          nodeId: true,
+          pipelineId: true,
+          status: true,
+          configChecksum: true,
+          lastUpdated: true,
+          node: { select: { name: true } },
+          pipeline: { select: { name: true } },
+        },
+        orderBy: [{ node: { name: "asc" } }, { pipeline: { name: "asc" } }],
+      });
+
+      // Desired checksums only for pipelines the agents actually report on.
+      const pipelineIds = [
+        ...new Set(
+          statuses.filter((s) => s.configChecksum != null).map((s) => s.pipelineId),
+        ),
+      ];
+      const desiredChecksums = getExpectedChecksums(pipelineIds);
+
+      const summary = { total: statuses.length, inSync: 0, drifted: 0, unknown: 0 };
+
+      const nodes = statuses.map((s) => {
+        const running = s.configChecksum;
+        const desired =
+          running != null ? desiredChecksums.get(s.pipelineId) ?? null : null;
+
+        let drift: "in_sync" | "drifted" | "unknown";
+        if (running == null || desired == null) {
+          drift = "unknown";
+          summary.unknown++;
+        } else if (running === desired) {
+          drift = "in_sync";
+          summary.inSync++;
+        } else {
+          drift = "drifted";
+          summary.drifted++;
+        }
+
+        return {
+          nodeId: s.nodeId,
+          nodeName: s.node.name,
+          pipelineId: s.pipelineId,
+          pipelineName: s.pipeline.name,
+          status: s.status,
+          runningChecksum: running,
+          desiredChecksum: desired,
+          drift,
+          lastReportedAt: s.lastUpdated,
+        };
+      });
+
+      return { summary, nodes };
     }),
 
   triggerAgentUpdates: protectedProcedure
