@@ -264,7 +264,7 @@ export async function getFleetOverview(
   }
 
   // Config drift: count pipelines where any node's reported checksum differs
-  // from the desired checksum persisted on Pipeline.desiredConfigChecksum.
+  // from the desired checksum in the shared store (Redis L2 + in-memory cache).
   const { getExpectedChecksums } = await import("@/server/services/drift-metrics");
   const pipelineIdsWithChecksum = pipelineStatuses
     .filter((s) => s.configChecksum != null)

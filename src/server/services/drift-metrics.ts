@@ -162,7 +162,7 @@ export async function getConfigDrift(
     return { value: 0 };
   }
 
-  // Get desired checksums from shared storage (Pipeline.desiredConfigChecksum)
+  // Get desired checksums from the shared store (Redis L2 + in-memory cache)
   const pipelineIds = statusesWithChecksum.map((s) => s.pipelineId);
   const expectedChecksums = await getExpectedChecksums(pipelineIds);
 
@@ -197,8 +197,8 @@ const expectedChecksumCache = new Map<string, string>();
 
 /** Store the desired checksum for a pipeline (called from the config endpoint). */
 export function setExpectedChecksum(pipelineId: string, checksum: string): void {
-  // Skip redundant writes once steady-state is reached (config unchanged).
-  if (expectedChecksumCache.get(pipelineId) === checksum) return;
+  // Always re-mirror to Redis (idempotent) so the shared value self-heals within
+  // one poll cycle after a Redis key loss / transient write failure.
   expectedChecksumCache.set(pipelineId, checksum);
   const redis = getRedis();
   if (!redis) return;
