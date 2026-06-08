@@ -98,6 +98,8 @@ export interface FlowState {
     componentDef: VectorComponentDef,
     position: { x: number; y: number },
   ) => void;
+  /** Swap a node's component type in place (same kind), preserving id, position and edges. */
+  replaceNodeComponent: (id: string, componentDef: VectorComponentDef) => void;
   removeNode: (id: string) => void;
   removeEdge: (id: string) => void;
   updateNodeConfig: (id: string, config: Record<string, unknown>, configSchema?: object) => void;
@@ -178,6 +180,33 @@ interface InternalState extends FlowState {
 function getNodeKind(nodes: Node[], id: string): VectorComponentDef["kind"] | undefined {
   const node = nodes.find((n) => n.id === id);
   return ((node?.data as Partial<FlowNodeData> | undefined)?.componentDef as VectorComponentDef | undefined)?.kind;
+}
+
+/**
+ * Build the initial config for a component from its schema defaults. String
+ * defaults are copied; object defaults (e.g. the OpenTelemetry sink's `protocol`
+ * block) are deep-cloned so deploy-time-required nested fields are seeded without
+ * mutating the shared schema object. Shared by `addNode` and `replaceNodeComponent`.
+ */
+function seedConfigDefaults(componentDef: VectorComponentDef): Record<string, unknown> {
+  const schema = componentDef.configSchema as {
+    properties?: Record<string, { default?: unknown }>;
+  };
+  const config: Record<string, unknown> = {};
+  if (schema?.properties) {
+    for (const [key, prop] of Object.entries(schema.properties)) {
+      if (prop.default !== undefined && typeof prop.default === "string") {
+        config[key] = prop.default;
+      } else if (
+        prop.default !== undefined &&
+        typeof prop.default === "object" &&
+        prop.default !== null
+      ) {
+        config[key] = structuredClone(prop.default);
+      }
+    }
+  }
+  return config;
 }
 
 function toMetricEdge(edge: Edge, nodes: Node[]): Edge {
@@ -396,27 +425,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   addNode: (componentDef, position) => {
     set((state) => {
       const history = pushSnapshot(state);
-      // Populate initial config from schema defaults (e.g. remap source: ".")
-      const schema = componentDef.configSchema as {
-        properties?: Record<string, { default?: unknown }>;
-      };
-      const config: Record<string, unknown> = {};
-      if (schema?.properties) {
-        for (const [key, prop] of Object.entries(schema.properties)) {
-          if (prop.default !== undefined && typeof prop.default === "string") {
-            config[key] = prop.default;
-          } else if (
-            prop.default !== undefined &&
-            typeof prop.default === "object" &&
-            prop.default !== null
-          ) {
-            // Object defaults (e.g. the OpenTelemetry sink's `protocol` block)
-            // seed nested config so deploy-time-required nested fields are
-            // emitted. Deep-cloned so the shared schema object is never mutated.
-            config[key] = structuredClone(prop.default);
-          }
-        }
-      }
+      const config = seedConfigDefaults(componentDef);
       const newNode: Node = {
         id: generateId(),
         type: componentDef.kind,
@@ -431,6 +440,49 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       return {
         ...history,
         nodes: [...state.nodes, newNode],
+        isDirty: true,
+      };
+    });
+  },
+
+  replaceNodeComponent: (id, componentDef) => {
+    set((state) => {
+      const node = state.nodes.find((n) => n.id === id);
+      const data = node?.data as Partial<FlowNodeData> | undefined;
+      // Can't replace a missing, system-locked, or shared-linked node.
+      if (!node || data?.isSystemLocked || data?.sharedComponentId) return {};
+      const currentDef = data?.componentDef;
+      // Only swap the component *type* within the same kind — a cross-kind change
+      // (e.g. sink → source) would orphan the node's edges. No-op if unchanged.
+      if (
+        !currentDef ||
+        currentDef.kind !== componentDef.kind ||
+        currentDef.type === componentDef.type
+      ) {
+        return {};
+      }
+      const history = pushSnapshot(state);
+      // Preserve a user-customized display name; reset only the untouched default.
+      const keepName =
+        Boolean(data.displayName) && data.displayName !== currentDef.displayName;
+      return {
+        ...history,
+        nodes: state.nodes.map((n) =>
+          n.id === id
+            ? {
+                ...n,
+                type: componentDef.kind,
+                data: {
+                  ...data,
+                  componentDef,
+                  componentKey: generateComponentKey(componentDef.type),
+                  displayName: keepName ? data.displayName : componentDef.displayName,
+                  config: seedConfigDefaults(componentDef),
+                },
+              }
+            : n,
+        ),
+        // Edges reference node ids, which are unchanged, so wiring is preserved.
         isDirty: true,
       };
     });
