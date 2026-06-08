@@ -4,6 +4,7 @@ import { withOrgTx } from "@/lib/with-org-tx";
 import { errorLog } from "@/lib/logger";
 import { configHasLakeSink, LAKE_SINK_TYPE } from "@/lib/vector/lake-sink";
 import { isLakeEnabled } from "./clickhouse";
+import { evaluateLakeQuota } from "./lake-quota";
 import {
   clamp,
   splitLakeOutput,
@@ -245,6 +246,18 @@ export async function updateLakeCatalogFromHeartbeat(
     } catch (err) {
       errorLog("lake-catalog", `Failed to update lake catalog for pipeline ${pipeline.id}`, err);
     }
+  }
+
+  // Soft per-org Lake byte-quota signal: after folding this heartbeat's writes
+  // into the catalog, re-evaluate cumulative usage against the org's byte
+  // ceiling. Best-effort — a quota-eval failure must never block the catalog
+  // update — and it never drops data (over-quota only logs + surfaces). Free in
+  // OSS: the default provider returns "unlimited" and short-circuits before any
+  // extra query.
+  try {
+    await evaluateLakeQuota(orgId);
+  } catch (err) {
+    errorLog("lake-catalog", `Failed to evaluate lake quota for org ${orgId}`, err);
   }
 }
 

@@ -5,6 +5,7 @@ import { withAudit } from "@/server/middleware/audit";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma";
 import { isLakeEnabled } from "@/server/services/lake/clickhouse";
+import { evaluateLakeQuota } from "@/server/services/lake/lake-quota";
 import {
   LAKE_ALERT_COMPARATORS,
   testFireLakeAlertRule,
@@ -212,6 +213,14 @@ export const lakeRouter = router({
    *  'lake not configured' state. Env-level only (no tenant data), so it needs
    *  no team gate. */
   status: protectedProcedure.query(() => ({ enabled: isLakeEnabled() })),
+
+  /** Per-org Lake byte-quota status — a read-only badge surface (mirrors the
+   *  agents/pipelines quota badges). Unlimited in OSS (the default provider);
+   *  a commercial tier provider returns a finite ceiling + over-quota flag.
+   *  Org is resolved from the caller's session (`ctx.organizationId`), never
+   *  from input, so it carries no tenant-id input and reads only the caller's
+   *  own org. */
+  quotaStatus: protectedProcedure.query(({ ctx }) => evaluateLakeQuota(ctx.organizationId)),
 
   /** Scheduled threshold alerts over lake datasets. */
   alert: lakeAlertRouter,

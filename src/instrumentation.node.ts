@@ -213,6 +213,19 @@ export async function registerNodeInstrumentation() {
     }
 
     try {
+      // VectorFlow Lake: retention sweeper. Enforces each dataset's effective
+      // coldDays drop horizon (per-policy, not just the table default TTL).
+      // Leader-gated and a no-op when the lake is disabled (same contract as the
+      // alert scheduler). Best-effort — a scheduler init hiccup never blocks boot.
+      const { initLakeRetentionScheduler } = await import(
+        "@/server/services/lake/lake-retention"
+      );
+      initLakeRetentionScheduler();
+    } catch (error) {
+      errorLog("instrumentation", "Failed to initialize lake retention scheduler", error);
+    }
+
+    try {
       const { importLegacyBackups } = await import("@/server/services/backup");
       const result = await importLegacyBackups();
       infoLog("instrumentation", `Legacy backup import: ${result.imported} imported, ${result.skipped} skipped`);
