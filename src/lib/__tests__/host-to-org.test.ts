@@ -12,6 +12,7 @@ import {
   extractSlugFromHost,
   normalizeHost,
   resolveOrgIdFromHost,
+  _resetHostOrgCacheForTests,
 } from "@/lib/host-to-org";
 import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
@@ -19,6 +20,7 @@ const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
 beforeEach(() => {
   mockReset(prismaMock);
+  _resetHostOrgCacheForTests();
 });
 
 afterEach(() => {
@@ -133,5 +135,90 @@ describe("resolveOrgIdFromHost", () => {
     await expect(resolveOrgIdFromHost("tenant-b.vectorflow.sh")).resolves.toBe(
       "org-b-uuid",
     );
+  });
+
+  it("resolves a verified claim for a custom domain to its org", async () => {
+    // Claim-first: a verified full-host claim wins regardless of the slug path.
+    prismaMock.organization.findUnique.mockResolvedValue(null);
+    prismaMock.organizationDomainClaim.findFirst.mockResolvedValue({
+      organizationId: "org-acme-uuid",
+    } as never);
+
+    await expect(resolveOrgIdFromHost("logs.acme.com")).resolves.toBe(
+      "org-acme-uuid",
+    );
+    expect(prismaMock.organizationDomainClaim.findFirst).toHaveBeenCalledWith({
+      where: { domain: "logs.acme.com", verifiedAt: { not: null } },
+      select: { organizationId: true },
+    });
+  });
+
+  it("a verified claim wins over a colliding org slug (no shadowing)", async () => {
+    // org B owns slug "logs"; org A has a verified claim on logs.acme.com.
+    // The DNS-proven full-host claim MUST win over the slug-prefix match.
+    prismaMock.organization.findUnique.mockResolvedValue({
+      id: "org-B-slug-logs",
+    } as never);
+    prismaMock.organizationDomainClaim.findFirst.mockResolvedValue({
+      organizationId: "org-A-claim",
+    } as never);
+
+    await expect(resolveOrgIdFromHost("logs.acme.com")).resolves.toBe(
+      "org-A-claim",
+    );
+    // Claim-first short-circuits, so the colliding slug is never consulted.
+    expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("does NOT resolve an unverified claim (falls back to DEFAULT_ORG_ID)", async () => {
+    prismaMock.organization.findUnique.mockResolvedValue(null);
+    // Simulate the DB: a claim row exists for the domain but is unverified, so
+    // a query filtering `verifiedAt: { not: null }` returns nothing. Proves the
+    // resolver only ever honours verified claims.
+    prismaMock.organizationDomainClaim.findFirst.mockImplementation(((args: {
+      where: { verifiedAt?: { not: null } };
+    }) =>
+      Promise.resolve(
+        args.where.verifiedAt?.not === null
+          ? null
+          : { organizationId: "org-acme-uuid" },
+      )) as never);
+
+    await expect(resolveOrgIdFromHost("logs.acme.com")).resolves.toBe(
+      DEFAULT_ORG_ID,
+    );
+    expect(prismaMock.organizationDomainClaim.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { domain: "logs.acme.com", verifiedAt: { not: null } },
+      }),
+    );
+  });
+
+  it("falls back to DEFAULT_ORG_ID for an unknown custom domain", async () => {
+    prismaMock.organization.findUnique.mockResolvedValue(null);
+    prismaMock.organizationDomainClaim.findFirst.mockResolvedValue(null);
+
+    await expect(resolveOrgIdFromHost("unknown.example.com")).resolves.toBe(
+      DEFAULT_ORG_ID,
+    );
+  });
+
+  it("caches the result so a repeated host does not hit the DB twice", async () => {
+    prismaMock.organization.findUnique.mockResolvedValue(null);
+    prismaMock.organizationDomainClaim.findFirst.mockResolvedValue({
+      organizationId: "org-acme-uuid",
+    } as never);
+
+    await expect(resolveOrgIdFromHost("logs.acme.com")).resolves.toBe(
+      "org-acme-uuid",
+    );
+    await expect(resolveOrgIdFromHost("logs.acme.com")).resolves.toBe(
+      "org-acme-uuid",
+    );
+    // Second call is served from the in-process TTL cache: no extra round-trip.
+    expect(prismaMock.organizationDomainClaim.findFirst).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
   });
 });
