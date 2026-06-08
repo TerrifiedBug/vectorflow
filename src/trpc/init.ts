@@ -660,6 +660,17 @@ export const withTeamAccess = (minRole: Role) =>
       }
     }
 
+    // Resolve id as VrlUnitTest → pipeline → environment.teamId (for vrl.deleteUnitTest)
+    if (!teamId && rawInput?.id) {
+      const unitTest = await prisma.vrlUnitTest.findUnique({
+        where: { id: rawInput.id as string },
+        select: { pipeline: { select: { environment: { select: { teamId: true } } } } },
+      });
+      if (unitTest) {
+        teamId = unitTest.pipeline.environment.teamId ?? undefined;
+      }
+    }
+
     // Resolve id as AlertCorrelationGroup → environment.teamId
     if (!teamId && rawInput?.id) {
       const correlationGroup = await prisma.alertCorrelationGroup.findUnique({

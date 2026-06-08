@@ -29,6 +29,7 @@ import { searchVrlFunctions, getVrlFunction } from "@/lib/vrl/function-registry"
 import { VrlSnippetDrawer } from "@/components/flow/vrl-snippet-drawer";
 import { VrlFieldsPanel } from "./vrl-fields-panel";
 import { VrlAiPanel } from "./vrl-ai-panel";
+import { VrlUnitTestsPanel } from "./vrl-unit-tests-panel";
 import { useVrlAiConversation } from "@/hooks/use-vrl-ai-conversation";
 
 import { useTeamStore } from "@/stores/team-store";
@@ -941,6 +942,16 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
                         </div>
                       )}
                     </div>
+
+                    {/* Unit tests — define input→expected and run against the current source */}
+                    {pipelineId && componentKey && (
+                      <VrlUnitTestsPanel
+                        pipelineId={pipelineId}
+                        componentKey={componentKey}
+                        source={value}
+                        initialInput={sampleInput}
+                      />
+                    )}
                   </div>
                 )}
 
