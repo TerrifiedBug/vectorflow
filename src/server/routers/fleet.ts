@@ -10,6 +10,7 @@ import { pushRegistry } from "@/server/services/push-registry";
 import { relayPush } from "@/server/services/push-broadcast";
 import { getFleetOverview, getVolumeTrend, getNodeThroughput, getNodeCapacity, getCpuHeatmap, getDataLoss, getMatrixThroughput } from "@/server/services/fleet-data";
 import { isVersionOlder } from "@/lib/version";
+import { getExpectedChecksums } from "@/server/services/drift-metrics";
 
 
 interface NodeMetricChartRow {
@@ -887,6 +888,107 @@ export const fleetRouter = router({
         summary,
         nodes: reportNodes,
       };
+    }),
+
+  /**
+   * Per (node, pipeline) config drift — running vs desired.
+   *
+   * The agent reports the *running* config checksum on
+   * `NodePipelineStatus.configChecksum`; the *desired* checksum is the
+   * server-side expected value the config endpoint cached the last time it
+   * served that pipeline's config (see `drift-metrics`). A node-pipeline is
+   * `drifted` when both checksums are known and differ, `in_sync` when they
+   * match, and `unknown` when the agent reports no checksum (older agent) or no
+   * desired checksum is cached yet — mirroring `getConfigDrift`, an unknown is
+   * never counted as drift. Mirrors `agentDriftReport`'s auth/shape.
+   */
+  configDriftReport: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input, ctx }) => {
+      const statuses = await prisma.nodePipelineStatus.findMany({
+        where: {
+          // Scope to the caller's org so cross-org rows never surface even if
+          // the environment filter were ever loosened.
+          node: {
+            environmentId: input.environmentId,
+            organizationId: ctx.organizationId,
+          },
+          // Only active, deployed pipelines: paused/draft/undeployed pipelines
+          // leave stale NodePipelineStatus rows the agent no longer reports on,
+          // which would otherwise show as phantom drift (matches the agent
+          // config endpoint's active-pipeline filter).
+          pipeline: { isDraft: false, deployedAt: { not: null }, pausedAt: null },
+        },
+        select: {
+          nodeId: true,
+          pipelineId: true,
+          status: true,
+          configChecksum: true,
+          lastUpdated: true,
+          node: { select: { name: true, labels: true } },
+          pipeline: { select: { name: true, nodeSelector: true } },
+        },
+        orderBy: [{ node: { name: "asc" } }, { pipeline: { name: "asc" } }],
+      });
+
+      // Mirror the agent config endpoint's per-node selector match: a pipeline
+      // targets a node only when every nodeSelector entry matches the node's
+      // labels (an empty selector targets all nodes). This drops stale rows for
+      // pipelines that no longer target the node (e.g. after a selector/label
+      // change the agent hasn't reconciled yet) so they aren't phantom drift.
+      const activeStatuses = statuses.filter((s) => {
+        const selector =
+          (s.pipeline.nodeSelector as Record<string, string> | null) ?? {};
+        const labels = (s.node.labels as Record<string, string> | null) ?? {};
+        return Object.entries(selector).every(([k, v]) => labels[k] === v);
+      });
+
+      // Desired checksums for every reported pipeline — surfaced even when the
+      // agent reports no running checksum (older agents), so the table shows
+      // "— / <desired>" rather than "— / —".
+      const pipelineIds = [...new Set(activeStatuses.map((s) => s.pipelineId))];
+      const desiredChecksums = await getExpectedChecksums(pipelineIds);
+
+      const summary = { total: activeStatuses.length, inSync: 0, drifted: 0, unknown: 0 };
+
+      const nodes = activeStatuses.map((s) => {
+        const running = s.configChecksum;
+        const desired = desiredChecksums.get(s.pipelineId) ?? null;
+
+        let drift: "in_sync" | "drifted" | "unknown";
+        if (running == null || desired == null) {
+          drift = "unknown";
+          summary.unknown++;
+        } else if (running === desired) {
+          drift = "in_sync";
+          summary.inSync++;
+        } else {
+          drift = "drifted";
+          summary.drifted++;
+        }
+
+        return {
+          nodeId: s.nodeId,
+          nodeName: s.node.name,
+          pipelineId: s.pipelineId,
+          pipelineName: s.pipeline.name,
+          status: s.status,
+          // Never expose the raw checksums: they are derived from the rendered
+          // config including resolved secrets, so a hash would let a viewer
+          // confirm guessed secrets offline / track rotations. Presence only.
+          hasRunning: running != null,
+          hasDesired: desired != null,
+          drift,
+          lastReportedAt: s.lastUpdated,
+        };
+      });
+
+      return { summary, nodes };
     }),
 
   triggerAgentUpdates: protectedProcedure

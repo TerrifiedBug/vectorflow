@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import {
   getVersionDrift,
   getConfigDrift,
+  getExpectedChecksums,
   setExpectedChecksum,
   clearExpectedChecksumCache,
 } from "@/server/services/drift-metrics";
@@ -107,23 +108,15 @@ describe("getConfigDrift", () => {
 
   it("returns null when no pipeline statuses exist", async () => {
     prismaMock.nodePipelineStatus.findMany.mockResolvedValue([]);
-
     const result = await getConfigDrift("node-1", null);
     expect(result).toBeNull();
   });
 
   it("returns 0 when all checksums match", async () => {
     prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
-      {
-        pipelineId: "pipe-1",
-        nodeId: "node-1",
-        configChecksum: "abc123",
-        pipeline: { name: "Pipeline A", id: "pipe-1" },
-      },
+      { pipelineId: "pipe-1", nodeId: "node-1", configChecksum: "abc123", pipeline: { name: "Pipeline A", id: "pipe-1" } },
     ] as never);
-
     setExpectedChecksum("pipe-1", "abc123");
-
     const result = await getConfigDrift("node-1", null);
     expect(result).not.toBeNull();
     expect(result!.value).toBe(0);
@@ -131,23 +124,11 @@ describe("getConfigDrift", () => {
 
   it("returns count of mismatched pipelines", async () => {
     prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
-      {
-        pipelineId: "pipe-1",
-        nodeId: "node-1",
-        configChecksum: "stale-checksum",
-        pipeline: { name: "Pipeline A", id: "pipe-1" },
-      },
-      {
-        pipelineId: "pipe-2",
-        nodeId: "node-1",
-        configChecksum: "correct-checksum",
-        pipeline: { name: "Pipeline B", id: "pipe-2" },
-      },
+      { pipelineId: "pipe-1", nodeId: "node-1", configChecksum: "stale-checksum", pipeline: { name: "Pipeline A", id: "pipe-1" } },
+      { pipelineId: "pipe-2", nodeId: "node-1", configChecksum: "correct-checksum", pipeline: { name: "Pipeline B", id: "pipe-2" } },
     ] as never);
-
     setExpectedChecksum("pipe-1", "expected-checksum");
     setExpectedChecksum("pipe-2", "correct-checksum");
-
     const result = await getConfigDrift("node-1", null);
     expect(result).not.toBeNull();
     expect(result!.value).toBe(1);
@@ -155,18 +136,28 @@ describe("getConfigDrift", () => {
 
   it("ignores pipelines where agent does not report checksum (null)", async () => {
     prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
-      {
-        pipelineId: "pipe-1",
-        nodeId: "node-1",
-        configChecksum: null, // older agent, no checksum
-        pipeline: { name: "Pipeline A", id: "pipe-1" },
-      },
+      { pipelineId: "pipe-1", nodeId: "node-1", configChecksum: null, pipeline: { name: "Pipeline A", id: "pipe-1" } },
     ] as never);
-
-    setExpectedChecksum("pipe-1", "expected-checksum");
-
     const result = await getConfigDrift("node-1", null);
     expect(result).not.toBeNull();
-    expect(result!.value).toBe(0); // null checksum is not drift
+    expect(result!.value).toBe(0);
+  });
+});
+
+describe("desired checksum store (in-memory fallback)", () => {
+  beforeEach(() => {
+    clearExpectedChecksumCache();
+  });
+
+  it("round-trips a set checksum through getExpectedChecksums", async () => {
+    setExpectedChecksum("pipe-1", "sum-1");
+    const map = await getExpectedChecksums(["pipe-1", "pipe-2"]);
+    expect(map.get("pipe-1")).toBe("sum-1");
+    expect(map.has("pipe-2")).toBe(false);
+  });
+
+  it("returns an empty map for empty input", async () => {
+    const map = await getExpectedChecksums([]);
+    expect(map.size).toBe(0);
   });
 });

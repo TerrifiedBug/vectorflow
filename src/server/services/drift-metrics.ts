@@ -1,5 +1,7 @@
 // src/server/services/drift-metrics.ts
 import { prisma } from "@/lib/prisma";
+import { getRedis } from "@/lib/redis";
+import { warnLog } from "@/lib/logger";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -160,9 +162,9 @@ export async function getConfigDrift(
     return { value: 0 };
   }
 
-  // Get expected checksums from the in-memory cache
+  // Get desired checksums from the shared store (Redis L2 + in-memory cache)
   const pipelineIds = statusesWithChecksum.map((s) => s.pipelineId);
-  const expectedChecksums = getExpectedChecksums(pipelineIds);
+  const expectedChecksums = await getExpectedChecksums(pipelineIds);
 
   let driftCount = 0;
   for (const status of statusesWithChecksum) {
@@ -177,36 +179,68 @@ export async function getConfigDrift(
 }
 
 // ---------------------------------------------------------------------------
-// Expected Config Checksum Cache
+// Desired config checksum -- shared store (Redis L2 + in-memory fallback)
 // ---------------------------------------------------------------------------
+//
+// The agent config endpoint computes the desired checksum (config YAML +
+// resolved secrets) when it serves a pipeline. It is held in a process-local
+// cache and mirrored to Redis when configured, so a config served by one
+// replica is visible to a report/KPI served by another (the cloud runs HA);
+// single-instance OSS just uses the cache. The checksum is secret-derived, so
+// it is NEVER persisted on a client-facing model nor returned to clients -- only
+// its presence/equality is exposed.
 
-/**
- * In-memory cache of the expected config checksum per pipeline.
- * Populated by the config endpoint when it serves configs to agents.
- * Keyed by pipelineId -> SHA256 hex string.
- */
+const REDIS_DESIRED_CHECKSUM_HASH = "vf:drift:desired-checksum";
+
+/** In-memory fallback (and single-instance source) of desired checksums. */
 const expectedChecksumCache = new Map<string, string>();
 
-/** Store the expected checksum for a pipeline (called from config endpoint). */
+/** Store the desired checksum for a pipeline (called from the config endpoint). */
 export function setExpectedChecksum(pipelineId: string, checksum: string): void {
+  // Always re-mirror to Redis (idempotent) so the shared value self-heals within
+  // one poll cycle after a Redis key loss / transient write failure.
   expectedChecksumCache.set(pipelineId, checksum);
+  const redis = getRedis();
+  if (!redis) return;
+  void redis
+    .hset(REDIS_DESIRED_CHECKSUM_HASH, pipelineId, checksum)
+    .catch((err: Error) =>
+      warnLog("drift-metrics", `desired-checksum mirror failed: ${err.message}`),
+    );
 }
 
-/** Read expected checksums for a set of pipeline IDs. */
-export function getExpectedChecksums(
+/**
+ * Read desired checksums for a set of pipeline IDs. Prefers the shared Redis
+ * store (so any replica sees what another served), then fills gaps from the
+ * local cache; falls back entirely to the cache when Redis is unavailable.
+ */
+export async function getExpectedChecksums(
   pipelineIds: string[],
-): Map<string, string> {
+): Promise<Map<string, string>> {
   const result = new Map<string, string>();
+  if (pipelineIds.length === 0) return result;
+  const redis = getRedis();
+  if (redis) {
+    try {
+      const values = await redis.hmget(REDIS_DESIRED_CHECKSUM_HASH, ...pipelineIds);
+      pipelineIds.forEach((id, i) => {
+        const value = values[i];
+        if (value != null) result.set(id, value);
+      });
+    } catch (err) {
+      warnLog("drift-metrics", `desired-checksum read failed: ${(err as Error).message}`);
+    }
+  }
   for (const id of pipelineIds) {
-    const checksum = expectedChecksumCache.get(id);
-    if (checksum) {
-      result.set(id, checksum);
+    if (!result.has(id)) {
+      const checksum = expectedChecksumCache.get(id);
+      if (checksum) result.set(id, checksum);
     }
   }
   return result;
 }
 
-/** Clear the cache (for testing). */
+/** Clear the in-memory cache (for testing). */
 export function clearExpectedChecksumCache(): void {
   expectedChecksumCache.clear();
 }

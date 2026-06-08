@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatBytes, formatCount, formatPercent } from "@/lib/format";
@@ -102,9 +103,12 @@ export function FleetKpiCards({ data, isLoading }: FleetKpiCardsProps) {
               {" "}version
             </span>
           </p>
-          <p className="text-xs text-muted-foreground">
+          <Link
+            href="/fleet/health#config-drift"
+            className="mt-0.5 inline-block text-xs text-muted-foreground hover:text-fg hover:underline"
+          >
             {data?.configDriftCount ?? 0} config
-          </p>
+          </Link>
         </CardContent>
       </Card>
     </div>
