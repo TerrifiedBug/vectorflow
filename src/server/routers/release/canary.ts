@@ -4,6 +4,8 @@ import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { stagedRolloutService } from "@/server/services/staged-rollout";
 import { writeAuditLog } from "@/server/services/audit";
+import { getReplayJob } from "@/server/services/lake/replay";
+import { evaluateReplayValidation } from "@/server/services/lake/replay-validation";
 
 export const canaryReleaseRouter = router({
   create: protectedProcedure
@@ -62,7 +64,16 @@ export const canaryReleaseRouter = router({
     }),
 
   broaden: protectedProcedure
-    .input(z.object({ rolloutId: z.string() }))
+    .input(
+      z.object({
+        rolloutId: z.string(),
+        /** Optional NF-6 gate: a completed replay whose target is this
+         *  rollout's pipeline. When present, a FAILED error-budget verdict
+         *  blocks the broaden unless `force` is set. Absent → no gate. */
+        replayJobId: z.string().optional(),
+        force: z.boolean().optional(),
+      }),
+    )
     .use(withTeamAccess("EDITOR"))
     .mutation(async ({ input, ctx }) => {
       // Fetch rollout to get pipelineId for audit log
@@ -70,6 +81,37 @@ export const canaryReleaseRouter = router({
         where: { id: input.rolloutId, strategy: "CANARY" },
         select: { pipelineId: true, pipeline: { select: { environmentId: true } } },
       });
+
+      // NF-6: gate canary -> full-fleet broaden on the candidate's replay
+      // error-budget when the caller opts in. With no replayJobId this is a
+      // no-op and broaden behaves exactly as before.
+      let replayValidation: { verdict: string; overridden: boolean } | null = null;
+      if (input.replayJobId && rollout) {
+        const job = await getReplayJob({ orgId: ctx.organizationId, jobId: input.replayJobId });
+        if (!job || job.targetPipelineId !== rollout.pipelineId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Replay job does not target this rollout's pipeline",
+          });
+        }
+        const result = await evaluateReplayValidation({
+          targetPipelineId: job.targetPipelineId,
+          startedAt: job.startedAt,
+          completedAt: job.completedAt,
+        });
+        const overridden = result.verdict === "FAIL" && input.force === true;
+        if (result.verdict === "FAIL" && !overridden) {
+          const breached = result.slis
+            .filter((s) => s.status === "breached")
+            .map((s) => s.metric)
+            .join(", ");
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: `Replay validation failed${breached ? ` (breached: ${breached})` : ""}. Re-run the canary replay or pass force to override.`,
+          });
+        }
+        replayValidation = { verdict: result.verdict, overridden };
+      }
 
       await stagedRolloutService.broadenRollout(input.rolloutId);
 
@@ -83,6 +125,7 @@ export const canaryReleaseRouter = router({
           metadata: {
             timestamp: new Date().toISOString(),
             rolloutId: input.rolloutId,
+            ...(replayValidation ? { replayValidation } : {}),
           },
           teamId: (ctx as Record<string, unknown>).teamId as string | null ?? null,
           environmentId: rollout.pipeline.environmentId,
@@ -92,7 +135,7 @@ export const canaryReleaseRouter = router({
         }).catch(() => {});
       }
 
-      return { success: true };
+      return replayValidation ? { success: true, replayValidation } : { success: true };
     }),
 
   rollback: protectedProcedure
