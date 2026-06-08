@@ -221,4 +221,21 @@ api:
     ]);
     expect(diff.unchanged).toBe(2);
   });
+
+  it("treats a component moved between sections (same key/type, different kind) as changed", () => {
+    const node = (kind: string) =>
+      ({
+        id: "n1",
+        type: kind,
+        position: { x: 0, y: 0 },
+        data: { componentKey: "relay", componentDef: { type: "socket", kind }, config: {} },
+      }) as never;
+    const diff = diffImportedGraph(
+      { nodes: [node("sink")], edges: [], globalConfig: null },
+      { nodes: [node("source")], edges: [], globalConfig: null },
+    );
+    expect(diff.components).toEqual([
+      { componentKey: "relay", status: "changed", type: "socket" },
+    ]);
+  });
 });

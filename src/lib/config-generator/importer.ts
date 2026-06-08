@@ -289,6 +289,7 @@ export interface ImportGraphDiff {
 interface NodeFacts {
   key: string;
   type: string;
+  kind: string;
   config: unknown;
   /** Disabled nodes are excluded from generated config but live in the editor graph. */
   disabled: boolean;
@@ -297,13 +298,14 @@ interface NodeFacts {
 function nodeFacts(node: Node): NodeFacts {
   const data = node.data as {
     componentKey?: string;
-    componentDef?: { type?: string };
+    componentDef?: { type?: string; kind?: string };
     config?: unknown;
     disabled?: boolean;
   };
   return {
     key: data.componentKey ?? node.id,
     type: data.componentDef?.type ?? "",
+    kind: data.componentDef?.kind ?? "",
     config: data.config ?? {},
     disabled: data.disabled ?? false,
   };
@@ -359,6 +361,7 @@ export function diffImportedGraph(
       components.push({ componentKey: key, status: "added", type: next.type });
     } else if (
       prev.type !== next.type ||
+      prev.kind !== next.kind ||
       prev.disabled !== next.disabled ||
       stableStringify(prev.config) !== stableStringify(next.config)
     ) {

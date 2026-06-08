@@ -412,6 +412,16 @@ export function FlowToolbar({
     setImportOpen(false);
   };
 
+  // Drop a staged import preview and invalidate any in-flight validation (bump
+  // the request id so its async callback is ignored) so no stale feedback lingers.
+  const clearStagedImport = () => {
+    importRequestIdRef.current += 1;
+    setPendingImport(null);
+    setImportDiff(null);
+    setImportWarnings([]);
+    setImportValidation({ status: "idle" });
+  };
+
   const handlePasteImport = (format?: "yaml" | "toml") => {
     runImport(importText, format, format ? `pasted ${format.toUpperCase()}` : "pasted config");
   };
@@ -813,10 +823,7 @@ export function FlowToolbar({
             open={importOpen}
             onOpenChange={(open) => {
               setImportOpen(open);
-              if (!open) {
-                setPendingImport(null);
-                setImportDiff(null);
-              }
+              if (!open) clearStagedImport();
             }}
           >
             <DialogContent className="sm:max-w-[460px]">
@@ -830,14 +837,8 @@ export function FlowToolbar({
                   value={importText}
                   onChange={(e) => {
                     setImportText(e.target.value);
-                    // The staged preview no longer matches edited text. Drop it
-                    // and invalidate any in-flight validation (bump the request id
-                    // so its async callback is ignored) to avoid stale feedback.
-                    importRequestIdRef.current += 1;
-                    setPendingImport(null);
-                    setImportDiff(null);
-                    setImportWarnings([]);
-                    setImportValidation({ status: "idle" });
+                    // The staged preview no longer matches edited text.
+                    clearStagedImport();
                   }}
                   placeholder="sources:\n  demo:\n    type: demo_logs"
                   className="min-h-[180px] font-mono text-xs"
@@ -963,10 +964,7 @@ export function FlowToolbar({
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={() => {
-                        setPendingImport(null);
-                        setImportDiff(null);
-                      }}
+                      onClick={clearStagedImport}
                     >
                       Cancel
                     </Button>
