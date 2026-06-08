@@ -118,6 +118,12 @@ vi.mock("@/lib/config-generator", () => ({
   generateVectorYaml: vi.fn(() => "sources: {}"),
   generateVectorToml: vi.fn(() => '[sources]\n'),
   importVectorConfig: vi.fn(() => ({ nodes: [], edges: [], globalConfig: null, warnings: [] })),
+  diffImportedGraph: vi.fn(() => ({
+    components: [],
+    unchanged: 0,
+    edgesAdded: 0,
+    edgesRemoved: 0,
+  })),
 }));
 
 vi.mock("@/components/pipeline/version-history-dialog", () => ({
@@ -186,7 +192,17 @@ describe("FlowToolbar", () => {
       fireEvent.change(getByLabelText("Vector config"), {
         target: { value: "sources:\n  orphan_source:\n    type: demo_logs" },
       });
-      fireEvent.click(getByText("Import YAML"));
+      fireEvent.click(getByText("Preview YAML"));
+
+      // The preview shows parser warnings before anything is applied.
+      expect(getByText("Source orphan_source has no downstream consumers")).toBeTruthy();
+      expect(importVectorConfig).toHaveBeenCalledWith(
+        "sources:\n  orphan_source:\n    type: demo_logs",
+        "yaml",
+      );
+
+      // Import is staged with a diff, not applied, until the user confirms.
+      fireEvent.click(getByText("Apply import"));
 
       await waitFor(() => {
         expect(mockLoadGraph).toHaveBeenCalledWith(
@@ -195,11 +211,6 @@ describe("FlowToolbar", () => {
           { api: { enabled: true } },
         );
       });
-      expect(importVectorConfig).toHaveBeenCalledWith(
-        "sources:\n  orphan_source:\n    type: demo_logs",
-        "yaml",
-      );
-      expect(getByText("Source orphan_source has no downstream consumers")).toBeTruthy();
     });
 
     it("validates the imported graph and shows actionable validation feedback", async () => {
@@ -227,7 +238,7 @@ describe("FlowToolbar", () => {
       fireEvent.change(getByLabelText("Vector config"), {
         target: { value: "sources:\n  bad_source:\n    type: bad_source" },
       });
-      fireEvent.click(getByText("Import YAML"));
+      fireEvent.click(getByText("Preview YAML"));
 
       await waitFor(() => {
         expect(mockMutate).toHaveBeenCalledWith(
@@ -266,7 +277,7 @@ describe("FlowToolbar", () => {
       fireEvent.change(getByLabelText("Vector config"), {
         target: { value: "sources:\n  demo:\n    type: demo_logs" },
       });
-      fireEvent.click(getByText("Import YAML"));
+      fireEvent.click(getByText("Preview YAML"));
 
       await waitFor(() => {
         expect(getByText("Validation unavailable")).toBeTruthy();
@@ -294,14 +305,14 @@ describe("FlowToolbar", () => {
       fireEvent.change(getByLabelText("Vector config"), {
         target: { value: "sources:\n  orphan_source:\n    type: demo_logs" },
       });
-      fireEvent.click(getByText("Import YAML"));
+      fireEvent.click(getByText("Preview YAML"));
 
       expect(getByText("Source orphan_source has no downstream consumers")).toBeTruthy();
 
       fireEvent.change(getByLabelText("Vector config"), {
         target: { value: "not: [valid" },
       });
-      fireEvent.click(getByText("Import YAML"));
+      fireEvent.click(getByText("Preview YAML"));
 
       expect(queryByText("Source orphan_source has no downstream consumers")).not.toBeInTheDocument();
     });
@@ -340,11 +351,11 @@ describe("FlowToolbar", () => {
       fireEvent.change(getByLabelText("Vector config"), {
         target: { value: "sources:\n  first:\n    type: demo_logs" },
       });
-      fireEvent.click(getByText("Import YAML"));
+      fireEvent.click(getByText("Preview YAML"));
       fireEvent.change(getByLabelText("Vector config"), {
         target: { value: "sources:\n  second:\n    type: bad_source" },
       });
-      fireEvent.click(getByText("Import YAML"));
+      fireEvent.click(getByText("Preview YAML"));
 
       expect(getByText("second: Second import error")).toBeTruthy();
 

@@ -70,7 +70,14 @@ import {
 import { PipelineSettings } from "@/components/flow/pipeline-settings";
 import { cn } from "@/lib/utils";
 import { useFlowStore } from "@/stores/flow-store";
-import { generateVectorYaml, generateVectorToml, importVectorConfig } from "@/lib/config-generator";
+import {
+  generateVectorYaml,
+  generateVectorToml,
+  importVectorConfig,
+  diffImportedGraph,
+  type ImportGraphDiff,
+} from "@/lib/config-generator";
+import type { Node, Edge } from "@xyflow/react";
 import { useTRPC } from "@/trpc/client";
 import { useSession } from "next-auth/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -246,6 +253,13 @@ export function FlowToolbar({
   const [importText, setImportText] = useState("");
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [importValidation, setImportValidation] = useState<ImportValidationState>({ status: "idle" });
+  const [pendingImport, setPendingImport] = useState<{
+    nodes: Node[];
+    edges: Edge[];
+    globalConfig: Record<string, unknown> | null;
+    sourceName: string;
+  } | null>(null);
+  const [importDiff, setImportDiff] = useState<ImportGraphDiff | null>(null);
   const [renameEditing, setRenameEditing] = useState(false);
   const [renameDraft, setRenameDraft] = useState("");
 
@@ -340,7 +354,19 @@ export function FlowToolbar({
         globalConfig: importedGlobalConfig,
         warnings,
       } = importVectorConfig(content, format);
-      loadGraph(newNodes, newEdges, importedGlobalConfig);
+      // Stage the import and show a diff vs the current graph; the user applies
+      // it explicitly (below) so an import never silently replaces their work.
+      const diff = diffImportedGraph(
+        { nodes: newNodes, edges: newEdges },
+        { nodes, edges },
+      );
+      setPendingImport({
+        nodes: newNodes,
+        edges: newEdges,
+        globalConfig: importedGlobalConfig,
+        sourceName,
+      });
+      setImportDiff(diff);
       setImportWarnings(warnings);
       setImportValidation({ status: "validating" });
       setImportText(content);
@@ -366,12 +392,24 @@ export function FlowToolbar({
           },
         },
       );
-      toast.success(`Imported ${newNodes.length} components from ${sourceName}`);
     } catch (err) {
+      setPendingImport(null);
+      setImportDiff(null);
       setImportWarnings([]);
       setImportValidation({ status: "idle" });
-      toast.error("Import failed", { description: String(err) , duration: 6000 });
+      toast.error("Import failed", { description: String(err), duration: 6000 });
     }
+  };
+
+  const applyPendingImport = () => {
+    if (!pendingImport) return;
+    loadGraph(pendingImport.nodes, pendingImport.edges, pendingImport.globalConfig);
+    toast.success(
+      `Imported ${pendingImport.nodes.length} components from ${pendingImport.sourceName}`,
+    );
+    setPendingImport(null);
+    setImportDiff(null);
+    setImportOpen(false);
   };
 
   const handlePasteImport = (format?: "yaml" | "toml") => {
@@ -771,7 +809,16 @@ export function FlowToolbar({
           )}
         </div>
 
-          <Dialog open={importOpen} onOpenChange={setImportOpen}>
+          <Dialog
+            open={importOpen}
+            onOpenChange={(open) => {
+              setImportOpen(open);
+              if (!open) {
+                setPendingImport(null);
+                setImportDiff(null);
+              }
+            }}
+          >
             <DialogContent className="sm:max-w-[460px]">
               <DialogHeader>
                 <DialogTitle>Import Vector config</DialogTitle>
@@ -781,7 +828,12 @@ export function FlowToolbar({
                 <Textarea
                   aria-label="Vector config"
                   value={importText}
-                  onChange={(e) => setImportText(e.target.value)}
+                  onChange={(e) => {
+                    setImportText(e.target.value);
+                    // The staged preview no longer matches edited text.
+                    setPendingImport(null);
+                    setImportDiff(null);
+                  }}
                   placeholder="sources:\n  demo:\n    type: demo_logs"
                   className="min-h-[180px] font-mono text-xs"
                 />
@@ -792,13 +844,53 @@ export function FlowToolbar({
                   </Button>
                   <div className="flex items-center gap-2">
                     <Button type="button" variant="secondary" size="sm" onClick={() => handlePasteImport("toml")} disabled={!importText.trim()}>
-                      Import TOML
+                      Preview TOML
                     </Button>
                     <Button type="button" size="sm" onClick={() => handlePasteImport("yaml")} disabled={!importText.trim()}>
-                      Import YAML
+                      Preview YAML
                     </Button>
                   </div>
                 </div>
+                {importDiff && (
+                  <div className="rounded-md border border-line-2 bg-bg-2 p-2 text-xs">
+                    <div className="mb-1 font-medium">Changes vs current pipeline</div>
+                    <div className="mb-1.5 flex flex-wrap gap-2">
+                      <span className="text-emerald-600 dark:text-emerald-400">
+                        +{importDiff.components.filter((c) => c.status === "added").length} added
+                      </span>
+                      <span className="text-amber-600 dark:text-amber-400">
+                        ~{importDiff.components.filter((c) => c.status === "changed").length} changed
+                      </span>
+                      <span className="text-red-600 dark:text-red-400">
+                        −{importDiff.components.filter((c) => c.status === "removed").length} removed
+                      </span>
+                      <span className="text-muted-foreground">{importDiff.unchanged} unchanged</span>
+                      {(importDiff.edgesAdded > 0 || importDiff.edgesRemoved > 0) && (
+                        <span className="text-muted-foreground">
+                          edges +{importDiff.edgesAdded}/−{importDiff.edgesRemoved}
+                        </span>
+                      )}
+                    </div>
+                    {importDiff.components.length > 0 && (
+                      <ul className="max-h-32 space-y-0.5 overflow-y-auto font-mono">
+                        {importDiff.components.map((c) => (
+                          <li key={`${c.status}-${c.componentKey}`}>
+                            <span
+                              className={cn(
+                                c.status === "added" && "text-emerald-600 dark:text-emerald-400",
+                                c.status === "changed" && "text-amber-600 dark:text-amber-400",
+                                c.status === "removed" && "text-red-600 dark:text-red-400",
+                              )}
+                            >
+                              {c.status === "added" ? "+" : c.status === "removed" ? "−" : "~"}
+                            </span>{" "}
+                            {c.componentKey} <span className="text-muted-foreground">({c.type})</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
                 {importWarnings.length > 0 && (
                   <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
                     <div className="mb-1 flex items-center gap-1.5 font-medium">
@@ -853,6 +945,24 @@ export function FlowToolbar({
                         ))}
                       </ul>
                     )}
+                  </div>
+                )}
+                {pendingImport && (
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setPendingImport(null);
+                        setImportDiff(null);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="button" size="sm" onClick={applyPendingImport}>
+                      Apply import
+                    </Button>
                   </div>
                 )}
               </div>
