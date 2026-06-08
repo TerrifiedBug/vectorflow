@@ -38,6 +38,7 @@ import { DetailPanel } from "@/components/flow/detail-panel";
 import { LiveTailPanel } from "@/components/flow/live-tail-panel";
 import { DeployDialog } from "@/components/flow/deploy-dialog";
 import { SaveTemplateDialog } from "@/components/flow/save-template-dialog";
+import { CompliancePresetsDialog } from "@/components/flow/compliance-presets-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PipelineMetricsChart } from "@/components/pipeline/metrics-chart";
 import { PipelineLogs } from "@/components/pipeline/pipeline-logs";
@@ -131,6 +132,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const searchParams = useSearchParams();
   const [deployOpen, setDeployOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
+  const [compliancePresetOpen, setCompliancePresetOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [undeployOpen, setUndeployOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
@@ -531,6 +533,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
             onDeploy={handleDeploy}
             onUndeploy={() => setUndeployOpen(true)}
             onSaveAsTemplate={() => setTemplateOpen(true)}
+            onApplyCompliancePreset={() => setCompliancePresetOpen(true)}
             isDraft={pipelineQuery.data?.isDraft}
             deployedAt={pipelineQuery.data?.deployedAt}
             hasConfigChanges={pipelineQuery.data?.hasConfigChanges}
@@ -639,6 +642,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
       )}
       <DeployDialog pipelineId={pipelineId} open={deployOpen} onOpenChange={setDeployOpen} />
       <SaveTemplateDialog open={templateOpen} onOpenChange={setTemplateOpen} />
+      <CompliancePresetsDialog open={compliancePresetOpen} onOpenChange={setCompliancePresetOpen} />
       <ConfirmDialog
         open={undeployOpen}
         onOpenChange={setUndeployOpen}

@@ -37,6 +37,7 @@ import {
   Eye,
   MoreHorizontal,
   Wrench,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -117,6 +118,7 @@ interface FlowToolbarProps {
   onDeploy?: () => void;
   onUndeploy?: () => void;
   onSaveAsTemplate?: () => void;
+  onApplyCompliancePreset?: () => void;
   isSaving?: boolean;
   isDraft?: boolean;
   deployedAt?: Date | string | null;
@@ -206,6 +208,7 @@ export function FlowToolbar({
   onDeploy,
   onUndeploy,
   onSaveAsTemplate,
+  onApplyCompliancePreset,
   isSaving,
   isDraft = true,
   deployedAt,
@@ -709,6 +712,10 @@ export function FlowToolbar({
                   <FileDown className="mr-2 h-4 w-4" />
                   Download TOML
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={onApplyCompliancePreset}>
+                  <ShieldCheck className="mr-2 h-4 w-4" />
+                  Apply compliance preset
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={onSaveAsTemplate} disabled={nodes.length === 0}>
                   <BookTemplate className="mr-2 h-4 w-4" />
                   Save as template
@@ -807,6 +814,10 @@ export function FlowToolbar({
                     <DropdownMenuItem onClick={handleExportToml}>
                       <FileDown className="mr-2 h-4 w-4" />
                       Download TOML
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={onApplyCompliancePreset}>
+                      <ShieldCheck className="mr-2 h-4 w-4" />
+                      Apply compliance preset
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={onSaveAsTemplate} disabled={nodes.length === 0}>
                       <BookTemplate className="mr-2 h-4 w-4" />

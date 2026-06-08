@@ -103,6 +103,14 @@ export interface FlowState {
   ) => void;
   /** Swap a node's component type in place (same kind), preserving id, position and edges. */
   replaceNodeComponent: (id: string, componentDef: VectorComponentDef) => void;
+  /**
+   * NF-2: Apply a DLP compliance preset. Adds one DLP transform node per
+   * template id in the preset, each seeded with its default VRL source (the
+   * same prefill the palette/canvas use for a single DLP transform). Positions
+   * are offset so the new nodes don't overlap each other or existing content,
+   * and no edges are wired — the user connects them. Returns the count added.
+   */
+  applyDlpPreset: (templateIds: string[]) => number;
   removeNode: (id: string) => void;
   removeEdge: (id: string) => void;
   updateNodeConfig: (id: string, config: Record<string, unknown>, configSchema?: object) => void;
@@ -510,6 +518,67 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
         isDirty: true,
       };
     });
+  },
+
+  applyDlpPreset: (templateIds) => {
+    let added = 0;
+    set((state) => {
+      // A DLP template id (e.g. "dlp-credit-card-masking") maps 1:1 to its
+      // transform component type ("dlp_credit_card_masking"). Resolve each to a
+      // catalog def, dropping any id with no matching DLP transform.
+      const defs = templateIds
+        .map((id) => findComponentDef(id.replaceAll("-", "_"), "transform"))
+        .filter((d): d is VectorComponentDef => Boolean(d));
+      if (defs.length === 0) return {};
+
+      const history = pushSnapshot(state);
+
+      // Anchor to the right of existing content so the preset doesn't cover the
+      // current graph; cascade each node so they don't overlap one another.
+      const STEP = 64;
+      const baseX =
+        state.nodes.length > 0
+          ? Math.max(...state.nodes.map((n) => n.position.x)) + 320
+          : 160;
+      const baseY =
+        state.nodes.length > 0
+          ? Math.min(...state.nodes.map((n) => n.position.y))
+          : 160;
+
+      const newNodes: Node[] = defs.map((componentDef, i) => {
+        const config = seedConfigDefaults(componentDef);
+        // DLP transforms require a `source`; prefill it from the template the
+        // same way the palette/canvas/replaceNodeComponent do, so each node is
+        // valid and deploy-ready rather than blocking on an empty program.
+        const dlpSource = DLP_VRL_SOURCES[componentDef.type];
+        if (dlpSource) config.source = dlpSource;
+        return {
+          id: generateId(),
+          type: componentDef.kind,
+          position: { x: baseX + i * STEP, y: baseY + i * STEP },
+          data: {
+            componentDef,
+            componentKey: generateComponentKey(componentDef.type),
+            displayName: componentDef.displayName,
+            config,
+          },
+          selected: true,
+        };
+      });
+
+      added = newNodes.length;
+      return {
+        ...history,
+        nodes: [
+          ...state.nodes.map((n) => ({ ...n, selected: false })),
+          ...newNodes,
+        ],
+        selectedNodeIds: new Set(newNodes.map((n) => n.id)),
+        selectedNodeId: newNodes[0]?.id ?? null,
+        isDirty: true,
+      };
+    });
+    return added;
   },
 
   removeNode: (id) => {
