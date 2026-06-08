@@ -88,6 +88,10 @@ vi.mock("@/trpc/client", () => ({
     analytics: {
       pipelineCostSnapshot: { queryOptions: makeQueryOptions({ bytesIn: 0, bytesOut: 0, reductionPercent: null, costCents: 0, periodHours: 24, costPerGbCents: 0 }) },
     },
+    vrl: {
+      listUnitTests: { queryOptions: makeQueryOptions([]) },
+      runPipelineUnitTests: { mutationOptions: vi.fn((opts) => opts) },
+    },
   }),
 }));
 
