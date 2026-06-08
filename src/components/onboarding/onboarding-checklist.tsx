@@ -55,6 +55,12 @@ export interface OnboardingChecklistProps {
   /** At least one pipeline is actively running on an agent. */
   pipelineDeployed: boolean;
   variant?: "full" | "banner";
+  /**
+   * Optional action rendered in the "full" variant footer — e.g. a
+   * "Create a demo pipeline" button. Kept as a slot so this presentational
+   * component takes no data dependency on tRPC.
+   */
+  demoAction?: React.ReactNode;
 }
 
 interface Step {
@@ -71,6 +77,7 @@ export function OnboardingChecklist({
   pipelineCreated,
   pipelineDeployed,
   variant = "banner",
+  demoAction,
 }: OnboardingChecklistProps) {
   // Dismissal applies only to the banner (the full variant is the empty
   // dashboard's only content). Read browser storage via useSyncExternalStore:
@@ -194,6 +201,15 @@ export function OnboardingChecklist({
           );
         })}
       </ol>
+
+      {variant === "full" && demoAction ? (
+        <div className="mt-5 border-t border-line-2 pt-4">
+          <p className="text-[12px] text-fg-1">
+            No agent yet? Create a sample pipeline to explore the editor right away.
+          </p>
+          <div className="mt-2.5">{demoAction}</div>
+        </div>
+      ) : null}
     </section>
   );
 }

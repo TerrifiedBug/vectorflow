@@ -23,6 +23,36 @@ import { errorLog } from "@/lib/logger";
 import { generateId } from "@/lib/utils";
 import { enforceQuota } from "@/server/services/quotas-trpc";
 
+/**
+ * Canonical one-click demo graph: a runnable logs pipeline
+ * (demo_logs SOURCE → remap TRANSFORM → blackhole SINK). Mirrors the
+ * `dev-firehose` pipeline the QA seed (`prisma/seed.qa.ts`) ships under
+ * demo mode, reusing its component configs/VRL so a brand-new tenant gets
+ * the same known-good sample without hand-wiring the canvas. Edges are
+ * declared by `componentKey`; `createDemoPipeline` maps each to a freshly
+ * generated PipelineNode id before persisting.
+ */
+type DemoPipelineNode = {
+  componentKey: string;
+  displayName: string;
+  componentType: string;
+  kind: (typeof componentKindValues)[number];
+  config: Record<string, unknown>;
+  positionX: number;
+  positionY: number;
+};
+
+const DEMO_PIPELINE_NODES: readonly DemoPipelineNode[] = [
+  { componentKey: "demo_in", displayName: "Demo source", componentType: "demo_logs", kind: "SOURCE", config: { interval: 1, format: "json" }, positionX: 100, positionY: 200 },
+  { componentKey: "remap", displayName: "Remap", componentType: "remap", kind: "TRANSFORM", config: { source: '.env = "development"' }, positionX: 350, positionY: 200 },
+  { componentKey: "blackhole", displayName: "Blackhole", componentType: "blackhole", kind: "SINK", config: { print_interval_secs: 60 }, positionX: 600, positionY: 200 },
+];
+
+const DEMO_PIPELINE_EDGES: readonly { source: string; target: string }[] = [
+  { source: "demo_in", target: "remap" },
+  { source: "remap", target: "blackhole" },
+];
+
 export const pipelineCrudRouter = router({
   getSystemPipeline: protectedProcedure
     .use(requirePlatformOperator())
@@ -164,6 +194,90 @@ export const pipelineCrudRouter = router({
           },
         }),
       );
+    }),
+
+  /**
+   * One-click demo: create a complete, runnable sample pipeline
+   * (demo_logs → remap → blackhole) for the current org in the given
+   * environment. Backs the onboarding empty-state "Create a demo
+   * pipeline" action so a brand-new tenant has something to deploy and
+   * watch flow without first wiring the canvas by hand.
+   *
+   * Mirrors `create` for auth (EDITOR via withTeamAccess on the
+   * tenant-scoped environmentId) and the quota gate, then reuses
+   * `saveGraphComponents` to persist the 3 nodes + 2 edges inside the
+   * same org-scoped transaction.
+   */
+  createDemoPipeline: protectedProcedure
+    .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("pipeline.created", "Pipeline"))
+    .mutation(async ({ input, ctx }) => {
+      const environment = await prisma.environment.findUnique({
+        where: { id: input.environmentId },
+        select: { id: true, organizationId: true },
+      });
+      if (!environment) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Environment not found",
+        });
+      }
+
+      const userId = ctx.session.user?.id ?? null;
+
+      // Assign a stable PipelineNode id per componentKey so the edges
+      // (declared by componentKey) resolve to real node ids — same
+      // mapping batchImport uses for its imported graphs.
+      const nodeIdByKey = new Map<string, string>();
+      for (const node of DEMO_PIPELINE_NODES) {
+        nodeIdByKey.set(node.componentKey, generateId());
+      }
+
+      const nodes = DEMO_PIPELINE_NODES.map((node) => ({
+        id: nodeIdByKey.get(node.componentKey)!,
+        componentKey: node.componentKey,
+        displayName: node.displayName,
+        componentType: node.componentType,
+        kind: node.kind,
+        config: node.config,
+        positionX: node.positionX,
+        positionY: node.positionY,
+        disabled: false,
+      }));
+
+      const edges = DEMO_PIPELINE_EDGES.map((edge) => ({
+        sourceNodeId: nodeIdByKey.get(edge.source)!,
+        targetNodeId: nodeIdByKey.get(edge.target)!,
+      }));
+
+      // Quota-gated like `create`: the pipeline insert + full graph
+      // persist run inside one org-scoped, advisory-locked transaction,
+      // so the post-create count gate rolls back if we'd exceed the plan.
+      return enforceQuota(environment.organizationId, "pipelines", async (tx) => {
+        const pipeline = await tx.pipeline.create({
+          data: {
+            name: "Demo logs pipeline",
+            description:
+              "Sample pipeline: demo logs → remap → blackhole. Deploy it to an agent to watch events flow.",
+            environmentId: input.environmentId,
+            organizationId: environment.organizationId,
+            globalConfig: { log_level: "info" },
+            createdById: userId,
+            updatedById: userId,
+          },
+        });
+
+        await saveGraphComponents(tx, {
+          pipelineId: pipeline.id,
+          nodes,
+          edges,
+          globalConfig: { log_level: "info" },
+          userId,
+        });
+
+        return pipeline;
+      });
     }),
 
   createSystemPipeline: protectedProcedure
