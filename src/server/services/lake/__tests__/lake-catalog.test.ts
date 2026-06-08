@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { MetricsDataPoint, PreviousSnapshot } from "@/server/services/metrics-ingest";
 
+// @clickhouse/client is an optional native dep absent from some dev installs;
+// stub it so the real clickhouse.ts loads (isLakeEnabled reads env only — this
+// suite toggles VF_LAKE_CLICKHOUSE_URL rather than mocking the module).
+vi.mock("@clickhouse/client", () => ({ createClient: vi.fn() }));
+
 // Shared prisma mock, hoisted so the vi.mock factories can reference it.
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {

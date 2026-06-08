@@ -33,12 +33,7 @@ import {
   getLakeClient,
   getLakeConfig,
 } from "@/server/services/lake/clickhouse";
-
-// Default hot/cold retention windows for the base DDL. Mirror the
-// LakeRetentionPolicy defaults (hotDays=7, coldDays=90); per-dataset retention
-// is governed by that catalog model at a higher layer.
-const HOT_DAYS = 7;
-const COLD_DAYS = 90;
+import { effectiveRetention, buildLakeTtlClause } from "@/server/services/lake/lake-retention";
 
 export interface LakeMigrationResult {
   /** True when the lake is disabled and nothing was applied. */
@@ -63,11 +58,10 @@ export async function runLakeMigrations(): Promise<LakeMigrationResult> {
   }
 
   const config = getLakeConfig();
-  const ttlClause = isLakeColdTierEnabled()
-    ? `TTL toDateTime(timestamp) + INTERVAL ${HOT_DAYS} DAY TO VOLUME 'cold', ` +
-      `toDateTime(timestamp) + INTERVAL ${COLD_DAYS} DAY DELETE\n` +
-      `SETTINGS storage_policy = 'vf_hot_cold'`
-    : `TTL toDateTime(timestamp) + INTERVAL ${COLD_DAYS} DAY DELETE`;
+  // The base table TTL flows through the same per-dataset retention helpers, so
+  // the table default (LAKE_DEFAULT_HOT/COLD_DAYS = 7/90) and any per-dataset
+  // window share one TTL-clause shape. No policy here → the defaults.
+  const ttlClause = buildLakeTtlClause(effectiveRetention(null), isLakeColdTierEnabled());
 
   const client = getLakeClient();
 
