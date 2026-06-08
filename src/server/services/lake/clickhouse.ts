@@ -1,5 +1,7 @@
 import { createClient, type ClickHouseClient } from "@clickhouse/client";
 
+import { env } from "@/lib/env";
+
 /**
  * VectorFlow Lake — thin ClickHouse connection layer (A1).
  *
@@ -108,6 +110,15 @@ export function getLakeClient(): ClickHouseClient {
     password: config.password,
     database: config.database,
     application: "vectorflow",
+    // Bound the per-client connection pool so the lake never opens unbounded
+    // sockets under load. We keep a single cached client (above), so this pool
+    // is the process-wide ceiling. Sourced from the centralized env module.
+    max_open_connections: env.VF_LAKE_CH_POOL_MAX,
+    // Fail slow lake requests instead of hanging a held connection.
+    request_timeout: env.VF_LAKE_CH_REQUEST_TIMEOUT_MS,
+    // Reuse sockets across requests (HTTP keep-alive) — default in
+    // @clickhouse/client@1.x; set explicitly to document the intent.
+    keep_alive: { enabled: true },
   });
   globalForLake.__vfLakeClient = client;
   return client;
