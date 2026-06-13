@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { env } from "@/lib/env";
 import { getLogContext } from "@/lib/log-context";
 
@@ -18,6 +19,22 @@ function serializeData(data: unknown): unknown {
     return { name: data.name, message: data.message, stack: data.stack };
   }
   return data;
+}
+
+/**
+ * Pull an `Error` out of the common shapes passed as error-log `data`
+ * (the error itself, or wrapped under `error`/`err`/`cause`/`exception`)
+ * so it can be forwarded to Sentry with a real stack trace.
+ */
+function extractError(data: unknown): Error | undefined {
+  if (data instanceof Error) return data;
+  if (data && typeof data === "object") {
+    const d = data as Record<string, unknown>;
+    for (const key of ["error", "err", "cause", "exception"]) {
+      if (d[key] instanceof Error) return d[key] as Error;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -88,4 +105,15 @@ export function warnLog(tag: string, message: string, data?: unknown): void {
 export function errorLog(tag: string, message: string, data?: unknown): void {
   // eslint-disable-next-line no-console
   emit(console.error.bind(console), buildRecord("error", tag, message, data));
+  // Forward to Sentry when an Error object is present so the many catch
+  // sites that report failures via errorLog are no longer invisible to
+  // error tracking. No-op when Sentry has no active client (tests, or a
+  // self-host deployment without a configured DSN).
+  const err = extractError(data);
+  if (err && Sentry.getClient()) {
+    Sentry.captureException(err, {
+      tags: { log_tag: sanitizeMsg(tag) },
+      extra: { message: sanitizeMsg(message) },
+    });
+  }
 }
