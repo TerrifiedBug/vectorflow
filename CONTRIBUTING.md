@@ -22,7 +22,7 @@ Thank you for helping make VectorFlow better. This guide covers everything you n
 | Tool | Minimum Version | Install |
 |------|----------------|---------|
 | Node.js | 22.x | [nodejs.org](https://nodejs.org) |
-| pnpm | 9.x | `npm install -g pnpm` |
+| pnpm | 10.x | `npm install -g pnpm` |
 | Go | 1.22 | [go.dev](https://go.dev) |
 | PostgreSQL | 15 | [postgresql.org](https://www.postgresql.org) |
 | Docker (optional) | 24.x | [docker.com](https://www.docker.com) |
@@ -50,10 +50,11 @@ npx prisma generate
 
 ### 3. Environment variables
 
-Copy the example env file and fill in the required values:
+Copy the example env file and fill in the required values. There is no root
+`.env.example`; the maintained template lives under `docker/server/`:
 
 ```bash
-cp .env.example .env
+cp docker/server/.env.example .env
 ```
 
 Key variables:
@@ -63,7 +64,7 @@ Key variables:
 | `DATABASE_URL` | ✅ | PostgreSQL connection string |
 | `NEXTAUTH_SECRET` | ✅ | Random 32-byte secret for JWT signing |
 | `NEXTAUTH_URL` | ✅ | `http://localhost:3000` for local dev |
-| `ENCRYPTION_KEY` | ✅ | 32-byte hex key for at-rest secret encryption |
+| `VF_ENCRYPTION_KEY_V2` | ☐ | Dedicated key for at-rest secret encryption; if unset, it is derived from `NEXTAUTH_SECRET` |
 | `OIDC_CLIENT_ID` | ☐ | OIDC provider client ID (optional) |
 | `OIDC_CLIENT_SECRET` | ☐ | OIDC provider client secret (optional) |
 
