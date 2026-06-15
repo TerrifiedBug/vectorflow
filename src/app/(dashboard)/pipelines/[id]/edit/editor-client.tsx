@@ -198,7 +198,11 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const hasLoadedRef = useRef(false);
   useEffect(() => {
     if (!pipelineQuery.data) return;
-    if (hasLoadedRef.current && useFlowStore.getState().isDirty) return;
+    // Hydrate the store once per mount. Refetches (e.g. the cache invalidation
+    // after auto-save) must NOT re-run loadGraph: it resets selectedNodeId and
+    // would kick the user out of the detail/edit panel mid-edit. The store is
+    // the source of truth while mounted; a remount re-hydrates from fresh data.
+    if (hasLoadedRef.current) return;
     hasLoadedRef.current = true;
     const flowNodes = dbNodesToFlowNodes(pipelineQuery.data.nodes);
     const flowEdges = dbEdgesToFlowEdges(pipelineQuery.data.edges);
