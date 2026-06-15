@@ -2,8 +2,8 @@ name: DR Verification
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 4 * * *"
+  # schedule:
+  #   - cron: "0 4 * * *"  # disabled: failing daily runs spamming notifications; run via workflow_dispatch
 
 permissions:
   contents: read
