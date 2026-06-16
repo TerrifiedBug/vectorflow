@@ -10,6 +10,9 @@ vi.mock("@clickhouse/client", () => ({ createClient: vi.fn() }));
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     lakeDataset: { upsert: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+    // A new dataset resolves its environment's retention policy on create; no
+    // policy by default so the catalog assertions stay unchanged.
+    lakeRetentionPolicy: { findUnique: vi.fn(() => null) },
     pipeline: { findMany: vi.fn() },
     pipelineNode: { findMany: vi.fn() },
   },

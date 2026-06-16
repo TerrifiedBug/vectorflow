@@ -945,6 +945,7 @@ export default function EnvironmentDetailPage({
 
         {/* -- Lake Storage Tab -- */}
         <TabsContent value="lake" className="space-y-4">
+          <EnvironmentLakeRetentionCard environmentId={id} isAdmin={isAdmin} />
           <EnvironmentLakeBucketTab environmentId={id} isAdmin={isAdmin} />
         </TabsContent>
       </Tabs>
@@ -1167,6 +1168,161 @@ function EnvironmentVariablesTab({ environmentId }: { environmentId: string }) {
 }
 
 type LakeBucketProvider = "s3" | "gcs" | "azure";
+
+function EnvironmentLakeRetentionCard({
+  environmentId,
+  isAdmin,
+}: {
+  environmentId: string;
+  isAdmin: boolean;
+}) {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  const retentionQuery = useQuery(
+    trpc.environment.getLakeRetention.queryOptions({ environmentId }),
+  );
+  const retention = retentionQuery.data;
+  const queryKey = trpc.environment.getLakeRetention.queryKey({ environmentId });
+
+  const [hotDays, setHotDays] = useState("");
+  const [coldDays, setColdDays] = useState("");
+  const hydratedRef = useRef(false);
+
+  // Seed the inputs from the effective window (a per-env policy, or the defaults)
+  // once it loads.
+  useEffect(() => {
+    if (retention && !hydratedRef.current) {
+      setHotDays(String(retention.hotDays));
+      setColdDays(String(retention.coldDays));
+      hydratedRef.current = true;
+    }
+  }, [retention]);
+
+  const setMutation = useMutation(
+    trpc.environment.setLakeRetention.mutationOptions({
+      onSuccess: (res) => {
+        queryClient.invalidateQueries({ queryKey });
+        toast.success(`Lake retention saved — applied to ${res.attached} dataset(s)`);
+      },
+      onError: (error) => toast.error(error.message, { duration: 6000 }),
+    }),
+  );
+
+  const clearMutation = useMutation(
+    trpc.environment.clearLakeRetention.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey });
+        hydratedRef.current = false;
+        toast.success("Lake retention cleared — reverted to defaults");
+      },
+      onError: (error) => toast.error(error.message, { duration: 6000 }),
+    }),
+  );
+
+  const hot = Number(hotDays);
+  const cold = Number(coldDays);
+  const min = retention?.bounds.min ?? 1;
+  const max = retention?.bounds.max ?? 3650;
+  const valid =
+    Number.isInteger(hot) &&
+    Number.isInteger(cold) &&
+    hot >= min &&
+    cold >= min &&
+    hot <= max &&
+    cold <= max &&
+    cold >= hot;
+
+  function handleSave() {
+    setMutation.mutate({ environmentId, hotDays: hot, coldDays: cold });
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between">
+        <div>
+          <CardTitle className="text-base">Lake retention</CardTitle>
+          <CardDescription>
+            How long this environment&rsquo;s VectorFlow Lake data is kept.{" "}
+            <strong>Cold days</strong> is the hard delete horizon, enforced per dataset by the
+            daily retention sweep. <strong>Hot days</strong> is the hot&rarr;cold tier move,
+            applied via the shared lake table TTL (requires a cold tier).
+          </CardDescription>
+        </div>
+        <Badge variant="secondary" className="shrink-0">
+          {retention?.isDefault ? "Default" : "Custom"}
+        </Badge>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {retentionQuery.isLoading ? (
+          <Skeleton className="h-32 w-full" />
+        ) : (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label>Hot days (hot&rarr;cold move)</Label>
+                <Input
+                  type="number"
+                  min={min}
+                  max={max}
+                  value={hotDays}
+                  onChange={(e) => setHotDays(e.target.value)}
+                  disabled={!isAdmin}
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Cold days (delete horizon)</Label>
+                <Input
+                  type="number"
+                  min={min}
+                  max={max}
+                  value={coldDays}
+                  onChange={(e) => setColdDays(e.target.value)}
+                  disabled={!isAdmin}
+                  className="text-sm"
+                />
+              </div>
+            </div>
+
+            {!valid && (hotDays !== "" || coldDays !== "") && (
+              <p className="text-xs text-destructive">
+                Enter whole numbers between {min} and {max} days; cold days must be greater than
+                or equal to hot days.
+              </p>
+            )}
+
+            {!isAdmin && (
+              <p className="text-xs text-muted-foreground">
+                Only admins can change lake retention.
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={!isAdmin || !valid || setMutation.isPending}
+              >
+                {setMutation.isPending ? "Saving..." : "Save retention"}
+              </Button>
+              {!retention?.isDefault && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => clearMutation.mutate({ environmentId })}
+                  disabled={!isAdmin || clearMutation.isPending}
+                >
+                  {clearMutation.isPending ? "Clearing..." : "Reset to default"}
+                </Button>
+              )}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function EnvironmentLakeBucketTab({
   environmentId,
