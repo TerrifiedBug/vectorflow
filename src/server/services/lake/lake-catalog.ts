@@ -5,6 +5,7 @@ import { errorLog } from "@/lib/logger";
 import { configHasLakeSink, LAKE_SINK_TYPE } from "@/lib/vector/lake-sink";
 import { isLakeEnabled } from "./clickhouse";
 import { evaluateLakeQuota } from "./lake-quota";
+import { resolveEnvRetentionPolicyId } from "./lake-retention-policy";
 import {
   clamp,
   splitLakeOutput,
@@ -34,13 +35,25 @@ export async function upsertLakeDataset({
   pipelineId,
   environmentId,
 }: UpsertLakeDatasetInput): Promise<void> {
-  await withOrgTx(orgId, (tx) =>
-    tx.lakeDataset.upsert({
+  await withOrgTx(orgId, async (tx) => {
+    // A new dataset inherits its environment's configured retention policy (if
+    // any) so the daily sweep enforces it without a manual re-save. An existing
+    // dataset's attachment is left untouched here.
+    const retentionPolicyId = await resolveEnvRetentionPolicyId(tx, {
+      orgId,
+      environmentId,
+    });
+    await tx.lakeDataset.upsert({
       where: { organizationId_pipelineId: { organizationId: orgId, pipelineId } },
-      create: { organizationId: orgId, pipelineId, environmentId },
+      create: {
+        organizationId: orgId,
+        pipelineId,
+        environmentId,
+        ...(retentionPolicyId ? { retentionPolicyId } : {}),
+      },
       update: { environmentId },
-    }),
-  );
+    });
+  });
 }
 
 export interface RecordLakeIngestInput {

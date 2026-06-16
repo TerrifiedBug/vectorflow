@@ -21,6 +21,14 @@ import {
   encryptBucketCredential,
   syncDatasetTieringForEnvironment,
 } from "@/server/services/lake/byo-bucket";
+import {
+  getEnvRetention,
+  setEnvRetention,
+  clearEnvRetention,
+  InvalidRetentionError,
+  MIN_RETENTION_DAYS,
+  MAX_RETENTION_DAYS,
+} from "@/server/services/lake/lake-retention-policy";
 
 
 const VAULT_AUTH_METHODS = ["token", "approle", "kubernetes"] as const;
@@ -765,5 +773,108 @@ export const environmentRouter = router({
         });
         return { success: true, searchable };
       });
+    }),
+
+  /**
+   * Read an environment's effective lake retention window. Returns the dedicated
+   * per-env policy when one is set, otherwise the table defaults
+   * (`isDefault: true`). `bounds` lets the form constrain its inputs.
+   */
+  getLakeRetention: protectedProcedure
+    .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const env = await prisma.environment.findUnique({
+        where: { id: input.environmentId },
+        select: { organizationId: true },
+      });
+      if (!env) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Environment not found" });
+      }
+      const retention = await getEnvRetention(prisma, {
+        orgId: env.organizationId,
+        environmentId: input.environmentId,
+      });
+      return {
+        ...retention,
+        bounds: { min: MIN_RETENTION_DAYS, max: MAX_RETENTION_DAYS },
+      };
+    }),
+
+  /**
+   * Set the environment's lake retention window. Upserts the dedicated per-env
+   * `LakeRetentionPolicy` and attaches every dataset in the environment; the
+   * daily sweep then enforces `coldDays` as the per-dataset delete horizon.
+   * `hotDays` governs the hot→cold move and is stored for the shared table TTL.
+   */
+  setLakeRetention: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        hotDays: z.number().int().min(MIN_RETENTION_DAYS).max(MAX_RETENTION_DAYS),
+        coldDays: z.number().int().min(MIN_RETENTION_DAYS).max(MAX_RETENTION_DAYS),
+      }),
+    )
+    .use(denyInDemo())
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("environment.lake_retention_set", "Environment"))
+    .mutation(async ({ input }) => {
+      const env = await prisma.environment.findUnique({
+        where: { id: input.environmentId },
+        select: { organizationId: true, isSystem: true },
+      });
+      if (!env) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Environment not found" });
+      }
+      if (env.isSystem) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "The system environment cannot have a lake retention policy",
+        });
+      }
+      const orgId = env.organizationId;
+
+      try {
+        return await withOrgTx(orgId, (tx) =>
+          setEnvRetention(tx, {
+            orgId,
+            environmentId: input.environmentId,
+            hotDays: input.hotDays,
+            coldDays: input.coldDays,
+          }).then(({ attached }) => ({ success: true, attached })),
+        );
+      } catch (err) {
+        if (err instanceof InvalidRetentionError) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: err.message });
+        }
+        throw err;
+      }
+    }),
+
+  /**
+   * Clear the environment's lake retention policy, reverting its datasets to the
+   * table defaults. Idempotent.
+   */
+  clearLakeRetention: protectedProcedure
+    .input(z.object({ environmentId: z.string() }))
+    .use(denyInDemo())
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("environment.lake_retention_cleared", "Environment"))
+    .mutation(async ({ input }) => {
+      const env = await prisma.environment.findUnique({
+        where: { id: input.environmentId },
+        select: { organizationId: true },
+      });
+      if (!env) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Environment not found" });
+      }
+      const orgId = env.organizationId;
+
+      return withOrgTx(orgId, (tx) =>
+        clearEnvRetention(tx, {
+          orgId,
+          environmentId: input.environmentId,
+        }).then(({ cleared, detached }) => ({ success: true, cleared, detached })),
+      );
     }),
 });
