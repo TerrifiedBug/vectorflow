@@ -54,7 +54,7 @@ jobs:
       ENCRYPTION_KEY: e2e-test-encryption-key-32chars!!
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
 
