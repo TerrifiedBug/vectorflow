@@ -14,7 +14,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 
 # Stage 2: Download Vector for the target architecture
 # Keep this default in sync with src/lib/vector-version.ts (canonical source).
-FROM alpine:3.23 AS vector
+FROM alpine:3.24 AS vector
 ARG VECTOR_VERSION=0.54.0
 ARG TARGETARCH
 RUN apk add --no-cache curl && \
@@ -29,7 +29,7 @@ RUN apk add --no-cache curl && \
     cp "/tmp/vector-${VECTOR_ARCH}-unknown-linux-musl/bin/vector" /usr/local/bin/vector
 
 # Stage 3: Runtime
-FROM alpine:3.23
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates su-exec
 COPY --from=builder /vf-agent /usr/local/bin/vf-agent
 COPY --from=vector /usr/local/bin/vector /usr/local/bin/vector

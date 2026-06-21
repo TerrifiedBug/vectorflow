@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 
 # ---- Stage 2: Download Vector binary for the target arch (cached unless VECTOR_VERSION changes) ----
 # Keep this default in sync with src/lib/vector-version.ts (canonical source).
-FROM alpine:3.23 AS vector
+FROM alpine:3.24 AS vector
 ARG VECTOR_VERSION=0.54.0
 ARG TARGETARCH
 RUN apk add --no-cache curl && \
