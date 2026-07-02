@@ -16,6 +16,12 @@ declare module "next-auth" {
        * self-erasure — require a recent re-authentication.
        */
       authedAt?: number;
+      /**
+       * Coarse suite-wide role stamped into the JWT at sign-in (see
+       * VfJwtPayload.suite_role). Used by co-deployed suite apps (CHAD);
+       * VF's own authz continues to use OrgMember/TeamMember directly.
+       */
+      suite_role?: "admin" | "editor" | "viewer";
     } & DefaultSession["user"];
   }
 }

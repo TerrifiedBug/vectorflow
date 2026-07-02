@@ -85,6 +85,13 @@ export interface VfJwtPayload {
    * treated as invalid by the cross-org guard in auth.ts.
    */
   org_id: string;
+  /**
+   * Coarse suite-wide role for co-deployed suite apps (CHAD delegated
+   * auth). Computed at sign-in by resolveSuiteRole: org OWNER/ADMIN ->
+   * "admin"; else any team EDITOR/ADMIN -> "editor"; else "viewer".
+   * Optional: absent on tokens minted before the suite SSO rollout.
+   */
+  suite_role?: "admin" | "editor" | "viewer";
 }
 
 /**
