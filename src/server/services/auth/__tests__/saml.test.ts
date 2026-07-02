@@ -52,9 +52,12 @@ import {
   provisionSamlUser,
   extractSamlEmail,
   extractSamlGroups,
+  buildSamlSessionCookie,
   type SamlEndpoints,
 } from "@/server/services/auth/saml";
 import { getSamlSettings, type SamlSettings } from "@/server/services/auth/saml-config";
+import { getSessionSigningKey } from "@/server/services/auth/jwt-key";
+import { decode } from "next-auth/jwt";
 import type { CacheProvider, Profile } from "@node-saml/node-saml";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
@@ -356,5 +359,62 @@ describe("sanitizeReturnTo — open-redirect prevention", () => {
   it("keeps a tab-containing path same-origin (folds to a local path, not a redirect)", () => {
     // A tab is stripped, leaving "/evil.com//" — a path on THIS origin, safe.
     expect(sanitizeReturnTo("/\tevil.com//")).toBe("/evil.com//");
+  });
+});
+
+describe("buildSamlSessionCookie — suite_role claim + 24h lifetime", () => {
+  beforeEach(() => {
+    vi.mocked(getSessionSigningKey).mockResolvedValue("test-signing-secret");
+  });
+
+  it("mints a 24h cookie carrying id/provider/org_id/authedAt plus suite_role=admin for an org OWNER", async () => {
+    prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
+    prismaMock.teamMember.findMany.mockResolvedValue([] as never);
+
+    const cookie = await buildSamlSessionCookie({
+      orgId: "default",
+      userId: "u1",
+      name: "User One",
+      email: "user@acme.com",
+      secure: false,
+    });
+
+    expect(cookie.options.maxAge).toBe(60 * 60 * 24);
+
+    const claims = await decode({
+      salt: cookie.name,
+      secret: "test-signing-secret",
+      token: cookie.value,
+    });
+    expect(claims).toMatchObject({
+      id: "u1",
+      provider: "saml",
+      org_id: "default",
+      suite_role: "admin",
+    });
+    expect(typeof claims!.authedAt).toBe("number");
+    const lifetime = (claims!.exp as number) - (claims!.iat as number);
+    expect(lifetime).toBeGreaterThan(60 * 60 * 23);
+    expect(lifetime).toBeLessThanOrEqual(60 * 60 * 24);
+  });
+
+  it("stamps suite_role=editor for a plain MEMBER with a team EDITOR role", async () => {
+    prismaMock.orgMember.findUnique.mockResolvedValue({ role: "MEMBER" } as never);
+    prismaMock.teamMember.findMany.mockResolvedValue([{ role: "EDITOR" }] as never);
+
+    const cookie = await buildSamlSessionCookie({
+      orgId: "default",
+      userId: "u2",
+      name: null,
+      email: "editor@acme.com",
+      secure: false,
+    });
+
+    const claims = await decode({
+      salt: cookie.name,
+      secret: "test-signing-secret",
+      token: cookie.value,
+    });
+    expect(claims!.suite_role).toBe("editor");
   });
 });

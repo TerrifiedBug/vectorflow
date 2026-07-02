@@ -9,7 +9,9 @@ import { strictCookieConfig } from "@/lib/strict-cookies";
  * Node.js-only modules, since it runs in the Edge Runtime.
  */
 export const authConfig: NextAuthConfig = {
-  session: { strategy: "jwt" },
+  // 24h sessions (suite SSO contract): CHAD trusts the shared cookie
+  // without a per-request role re-check, so cap staleness at one day.
+  session: { strategy: "jwt", maxAge: 60 * 60 * 24 },
   // Use `strictCookieConfig()` to enable per-subdomain cookie isolation
   // when configured; otherwise use NextAuth defaults for development.
   ...(strictCookieConfig() ? { cookies: strictCookieConfig() } : {}),
