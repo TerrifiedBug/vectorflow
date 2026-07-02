@@ -37,6 +37,7 @@ import { webauthnProvider } from "@/server/services/auth/webauthn-provider";
 import { getJwtSecretForOrg } from "@/server/services/auth/jwt-key";
 import { isOidcEmailVerified } from "@/server/services/auth/oidc-email-verified";
 import { getSamlSettings } from "@/server/services/auth/saml-config";
+import { resolveSuiteRole } from "@/server/services/auth/suite-role";
 
 async function getClientIp(): Promise<string | null> {
   try {
@@ -568,6 +569,11 @@ async function getAuthInstance() {
           async jwt({ token, user, account }) {
             if (user) {
               token.id = user.id;
+              // Coarse suite-wide role for co-deployed suite apps (CHAD).
+              // Computed once per interactive sign-in from OrgMember +
+              // TeamMember roles; persists on the token across refreshes
+              // and expires with the 24h session.
+              token.suite_role = await resolveSuiteRole(user.id as string, orgId);
             }
             if (account) {
               token.provider = account.provider;
@@ -646,6 +652,12 @@ async function getAuthInstance() {
               session.user.org_id = token.org_id as string;
               session.user.authedAt =
                 typeof token.authedAt === "number" ? token.authedAt : undefined;
+              if (typeof token.suite_role === "string") {
+                session.user.suite_role = token.suite_role as
+                  | "admin"
+                  | "editor"
+                  | "viewer";
+              }
             }
             return session;
           },

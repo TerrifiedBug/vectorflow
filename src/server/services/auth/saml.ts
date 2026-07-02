@@ -40,6 +40,7 @@ import { runWithOrgContext } from "@/lib/org-context";
 import { writeAuditLog } from "@/server/services/audit";
 import { debugLog, warnLog } from "@/lib/logger";
 import { getSessionSigningKey } from "@/server/services/auth/jwt-key";
+import { resolveSuiteRole } from "@/server/services/auth/suite-role";
 import { reconcileUserTeamMemberships } from "@/server/services/group-mappings";
 import { authConfig } from "@/auth.config";
 import type { SamlSettings } from "@/server/services/auth/saml-config";
@@ -53,9 +54,10 @@ export const SAML_LOGIN_ERROR_REDIRECT = "/login?error=saml";
 export const SAML_STATE_COOKIE = "vf-saml-state";
 const SAML_STATE_MAX_AGE_S = 600; // 10 minutes to complete the round-trip.
 
-/** Session lifetime — matches Auth.js's default JWT session maxAge so a
- *  SAML-minted cookie expires on the same schedule as an OIDC one. */
-const SESSION_MAX_AGE_S = 30 * 24 * 60 * 60;
+/** Session lifetime — matches authConfig.session.maxAge (24h, suite SSO
+ *  contract) so a SAML-minted cookie expires on the same schedule as an
+ *  OIDC/credentials one. */
+const SESSION_MAX_AGE_S = 60 * 60 * 24;
 
 /** Tolerate modest IdP/SP clock drift on the NotBefore/NotOnOrAfter checks. */
 const SAML_CLOCK_SKEW_MS = 60_000;
@@ -421,6 +423,10 @@ export async function buildSamlSessionCookie(params: {
     overrideName ??
     (params.secure ? "__Secure-authjs.session-token" : "authjs.session-token");
   const secret = await getSessionSigningKey(params.orgId);
+  // Same coarse suite_role claim the jwt callback stamps for
+  // credentials/OIDC/webauthn sign-ins — CHAD consumes it in
+  // delegated-auth mode.
+  const suiteRole = await resolveSuiteRole(params.userId, params.orgId);
   const value = await encode({
     salt: name,
     secret,
@@ -434,6 +440,7 @@ export async function buildSamlSessionCookie(params: {
       provider: "saml",
       org_id: params.orgId,
       authedAt: Date.now(),
+      suite_role: suiteRole,
     },
   });
   return {
